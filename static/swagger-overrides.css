@@ -1,0 +1,124 @@
+/* Base layout */
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f9fafb;
+}
+
+.swagger-ui .topbar {
+  display: none;
+}
+
+.swagger-ui {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+}
+
+.swagger-ui .info {
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 20px 20px 18px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e5e7eb;
+}
+
+.swagger-ui .info .title {
+  font-size: 22px;
+  font-weight: 620;
+  letter-spacing: 0.02em;
+}
+
+.swagger-ui .info .description {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+/* Operation blocks */
+.swagger-ui .opblock {
+  border-radius: 18px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+}
+
+.swagger-ui .opblock-tag {
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.swagger-ui .opblock-summary {
+  background: #ffffff;
+}
+
+.swagger-ui .opblock-summary-method {
+  border-radius: 999px;
+  min-width: 64px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+  background: #000000;
+  border-color: #000000;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+  background: #111827;
+  border-color: #111827;
+}
+
+.swagger-ui .opblock-summary-path,
+.swagger-ui .opblock-summary-description {
+  font-size: 13px;
+}
+
+/* Buttons: black background, white text */
+.swagger-ui .btn,
+.swagger-ui .btn.authorize,
+.swagger-ui .opblock-control__btn,
+.swagger-ui .execute-wrapper .btn {
+  background-color: #111827;
+  border-color: #111827;
+  color: #ffffff;
+  border-radius: 999px;
+  font-size: 13px;
+  padding: 6px 14px;
+  font-weight: 500;
+}
+
+.swagger-ui .btn:hover,
+.swagger-ui .btn.authorize:hover,
+.swagger-ui .opblock-control__btn:hover,
+.swagger-ui .execute-wrapper .btn:hover {
+  background-color: #000000;
+  border-color: #000000;
+}
+
+.swagger-ui .btn.cancel {
+  background-color: #ffffff;
+  border-color: #111827;
+  color: #111827;
+}
+
+/* Inputs */
+.swagger-ui input[type="text"],
+.swagger-ui input[type="file"],
+.swagger-ui select,
+.swagger-ui textarea {
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+  font-size: 13px;
+}
+
+/* Small typography tweaks */
+.swagger-ui .parameter__name,
+.swagger-ui .parameter__type,
+.swagger-ui .parameter__in,
+.swagger-ui .response-col_status,
+.swagger-ui .response-col_description {
+  font-size: 12px;
+}
+
