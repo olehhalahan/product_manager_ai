@@ -1,6 +1,13 @@
 import re
 from typing import Dict, List, Optional, Set, Tuple
 
+try:
+    import openai
+    HAS_OPENAI = True
+except ImportError:
+    HAS_OPENAI = False
+    openai = None
+
 from ..models import NormalizedProduct
 
 
@@ -25,8 +32,40 @@ _TYPE_SUFFIXES = [
 class AIProvider:
     """
     Thin abstraction over the real LLM provider.
-    Placeholder implementation — replace internals with real LLM calls later.
+    Uses OpenAI when API key is set, otherwise falls back to placeholder.
     """
+
+    def __init__(self):
+        self._api_key: str = ""
+        self._client = None
+        self._prompt_title: str = ""
+        self._prompt_description: str = ""
+
+    def set_api_key(self, key: str) -> None:
+        self._api_key = key
+        if HAS_OPENAI and key:
+            self._client = openai.OpenAI(api_key=key)
+        else:
+            self._client = None
+
+    def set_prompts(self, title_prompt: str, desc_prompt: str) -> None:
+        self._prompt_title = title_prompt
+        self._prompt_description = desc_prompt
+
+    def _call_openai(self, prompt: str) -> str:
+        """Call OpenAI API and return the response text."""
+        if not self._client:
+            return ""
+        try:
+            response = self._client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.7,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception:
+            return ""
 
     # ------------------------------------------------------------------ #
     #  Title optimisation
@@ -36,6 +75,20 @@ class AIProvider:
         if not base:
             return base
 
+        # Try OpenAI if available
+        if self._client and self._prompt_title:
+            attrs_str = ", ".join(f"{k}: {v}" for k, v in (product.attributes or {}).items())
+            prompt = self._prompt_title.format(
+                title=base,
+                category=product.category or "",
+                brand=product.brand or "",
+                attributes=attrs_str,
+            )
+            result = self._call_openai(prompt)
+            if result:
+                return result[:130]
+
+        # Fallback to placeholder algorithm
         base_lower = base.lower()
         base_words = set(re.findall(r"[a-zA-Z]+", base_lower))
 
@@ -93,6 +146,22 @@ class AIProvider:
     # ------------------------------------------------------------------ #
     def generate_description(self, product: NormalizedProduct) -> str:
         title = product.title or "this product"
+
+        # Try OpenAI if available
+        if self._client and self._prompt_description:
+            attrs_str = ", ".join(f"{k}: {v}" for k, v in (product.attributes or {}).items())
+            prompt = self._prompt_description.format(
+                title=title,
+                category=product.category or "",
+                brand=product.brand or "",
+                attributes=attrs_str,
+                description=product.description or "",
+            )
+            result = self._call_openai(prompt)
+            if result:
+                return result
+
+        # Fallback to placeholder algorithm
         details = self._collect_natural_details(product)
 
         paras: List[str] = []
@@ -165,12 +234,28 @@ class AIProvider:
         return max(5, min(score, 98))
 
     # ------------------------------------------------------------------ #
-    #  Translation (placeholder)
+    #  Translation
     # ------------------------------------------------------------------ #
     def translate_text(self, text: str, target_language: str) -> str:
+        """Translate text to target language using OpenAI or placeholder."""
         if not text:
             return ""
-        return f"[{target_language.upper()}] {text}"
+
+        lang_names = {
+            "en": "English", "de": "German", "sv": "Swedish",
+            "fr": "French", "es": "Spanish", "pl": "Polish",
+        }
+        lang_name = lang_names.get(target_language.lower(), target_language.upper())
+
+        # Try OpenAI if available
+        if self._client:
+            prompt = f"Translate the following text to {lang_name}. Return only the translation, nothing else.\n\nText: {text}"
+            result = self._call_openai(prompt)
+            if result:
+                return result
+
+        # Fallback placeholder
+        return f"[TRANSLATED TO {lang_name.upper()}] {text}"
 
     # ------------------------------------------------------------------ #
     #  Private helpers — title

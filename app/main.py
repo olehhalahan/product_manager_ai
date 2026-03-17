@@ -20,6 +20,30 @@ app = FastAPI(title="Product Content Optimizer", docs_url=None)
 
 storage = InMemoryStorage()
 
+# Settings storage (in-memory, would be DB in production)
+_settings: dict = {
+    "openai_api_key": "",
+    "prompt_title": """You are an SEO expert. Optimize the following product title for search engines.
+Keep it under 120 characters. Include relevant keywords. Use a pipe separator for secondary phrases.
+
+Original title: {title}
+Category: {category}
+Brand: {brand}
+Attributes: {attributes}
+
+Return only the optimized title, nothing else.""",
+    "prompt_description": """You are an e-commerce copywriter. Write a compelling product description.
+Keep it 2-3 paragraphs. Focus on benefits and features. Do not mention price.
+
+Product: {title}
+Category: {category}
+Brand: {brand}
+Attributes: {attributes}
+Original description: {description}
+
+Return only the description, nothing else.""",
+}
+
 # Temp store for uploaded CSV data waiting for column mapping confirmation.
 _pending_uploads: dict = {}
 
@@ -40,127 +64,643 @@ def custom_swagger_ui():
     )
 
 
+HOMEPAGE_HTML = """<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sartozo.AI — AI-Powered Product Feed Optimization</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <style>
+    html { scroll-behavior: smooth; }
+    :root { --hp-bg: #000; --hp-text: #fff; --hp-muted: rgba(255,255,255,0.6); --hp-border: rgba(255,255,255,0.1); }
+
+    .hp-body { background: var(--hp-bg); color: var(--hp-text); min-height: 100vh; overflow-x: hidden; position: relative; }
+    .hp-container { max-width: 1440px; margin: 0 auto; }
+    
+    /* Global stars background */
+    .hp-stars { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
+    .hp-star { position: absolute; width: 2px; height: 2px; background: rgba(255,255,255,0.5); border-radius: 50%; animation: starDrift 30s ease-in-out infinite; }
+    .hp-star::after { content: ''; position: absolute; top: -1px; left: -1px; width: 4px; height: 4px; background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 70%); border-radius: 50%; }
+    @keyframes starDrift { 0% { transform: translate(0, 0); } 25% { transform: translate(15px, -10px); } 50% { transform: translate(5px, -20px); } 75% { transform: translate(-10px, -8px); } 100% { transform: translate(0, 0); } }
+    
+    .hp-star:nth-child(1) { top: 8%; left: 15%; animation-delay: 0s; animation-duration: 30s; }
+    .hp-star:nth-child(2) { top: 12%; left: 85%; animation-delay: 5s; animation-duration: 35s; }
+    .hp-star:nth-child(3) { top: 25%; left: 92%; animation-delay: 3s; animation-duration: 28s; }
+    .hp-star:nth-child(4) { top: 35%; left: 5%; animation-delay: 8s; animation-duration: 32s; }
+    .hp-star:nth-child(5) { top: 45%; left: 78%; animation-delay: 2s; animation-duration: 38s; }
+    .hp-star:nth-child(6) { top: 55%; left: 25%; animation-delay: 10s; animation-duration: 25s; }
+    .hp-star:nth-child(7) { top: 65%; left: 95%; animation-delay: 6s; animation-duration: 33s; }
+    .hp-star:nth-child(8) { top: 72%; left: 12%; animation-delay: 4s; animation-duration: 29s; }
+    .hp-star:nth-child(9) { top: 82%; left: 68%; animation-delay: 12s; animation-duration: 36s; }
+    .hp-star:nth-child(10) { top: 88%; left: 42%; animation-delay: 7s; animation-duration: 31s; }
+    .hp-star:nth-child(11) { top: 18%; left: 55%; animation-delay: 9s; animation-duration: 27s; }
+    .hp-star:nth-child(12) { top: 38%; left: 35%; animation-delay: 1s; animation-duration: 34s; }
+    .hp-star:nth-child(13) { top: 58%; left: 8%; animation-delay: 11s; animation-duration: 26s; }
+    .hp-star:nth-child(14) { top: 78%; left: 88%; animation-delay: 13s; animation-duration: 37s; }
+    .hp-star:nth-child(15) { top: 92%; left: 22%; animation-delay: 0s; animation-duration: 30s; }
+    
+    /* Decorative background elements */
+    .hp-bg-decor { position: absolute; pointer-events: none; z-index: 0; }
+    .hp-bg-circle { border: 1px solid rgba(255,255,255,0.04); border-radius: 50%; }
+    .hp-bg-circle-1 { width: 600px; height: 600px; top: -200px; right: -200px; }
+    .hp-bg-circle-2 { width: 400px; height: 400px; top: 50%; left: -150px; }
+    .hp-bg-circle-3 { width: 800px; height: 800px; bottom: -400px; right: -300px; border-style: dashed; border-color: rgba(255,255,255,0.03); }
+    .hp-bg-line { background: linear-gradient(180deg, transparent, rgba(255,255,255,0.04), transparent); }
+    .hp-bg-line-v { width: 1px; height: 300px; }
+    .hp-bg-line-h { width: 300px; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent); }
+    .hp-bg-glow { border-radius: 50%; background: radial-gradient(circle, rgba(193,68,14,0.08) 0%, transparent 70%); }
+
+    /* Navigation */
+    .hp-nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .hp-nav-logo img { height: 32px; filter: brightness(0) invert(1); }
+    .hp-nav-links { display: flex; align-items: center; gap: 32px; }
+    .hp-nav-link { color: var(--hp-muted); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }
+    .hp-nav-link:hover { color: var(--hp-text); }
+    .hp-nav-cta { background: var(--hp-text); color: var(--hp-bg); padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; transition: opacity 0.2s; }
+    .hp-nav-cta:hover { opacity: 0.9; }
+
+    /* Hero */
+    .hp-hero { text-align: center; padding: 160px 24px 120px; position: relative; min-height: 600px; }
+    .hp-badge { display: inline-block; color: var(--hp-muted); font-size: 0.85rem; margin-bottom: 28px; letter-spacing: 0.02em; }
+    .hp-title { font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 600; line-height: 1.1; margin-bottom: 24px; letter-spacing: -0.03em; position: relative; z-index: 2; }
+    .hp-sub { font-size: 1.1rem; color: var(--hp-muted); max-width: 540px; margin: 0 auto 40px; line-height: 1.6; position: relative; z-index: 2; }
+    .hp-buttons { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; position: relative; z-index: 2; }
+    .hp-btn { padding: 14px 28px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; text-decoration: none; transition: all 0.3s ease; }
+    .hp-btn-primary { background: var(--hp-text); color: var(--hp-bg); }
+    .hp-btn-primary:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255,255,255,0.1); }
+    .hp-btn-secondary { background: transparent; color: var(--hp-text); border: 1px solid var(--hp-border); }
+    .hp-btn-secondary:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
+
+    /* Mars Planet - positioned left */
+    .hp-planet-container { position: absolute; width: 380px; height: 380px; z-index: 1; animation: orbit-hero 260s ease-in-out infinite; transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .hp-planet-container.scared { animation-play-state: paused; }
+    .hp-mars { cursor: pointer; pointer-events: auto; }
+    @keyframes orbit-hero {
+        0% { left: -100px; top: 30%; }
+        25% { left: 85%; top: 10%; }
+        50% { left: 90%; top: 70%; }
+        75% { left: 5%; top: 80%; }
+        100% { left: -100px; top: 30%; }
+    }
+    .hp-planet { position: relative; width: 100%; height: 100%; }
+    .hp-mars { position: absolute; top: 50%; left: 50%; width: 180px; height: 180px; margin: -90px 0 0 -90px; border-radius: 50%; background: radial-gradient(circle at 30% 25%, #e8a87c, #c1440e 40%, #8b2500 70%, #4a1a0a 100%); box-shadow: 0 0 60px rgba(193,68,14,0.5), 0 0 120px rgba(193,68,14,0.3), inset -20px -20px 40px rgba(0,0,0,0.4), inset 10px 10px 30px rgba(255,200,150,0.15); animation: marsFloat 8s ease-in-out infinite; overflow: hidden; }
+    .hp-crater { position: absolute; border-radius: 50%; background: rgba(74,26,10,0.4); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.3); }
+    .hp-crater-1 { width: 20px; height: 20px; top: 35%; left: 40%; }
+    .hp-crater-2 { width: 12px; height: 12px; top: 65%; left: 25%; }
+    .hp-crater-3 { width: 15px; height: 15px; top: 25%; left: 65%; }
+    @keyframes marsFloat { 0%, 100% { transform: translate(-50%, -50%) translateY(0); } 50% { transform: translate(-50%, -50%) translateY(-15px); } }
+    @keyframes marsSpin { from { background-position: 0 0; } to { background-position: 200px 0; } }
+
+    /* Mars glow */
+    .hp-mars-glow { position: absolute; top: 50%; left: 50%; width: 280px; height: 280px; margin: -140px 0 0 -140px; border-radius: 50%; background: radial-gradient(circle, rgba(193,68,14,0.2) 0%, rgba(193,68,14,0.1) 40%, transparent 70%); animation: glowPulse 4s ease-in-out infinite; }
+    @keyframes glowPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: 0.7; } }
+
+    /* Orbits around Mars */
+    .hp-orbit { position: absolute; top: 50%; left: 50%; border: 1px solid rgba(255,255,255,0.06); border-radius: 50%; }
+    .hp-orbit-1 { width: 240px; height: 240px; margin: -120px 0 0 -120px; animation: orbitSpin 15s linear infinite; transform-origin: center; }
+    .hp-orbit-2 { width: 320px; height: 320px; margin: -160px 0 0 -160px; animation: orbitSpin 25s linear infinite reverse; border-style: dashed; }
+    .hp-orbit-3 { width: 380px; height: 380px; margin: -190px 0 0 -190px; animation: orbitSpin 35s linear infinite; border-color: rgba(255,255,255,0.03); }
+    @keyframes orbitSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* Moons/satellites */
+    .hp-moon { position: absolute; border-radius: 50%; box-shadow: 0 0 15px currentColor; animation: moonGlow 2s ease-in-out infinite; }
+    .hp-orbit-1 .hp-moon { width: 10px; height: 10px; top: -5px; left: 50%; margin-left: -5px; background: #f59e0b; color: rgba(245,158,11,0.6); }
+    .hp-orbit-2 .hp-moon { width: 8px; height: 8px; top: 50%; right: -4px; margin-top: -4px; background: #ef4444; color: rgba(239,68,68,0.6); animation-delay: 0.5s; }
+    .hp-orbit-3 .hp-moon { width: 6px; height: 6px; bottom: 20%; left: -3px; background: #a855f7; color: rgba(168,85,247,0.6); animation-delay: 1s; }
+    @keyframes moonGlow { 0%, 100% { box-shadow: 0 0 10px currentColor; } 50% { box-shadow: 0 0 20px currentColor, 0 0 30px currentColor; } }
+
+    /* Floating particles */
+    .hp-particles { position: absolute; width: 100%; height: 100%; top: 0; left: 0; }
+    .hp-particle { position: absolute; width: 3px; height: 3px; background: rgba(255,255,255,0.4); border-radius: 50%; animation: particleDrift 8s ease-in-out infinite; }
+    .hp-particle:nth-child(1) { top: 20%; left: 30%; animation-delay: 0s; }
+    .hp-particle:nth-child(2) { top: 60%; left: 70%; animation-delay: 2s; animation-duration: 10s; }
+    .hp-particle:nth-child(3) { top: 40%; left: 85%; animation-delay: 4s; animation-duration: 12s; }
+    .hp-particle:nth-child(4) { top: 80%; left: 20%; animation-delay: 1s; animation-duration: 9s; }
+    @keyframes particleDrift { 0%, 100% { transform: translate(0, 0); opacity: 0.4; } 25% { transform: translate(10px, -15px); opacity: 0.8; } 50% { transform: translate(-5px, -25px); opacity: 0.4; } 75% { transform: translate(-15px, -10px); opacity: 0.7; } }
+
+    /* Features */
+    .hp-features { padding: 120px 48px; border-top: 1px solid var(--hp-border); position: relative; overflow: hidden; }
+    .hp-features .hp-container { position: relative; z-index: 1; }
+    .hp-features-bg { position: absolute; inset: 0; pointer-events: none; }
+    .hp-features-bg .hp-bg-circle { position: absolute; }
+    .hp-features-bg .circle-1 { width: 500px; height: 500px; top: -100px; right: -150px; border: 1px solid rgba(255,255,255,0.03); }
+    .hp-features-bg .circle-2 { width: 300px; height: 300px; bottom: 50px; left: -100px; border: 1px dashed rgba(255,255,255,0.04); }
+    .hp-features-bg .glow-1 { position: absolute; width: 400px; height: 400px; top: 20%; right: -100px; background: radial-gradient(circle, rgba(193,68,14,0.06) 0%, transparent 70%); border-radius: 50%; }
+    .hp-features-header { text-align: center; margin-bottom: 72px; opacity: 0; transform: translateY(40px); transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+    .hp-features-header.visible { opacity: 1; transform: translateY(0); }
+    .hp-features-title { font-size: 2.5rem; font-weight: 600; margin-bottom: 16px; letter-spacing: -0.03em; }
+    .hp-features-sub { color: var(--hp-muted); font-size: 1.05rem; }
+    .hp-features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; max-width: 1100px; margin: 0 auto; }
+    @media (max-width: 1024px) { .hp-features-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 640px) { .hp-features-grid { grid-template-columns: 1fr; } }
+    
+    .hp-feature { position: relative; padding: 32px; border: 1px solid var(--hp-border); border-radius: 16px; background: rgba(255,255,255,0.01); overflow: hidden; opacity: 0; transform: translateY(30px); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s, background 0.3s; }
+    .hp-feature.visible { opacity: 1; transform: translateY(0); }
+    .hp-feature:hover { border-color: rgba(249,115,22,0.3); background: rgba(249,115,22,0.03); }
+    
+    .hp-feature-visual { position: relative; height: 120px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; }
+    .hp-feature-icon-wrap { position: relative; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; background: rgba(255,255,255,0.03); font-size: 1.5rem; z-index: 2; transition: all 0.3s; }
+    .hp-feature:hover .hp-feature-icon-wrap { border-color: rgba(249,115,22,0.4); background: rgba(249,115,22,0.08); transform: scale(1.05); }
+    
+    .hp-feature-dots { position: absolute; inset: 0; overflow: hidden; opacity: 0.4; }
+    .hp-feature-dot { position: absolute; width: 3px; height: 3px; background: rgba(255,255,255,0.4); border-radius: 50%; }
+    .hp-feature:nth-child(1) .hp-feature-dot:nth-child(1) { top: 20%; left: 15%; animation: float-dot 3s ease-in-out infinite; }
+    .hp-feature:nth-child(1) .hp-feature-dot:nth-child(2) { top: 60%; left: 25%; animation: float-dot 4s ease-in-out infinite 0.5s; }
+    .hp-feature:nth-child(1) .hp-feature-dot:nth-child(3) { top: 30%; right: 20%; animation: float-dot 3.5s ease-in-out infinite 1s; }
+    .hp-feature:nth-child(1) .hp-feature-dot:nth-child(4) { top: 70%; right: 15%; animation: float-dot 4.5s ease-in-out infinite 0.3s; }
+    .hp-feature:nth-child(2) .hp-feature-dot:nth-child(1) { top: 25%; left: 20%; animation: float-dot 4s ease-in-out infinite 0.2s; }
+    .hp-feature:nth-child(2) .hp-feature-dot:nth-child(2) { top: 55%; left: 10%; animation: float-dot 3s ease-in-out infinite 0.8s; }
+    .hp-feature:nth-child(2) .hp-feature-dot:nth-child(3) { top: 40%; right: 25%; animation: float-dot 3.5s ease-in-out infinite 0.4s; }
+    .hp-feature:nth-child(2) .hp-feature-dot:nth-child(4) { top: 75%; right: 20%; animation: float-dot 4s ease-in-out infinite 1.2s; }
+    .hp-feature:nth-child(odd) .hp-feature-dot { background: rgba(249,115,22,0.5); }
+    @keyframes float-dot { 0%, 100% { transform: translateY(0) scale(1); opacity: 0.4; } 50% { transform: translateY(-8px) scale(1.2); opacity: 0.8; } }
+    
+    .hp-feature-ring { position: absolute; border: 1px solid rgba(255,255,255,0.08); border-radius: 50%; }
+    .hp-feature-ring-1 { width: 90px; height: 90px; animation: pulse-ring 4s ease-in-out infinite; }
+    .hp-feature-ring-2 { width: 130px; height: 130px; animation: pulse-ring 4s ease-in-out infinite 1s; }
+    @keyframes pulse-ring { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.05); opacity: 0.6; } }
+    
+    .hp-feature-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 10px; }
+    .hp-feature-desc { font-size: 0.88rem; color: var(--hp-muted); line-height: 1.6; }
+
+    /* How it works */
+    .hp-steps { padding: 100px 48px; text-align: center; position: relative; overflow: hidden; }
+    .hp-steps-bg { position: absolute; inset: 0; pointer-events: none; }
+    .hp-steps-bg .line-1 { position: absolute; width: 1px; height: 200px; left: 20%; top: 0; background: linear-gradient(180deg, transparent, rgba(255,255,255,0.05), transparent); }
+    .hp-steps-bg .line-2 { position: absolute; width: 1px; height: 250px; right: 15%; bottom: 0; background: linear-gradient(180deg, transparent, rgba(255,255,255,0.04), transparent); }
+    .hp-steps-bg .circle-1 { position: absolute; width: 200px; height: 200px; border: 1px solid rgba(255,255,255,0.03); border-radius: 50%; left: 5%; top: 30%; }
+    .hp-steps .hp-container { position: relative; z-index: 1; }
+    .hp-steps-title { font-size: 2.2rem; font-weight: 600; margin-bottom: 12px; letter-spacing: -0.02em; }
+    .hp-steps-sub { color: var(--hp-muted); font-size: 1rem; margin-bottom: 64px; }
+    .hp-steps-grid { display: flex; justify-content: center; gap: 64px; flex-wrap: wrap; max-width: 900px; margin: 0 auto; }
+    .hp-step { text-align: center; max-width: 240px; }
+    .hp-step-num { width: 48px; height: 48px; border: 2px solid var(--hp-border); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 600; margin: 0 auto 20px; transition: border-color 0.3s, background 0.3s; }
+    .hp-step:hover .hp-step-num { border-color: rgba(193,68,14,0.6); background: rgba(193,68,14,0.1); }
+    .hp-step-title { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+    .hp-step-desc { font-size: 0.85rem; color: var(--hp-muted); line-height: 1.5; }
+
+    /* CTA */
+    .hp-cta { padding: 100px 48px; text-align: center; border-top: 1px solid var(--hp-border); position: relative; overflow: hidden; }
+    .hp-cta-bg { position: absolute; inset: 0; pointer-events: none; }
+    .hp-cta-bg .circle-1 { position: absolute; width: 600px; height: 600px; border: 1px dashed rgba(255,255,255,0.03); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .hp-cta-bg .circle-2 { position: absolute; width: 400px; height: 400px; border: 1px solid rgba(255,255,255,0.04); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .hp-cta-bg .glow { position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, rgba(193,68,14,0.08) 0%, transparent 70%); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .hp-cta .hp-container { position: relative; z-index: 1; }
+    .hp-cta-title { font-size: 2rem; font-weight: 600; margin-bottom: 16px; letter-spacing: -0.02em; }
+    .hp-cta-sub { color: var(--hp-muted); font-size: 1rem; margin-bottom: 32px; }
+
+    /* Footer */
+    .hp-footer { padding: 32px 48px; text-align: center; font-size: 0.82rem; color: var(--hp-muted); border-top: 1px solid var(--hp-border); }
+
+    /* Back to top button */
+    .back-to-top { position: fixed; bottom: 32px; right: 32px; width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: var(--hp-text); font-size: 1.2rem; cursor: pointer; opacity: 0; visibility: hidden; transform: translateY(20px); transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); z-index: 999; }
+    .back-to-top:hover { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.3); transform: translateY(-2px); }
+    .back-to-top.visible { opacity: 1; visibility: visible; transform: translateY(0); }
+
+    @media (max-width: 1024px) {
+        .hp-planet-container { width: 320px; height: 320px; animation-duration: 260s; }
+        .hp-mars { width: 140px; height: 140px; margin: -70px 0 0 -70px; }
+        .hp-mars-glow { width: 220px; height: 220px; margin: -110px 0 0 -110px; }
+    }
+    @media (max-width: 768px) {
+        .hp-nav { padding: 16px 24px; }
+        .hp-nav-links { gap: 16px; }
+        .hp-nav-link { display: none; }
+        .hp-hero { padding: 120px 24px 100px; min-height: auto; }
+        .hp-planet-container { position: relative; width: 280px; height: 280px; margin: 40px auto 0; animation: none; left: auto !important; top: auto !important; }
+        .hp-mars { width: 100px; height: 100px; margin: -50px 0 0 -50px; }
+        .hp-mars-glow { width: 160px; height: 160px; margin: -80px 0 0 -80px; }
+        .hp-orbit-1 { width: 160px; height: 160px; margin: -80px 0 0 -80px; }
+        .hp-orbit-2 { width: 220px; height: 220px; margin: -110px 0 0 -110px; }
+        .hp-orbit-3 { width: 270px; height: 270px; margin: -135px 0 0 -135px; }
+        .hp-features, .hp-steps, .hp-cta { padding: 60px 24px; }
+    }
+    </style>
+</head>
+<body class="hp-body">
+    <div class="hp-stars">
+        <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
+        <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
+        <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
+        <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
+        <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
+    </div>
+    <nav class="hp-nav">
+        <a href="/" class="hp-nav-logo"><img src="/assets/logo-light.png" alt="Sartozo.AI" /></a>
+        <div class="hp-nav-links">
+            <a href="#features" class="hp-nav-link">Features</a>
+            <a href="#how-it-works" class="hp-nav-link">How it works</a>
+            <a href="/settings" class="hp-nav-link">Settings</a>
+            <a href="/upload" class="hp-nav-cta">Get Started</a>
+        </div>
+    </nav>
+
+    <section class="hp-hero">
+        <div class="hp-planet-container">
+            <div class="hp-planet">
+                <div class="hp-mars-glow"></div>
+                <div class="hp-mars">
+                    <div class="hp-crater hp-crater-1"></div>
+                    <div class="hp-crater hp-crater-2"></div>
+                    <div class="hp-crater hp-crater-3"></div>
+                </div>
+                <div class="hp-orbit hp-orbit-1"><div class="hp-moon"></div></div>
+                <div class="hp-orbit hp-orbit-2"><div class="hp-moon"></div></div>
+                <div class="hp-orbit hp-orbit-3"><div class="hp-moon"></div></div>
+            </div>
+        </div>
+
+        <div class="hp-particles">
+            <div class="hp-particle"></div>
+            <div class="hp-particle"></div>
+            <div class="hp-particle"></div>
+            <div class="hp-particle"></div>
+        </div>
+
+        <div class="hp-badge">Sartozo.AI for E-commerce</div>
+        <h1 class="hp-title">Optimize Every Product<br/>for Maximum Visibility</h1>
+        <p class="hp-sub">
+            AI-powered optimization for your product titles and descriptions. Boost search rankings, increase clicks, and drive more sales.
+        </p>
+        <div class="hp-buttons">
+            <a href="/upload" class="hp-btn hp-btn-primary">Get Started</a>
+            <a href="#how-it-works" class="hp-btn hp-btn-secondary">Learn More</a>
+        </div>
+    </section>
+
+    <section class="hp-features" id="features">
+        <div class="hp-features-bg">
+            <div class="hp-bg-circle circle-1"></div>
+            <div class="hp-bg-circle circle-2"></div>
+            <div class="glow-1"></div>
+        </div>
+        <div class="hp-container">
+            <div class="hp-features-header">
+                <h2 class="hp-features-title">Complete feed optimization platform</h2>
+                <p class="hp-features-sub">Everything you need to transform your product content</p>
+            </div>
+            <div class="hp-features-grid">
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#128269;</div>
+                </div>
+                <div class="hp-feature-title">SEO-Optimized Titles</div>
+                <div class="hp-feature-desc">AI expands short titles with relevant keywords and search phrases using proven e-commerce patterns.</div>
+            </div>
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#128221;</div>
+                </div>
+                <div class="hp-feature-title">Compelling Descriptions</div>
+                <div class="hp-feature-desc">Generate conversion-focused product descriptions that highlight features and benefits.</div>
+            </div>
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#127760;</div>
+                </div>
+                <div class="hp-feature-title">Multi-Language Translation</div>
+                <div class="hp-feature-desc">Translate optimized content to German, Swedish, French, Spanish, Polish and more.</div>
+            </div>
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#128200;</div>
+                </div>
+                <div class="hp-feature-title">Quality Scoring</div>
+                <div class="hp-feature-desc">Every optimization gets a quality score (1-100) so you know the improvement level.</div>
+            </div>
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#128736;</div>
+                </div>
+                <div class="hp-feature-title">Custom Prompts</div>
+                <div class="hp-feature-desc">Configure AI prompts to match your brand voice and SEO strategy.</div>
+            </div>
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#128230;</div>
+                </div>
+                <div class="hp-feature-title">CSV Import/Export</div>
+                <div class="hp-feature-desc">Upload your feed as CSV, review results, and export the optimized data.</div>
+            </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="hp-steps" id="how-it-works">
+        <div class="hp-steps-bg">
+            <div class="line-1"></div>
+            <div class="line-2"></div>
+            <div class="circle-1"></div>
+        </div>
+        <div class="hp-container">
+            <h2 class="hp-steps-title">How it works</h2>
+            <p class="hp-steps-sub">Three simple steps to better product content</p>
+            <div class="hp-steps-grid">
+                <div class="hp-step">
+                    <div class="hp-step-num">1</div>
+                    <div class="hp-step-title">Upload your CSV</div>
+                    <div class="hp-step-desc">Drop your product feed file and map columns to standard fields.</div>
+                </div>
+                <div class="hp-step">
+                    <div class="hp-step-num">2</div>
+                    <div class="hp-step-title">AI optimizes content</div>
+                    <div class="hp-step-desc">Our AI analyzes each product and generates improved titles and descriptions.</div>
+                </div>
+                <div class="hp-step">
+                    <div class="hp-step-num">3</div>
+                    <div class="hp-step-title">Review &amp; export</div>
+                    <div class="hp-step-desc">Check results, regenerate if needed, then download your optimized feed.</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="hp-cta">
+        <div class="hp-cta-bg">
+            <div class="circle-1"></div>
+            <div class="circle-2"></div>
+            <div class="glow"></div>
+        </div>
+        <div class="hp-container">
+            <h2 class="hp-cta-title">Ready to optimize your product feed?</h2>
+            <p class="hp-cta-sub">Start with a free test — no API key required for demo mode.</p>
+            <a href="/upload" class="hp-btn hp-btn-primary">Get Started Free</a>
+        </div>
+    </section>
+
+    <footer class="hp-footer">
+        &copy; 2024 Sartozo.AI &mdash; AI-Powered Product Feed Optimization
+    </footer>
+
+    <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">
+        &#8593;
+    </button>
+
+    <script>
+    const btn = document.getElementById('backToTop');
+    
+    // Planet runs away on hover
+    const planetContainer = document.querySelector('.hp-planet-container');
+    const mars = document.querySelector('.hp-mars');
+    if (mars && planetContainer) {
+        mars.addEventListener('mouseenter', () => {
+            const runX = (Math.random() - 0.5) * 300;
+            const runY = (Math.random() - 0.5) * 200 - 100;
+            planetContainer.classList.add('scared');
+            planetContainer.style.transform = `translate(${runX}px, ${runY}px)`;
+            
+            setTimeout(() => {
+                planetContainer.style.transform = '';
+                setTimeout(() => planetContainer.classList.remove('scared'), 100);
+            }, 800);
+        });
+    }
+
+    // Scroll reveal for features
+    const featuresHeader = document.querySelector('.hp-features-header');
+    const featureCards = document.querySelectorAll('.hp-feature');
+    
+    const observerOptions = {
+        threshold: 0.15,
+        rootMargin: '0px 0px -50px 0px'
+    };
+    
+    const revealObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                
+                // Stagger animation for feature cards
+                if (entry.target.classList.contains('hp-features-header')) {
+                    featureCards.forEach((card, i) => {
+                        setTimeout(() => card.classList.add('visible'), 150 + i * 100);
+                    });
+                }
+            }
+        });
+    }, observerOptions);
+    
+    if (featuresHeader) revealObserver.observe(featuresHeader);
+    featureCards.forEach(card => revealObserver.observe(card));
+    
+    // Back to top button
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 400) {
+            btn.classList.add('visible');
+        } else {
+            btn.classList.remove('visible');
+        }
+    });
+    </script>
+</body>
+</html>"""
+
+
 UPLOAD_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ProductManager.AI</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-    <script>
-    function setTheme(t){document.documentElement.setAttribute("data-theme",t);localStorage.setItem("pm_theme",t);
-        document.querySelectorAll(".theme-btn").forEach(b=>b.classList.toggle("active",b.dataset.theme===t));}
-    (function(){setTheme(localStorage.getItem("pm_theme")||"light")})();
+    <title>Upload Feed &mdash; Sartozo.AI</title>
+    <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }
 
-    function initDrop(){
-        const zone=document.getElementById("dropzone"),inp=document.getElementById("file"),nameEl=document.getElementById("filename");
-        const errEl=document.getElementById("file-error");
-        function validateFile(file){
+    .nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .nav-logo img { height: 32px; filter: brightness(0) invert(1); }
+    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-link { color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }
+    .nav-link:hover, .nav-link.active { color: #fff; }
+    .nav-cta { background: #fff; color: #000; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; }
+
+    .container { max-width: 600px; margin: 80px auto; padding: 0 24px; }
+    .title { font-size: 2rem; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; }
+    .subtitle { color: rgba(255,255,255,0.6); font-size: 1rem; margin-bottom: 40px; line-height: 1.6; }
+
+    .form-group { margin-bottom: 24px; }
+    .label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 8px; color: rgba(255,255,255,0.8); }
+
+    .dropzone { border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 48px 24px; text-align: center; cursor: pointer; transition: all 0.3s; }
+    .dropzone:hover, .dropzone.dragover { border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.02); }
+    .dropzone.has-file { border-color: #f97316; border-style: solid; background: rgba(249,115,22,0.04); }
+    .dropzone-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.5; transition: all 0.3s; }
+    .dropzone.has-file .dropzone-icon { font-size: 2rem; color: #f97316; opacity: 1; animation: pop 0.3s ease-out; }
+    .dropzone-text { font-size: 0.95rem; margin-bottom: 4px; color: rgba(255,255,255,0.6); }
+    .dropzone-text strong { color: #fff; }
+    .dropzone.has-file .dropzone-text { color: #f97316; }
+    .dropzone-hint { font-size: 0.8rem; color: rgba(255,255,255,0.4); }
+    .dropzone.has-file .dropzone-hint { display: none; }
+    .dropzone-filename { margin-top: 10px; font-size: 0.88rem; color: rgba(255,255,255,0.9); font-weight: 500; }
+    .dropzone-thanks { margin-top: 6px; font-size: 0.82rem; color: rgba(255,255,255,0.5); font-style: italic; opacity: 0; transform: translateY(8px); transition: all 0.4s ease; }
+    .dropzone.has-file .dropzone-thanks { opacity: 1; transform: translateY(0); }
+    .dropzone input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
+    
+    @keyframes pop { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+    .file-error { margin-top: 12px; padding: 12px 16px; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; color: #ef4444; font-size: 0.85rem; display: none; }
+    .file-error:not(:empty) { display: block; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 600px) { .row { grid-template-columns: 1fr; } }
+
+    select { width: 100%; padding: 12px 16px; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='white' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; }
+    select:focus { outline: none; border-color: rgba(255,255,255,0.3); }
+    select option { background: #111; color: #fff; }
+
+    .btn { display: block; width: 100%; padding: 16px 24px; font-size: 1rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s; text-align: center; text-decoration: none; }
+    .btn-primary { background: #fff; color: #000; }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    .hint { margin-top: 24px; text-align: center; font-size: 0.82rem; color: rgba(255,255,255,0.4); }
+    .hint code { background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+
+    @media (max-width: 768px) { .nav { padding: 16px 24px; } .nav-link { display: none; } .container { margin: 40px auto; } }
+    </style>
+</head>
+<body>
+    <nav class="nav">
+        <a href="/" class="nav-logo"><img src="/assets/logo-light.png" alt="Sartozo.AI" /></a>
+        <div class="nav-links">
+            <a href="/#features" class="nav-link">Features</a>
+            <a href="/upload" class="nav-link active">Optimize Feed</a>
+            <a href="/settings" class="nav-link">Settings</a>
+            <a href="/upload" class="nav-cta">Get Started</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1 class="title">Optimize your product catalog</h1>
+        <p class="subtitle">Upload a CSV with your products. We'll improve titles, descriptions and translations using AI — then you review and export.</p>
+
+        <form action="/batches/preview" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label class="label">Product catalog (CSV)</label>
+                <div class="dropzone" id="dropzone">
+                    <div class="dropzone-icon" id="dropicon">&#128206;</div>
+                    <div class="dropzone-text" id="droptext"><strong>Click to upload</strong> or drag & drop</div>
+                    <div class="dropzone-hint">CSV files only, UTF-8 encoded</div>
+                    <div class="dropzone-filename" id="filename"></div>
+                    <div class="dropzone-thanks" id="thanks"></div>
+                    <input id="file" name="file" type="file" accept=".csv" required />
+                </div>
+                <div id="file-error" class="file-error"></div>
+            </div>
+
+            <div class="row">
+                <div class="form-group">
+                    <label class="label" for="mode">Processing mode</label>
+                    <select id="mode" name="mode">
+                        <option value="optimize">Optimize titles & descriptions</option>
+                        <option value="translate">Translate descriptions</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="label" for="target_language">Target language</label>
+                    <select id="target_language" name="target_language">
+                        <option value="">Same as input</option>
+                        <option value="en">English</option>
+                        <option value="sv">Swedish</option>
+                        <option value="de">German</option>
+                        <option value="fr">French</option>
+                        <option value="es">Spanish</option>
+                        <option value="pl">Polish</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="label" for="row_limit">Process first N rows (for testing)</label>
+                <select id="row_limit" name="row_limit">
+                    <option value="0">All rows</option>
+                    <option value="10" selected>First 10 rows</option>
+                    <option value="20">First 20 rows</option>
+                    <option value="50">First 50 rows</option>
+                    <option value="100">First 100 rows</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Start processing &rarr;</button>
+        </form>
+
+        <p class="hint">Results appear instantly. You can also use the <code>POST /batches</code> API endpoint.</p>
+    </div>
+
+    <script>
+    (function(){
+        const zone=document.getElementById("dropzone"),inp=document.getElementById("file"),nameEl=document.getElementById("filename"),errEl=document.getElementById("file-error");
+        const thanksEl=document.getElementById("thanks"),iconEl=document.getElementById("dropicon"),textEl=document.getElementById("droptext");
+        
+        const thanksMsgs = [
+            "Thanks for the feed!",
+            "Got it, looks delicious!",
+            "Yum, fresh data!",
+            "Nice one, let's go!",
+            "Ready to optimize!"
+        ];
+        
+        function showSuccess(fileName){
+            zone.classList.add("has-file");
+            nameEl.textContent=fileName;
+            iconEl.innerHTML="✓";
+            textEl.innerHTML="<strong>Ready to process</strong>";
+            thanksEl.textContent=thanksMsgs[Math.floor(Math.random()*thanksMsgs.length)];
+        }
+        
+        function resetZone(){
+            zone.classList.remove("has-file");
+            nameEl.textContent="";
+            iconEl.innerHTML="&#128206;";
+            textEl.innerHTML="<strong>Click to upload</strong> or drag & drop";
+            thanksEl.textContent="";
+        }
+        
+        function validate(f){
             errEl.textContent="";
-            if(!file){return false;}
-            const valid=["text/csv","application/vnd.ms-excel"];
-            const ext=file.name.split(".").pop().toLowerCase();
-            if(!valid.includes(file.type)&&ext!=="csv"){
-                errEl.textContent="Only CSV files are supported. Please select a .csv file.";
-                inp.value="";nameEl.textContent="";return false;
+            if(!f)return false;
+            const ext=f.name.split(".").pop().toLowerCase();
+            if(f.type!=="text/csv"&&f.type!=="application/vnd.ms-excel"&&ext!=="csv"){
+                errEl.textContent="Only CSV files are supported.";
+                inp.value="";resetZone();return false;
             }
             return true;
         }
-        zone.addEventListener("click",()=>inp.click());
-        zone.addEventListener("dragover",e=>{e.preventDefault();zone.classList.add("dragover");});
-        zone.addEventListener("dragleave",()=>zone.classList.remove("dragover"));
-        zone.addEventListener("drop",e=>{e.preventDefault();zone.classList.remove("dragover");
-            if(e.dataTransfer.files.length){
-                const f=e.dataTransfer.files[0];
-                if(validateFile(f)){inp.files=e.dataTransfer.files;nameEl.textContent=f.name;}
-            }});
-        inp.addEventListener("change",()=>{
-            if(inp.files.length){
-                if(validateFile(inp.files[0])){nameEl.textContent=inp.files[0].name;}
-            }});
-        document.querySelector("form").addEventListener("submit",e=>{
-            if(!inp.files.length||!validateFile(inp.files[0])){e.preventDefault();}
-        });
-    }
+        zone.onclick=()=>inp.click();
+        zone.ondragover=e=>{e.preventDefault();zone.classList.add("dragover");};
+        zone.ondragleave=()=>zone.classList.remove("dragover");
+        zone.ondrop=e=>{e.preventDefault();zone.classList.remove("dragover");if(e.dataTransfer.files.length&&validate(e.dataTransfer.files[0])){inp.files=e.dataTransfer.files;showSuccess(e.dataTransfer.files[0].name);}};
+        inp.onchange=()=>{if(inp.files.length&&validate(inp.files[0]))showSuccess(inp.files[0].name);};
+        document.querySelector("form").onsubmit=e=>{if(!inp.files.length||!validate(inp.files[0]))e.preventDefault();};
+    })();
     </script>
-</head>
-<body onload="initDrop()">
-    <div class="topbar">
-        <a href="/" class="topbar-logo"><img src="/assets/logo-dark.png" alt="Sartozo.AI" class="logo-light" /><img src="/assets/logo-light.png" alt="Sartozo.AI" class="logo-dark" /></a>
-        <div class="topbar-right">
-            <button class="theme-btn" data-theme="light" onclick="setTheme('light')" title="Light theme">&#9788;</button>
-            <button class="theme-btn" data-theme="dark" onclick="setTheme('dark')" title="Dark theme">&#9790;</button>
-        </div>
-    </div>
-
-    <div class="page-center">
-        <div class="card">
-            <h1 class="heading-lg" style="margin-bottom:6px;">Optimize your product catalog</h1>
-            <p class="text-secondary" style="margin-bottom:24px;">
-                Upload a CSV with your products. We'll improve titles, descriptions and translations using AI &mdash; then you review and export.
-            </p>
-
-            <form action="/batches/preview" method="post" enctype="multipart/form-data">
-                <div class="field">
-                    <label class="field-label" for="file">Product catalog (CSV)</label>
-                    <div class="file-drop" id="dropzone">
-                        <div class="file-drop-icon">&#128206;</div>
-                        <div class="file-drop-text"><strong>Click to upload</strong> or drag &amp; drop</div>
-                        <div class="file-drop-hint">CSV files only, UTF-8 encoded</div>
-                        <div class="file-drop-name" id="filename"></div>
-                        <input id="file" name="file" type="file" accept=".csv" required />
-                    </div>
-                    <div id="file-error" class="file-error"></div>
-                </div>
-
-                <div class="field-row">
-                    <div class="field">
-                        <label class="field-label" for="mode">Processing mode</label>
-                        <select id="mode" name="mode" class="field-select">
-                            <option value="optimize">Optimize titles &amp; descriptions</option>
-                            <option value="translate">Translate descriptions</option>
-                        </select>
-                    </div>
-                    <div class="field">
-                        <label class="field-label" for="target_language">Target language</label>
-                        <select id="target_language" name="target_language" class="field-select">
-                            <option value="">Same as input</option>
-                            <option value="en">English</option>
-                            <option value="sv">Swedish</option>
-                            <option value="de">German</option>
-                            <option value="fr">French</option>
-                            <option value="es">Spanish</option>
-                            <option value="pl">Polish</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="field">
-                    <label class="field-label" for="row_limit">Process first N rows (for testing)</label>
-                    <select id="row_limit" name="row_limit" class="field-select">
-                        <option value="0">All rows</option>
-                        <option value="10" selected>First 10 rows</option>
-                        <option value="20">First 20 rows</option>
-                        <option value="50">First 50 rows</option>
-                        <option value="100">First 100 rows</option>
-                    </select>
-                </div>
-
-                <button type="submit" class="btn btn-primary btn-full" style="margin-top:8px;">
-                    Start processing &rarr;
-                </button>
-            </form>
-
-            <p class="footer-hint">
-                Results appear instantly. You can also use the <code>POST /batches</code> API endpoint.
-            </p>
-        </div>
-    </div>
 </body>
 </html>"""
 
 
 @app.get("/", response_class=HTMLResponse)
+def homepage():
+    return HTMLResponse(content=HOMEPAGE_HTML)
+
+
+@app.get("/upload", response_class=HTMLResponse)
 def upload_page():
     return HTMLResponse(content=UPLOAD_HTML)
 
@@ -249,6 +789,11 @@ async def run_processing(
 
     if target_language:
         storage.default_target_language = target_language
+    elif mode == "translate":
+        storage.default_target_language = "en"
+
+    # Pass current prompts to AI provider
+    storage._ai.set_prompts(_settings["prompt_title"], _settings["prompt_description"])
 
     storage.process_batch_synchronously(batch_id, optimize_fields=opt_set)
 
@@ -262,237 +807,134 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Processing &mdash; ProductManager.AI</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <title>Processing &mdash; Sartozo.AI</title>
     <style>
-        .loader-card {{
-            text-align: center;
-            max-width: 480px;
-        }}
-        .icon-wrap {{
-            width: 56px;
-            height: 56px;
-            margin: 0 auto 20px;
-            position: relative;
-        }}
-        .spinner {{
-            width: 56px;
-            height: 56px;
-            border: 3px solid var(--border);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 1s cubic-bezier(0.4,0,0.2,1) infinite;
-        }}
-        .checkmark {{
-            display: none;
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-            background: var(--accent);
-            color: var(--accent-text);
-            font-size: 28px;
-            line-height: 56px;
-            text-align: center;
-            animation: popIn 0.35s cubic-bezier(0.2,0.8,0.2,1.2);
-        }}
-        .done .spinner {{ display: none; }}
-        .done .checkmark {{ display: block; }}
-        @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
-        @keyframes popIn {{ 0% {{ transform: scale(0); }} 100% {{ transform: scale(1); }} }}
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; display: flex; flex-direction: column; }}
 
-        .thinking-text {{
-            font-size: 1.15rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            min-height: 1.6em;
-            transition: opacity 0.35s ease;
-        }}
-        .thinking-sub {{
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-top: 8px;
-        }}
+    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
+    .nav-logo img {{ height: 32px; filter: brightness(0) invert(1); }}
+    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
+    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
+    .nav-link:hover {{ color: #fff; }}
 
-        .dots::after {{
-            content: '';
-            animation: dots 1.5s steps(4, end) infinite;
-        }}
-        @keyframes dots {{
-            0%  {{ content: ''; }}
-            25% {{ content: '.'; }}
-            50% {{ content: '..'; }}
-            75% {{ content: '...'; }}
-        }}
+    .main {{ flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }}
+    .loader {{ text-align: center; max-width: 400px; }}
 
-        .progress-bar {{
-            width: 100%;
-            height: 6px;
-            background: var(--border);
-            border-radius: 999px;
-            margin-top: 28px;
-            overflow: hidden;
-        }}
-        .progress-fill {{
-            height: 100%;
-            width: 0%;
-            background: var(--accent);
-            border-radius: 999px;
-            transition: width 0.12s linear;
-        }}
-        .progress-pct {{
-            font-size: 0.75rem;
-            color: var(--text-tertiary);
-            margin-top: 8px;
-            font-variant-numeric: tabular-nums;
-        }}
+    .icon-wrap {{ width: 64px; height: 64px; margin: 0 auto 24px; position: relative; }}
+    .spinner {{ width: 64px; height: 64px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #f97316; border-radius: 50%; animation: spin 1s cubic-bezier(0.4,0,0.2,1) infinite; }}
+    .checkmark {{ display: none; width: 64px; height: 64px; border-radius: 50%; background: #f97316; color: #000; font-size: 32px; line-height: 64px; text-align: center; animation: popIn 0.35s cubic-bezier(0.2,0.8,0.2,1.2); }}
+    .done .spinner {{ display: none; }}
+    .done .checkmark {{ display: block; }}
+    @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+    @keyframes popIn {{ 0% {{ transform: scale(0); }} 100% {{ transform: scale(1); }} }}
+
+    .thinking {{ font-size: 1.25rem; font-weight: 600; min-height: 1.6em; transition: opacity 0.35s ease; }}
+    .thinking-sub {{ font-size: 0.9rem; color: rgba(255,255,255,0.5); margin-top: 8px; }}
+    .dots::after {{ content: ''; animation: dots 1.5s steps(4, end) infinite; }}
+    @keyframes dots {{ 0%{{content:'';}} 25%{{content:'.';}} 50%{{content:'..';}} 75%{{content:'...';}} }}
+
+    .progress {{ width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 999px; margin-top: 32px; overflow: hidden; }}
+    .progress-fill {{ height: 100%; width: 0%; background: linear-gradient(90deg, #ea580c, #f97316); border-radius: 999px; transition: width 0.12s linear; }}
+    .progress-pct {{ font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 10px; font-variant-numeric: tabular-nums; }}
+
+    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} }}
     </style>
-    <script>
-    function setTheme(t){{document.documentElement.setAttribute("data-theme",t);localStorage.setItem("pm_theme",t);
-        document.querySelectorAll(".theme-btn").forEach(b=>b.classList.toggle("active",b.dataset.theme===t));}}
-    (function(){{setTheme(localStorage.getItem("pm_theme")||"light")}})();
-
-    const phrases = [
-        "Boiling the water",
-        "Reading every title carefully",
-        "Consulting the SEO oracle",
-        "Judging descriptions like a copywriter",
-        "Feeding data to hungry algorithms",
-        "Counting all the pixels",
-        "Negotiating with search engines",
-        "Brewing some strong coffee",
-        "Polishing product copy to a shine",
-        "Teaching products to sell themselves",
-        "Whispering sweet keywords",
-        "Waking up the AI hamsters",
-        "Sprinkling conversion fairy dust",
-        "Ironing out the wrinkles",
-        "Double-checking for hallucinations",
-        "Asking ChatGPT's cousin for help",
-        "Optimizing like there is no tomorrow",
-        "Rewriting titles with passion",
-        "Making descriptions actually readable",
-        "Convincing the algorithm you are worthy",
-        "Almost there, pinky promise",
-    ];
-
-    let phraseIdx = 0;
-    let pct = 0;
-    let batchId = null;
-    let serverReady = false;
-    let pageStart = Date.now();
-    const MIN_SHOW = 5000; // show animation for at least 5 seconds
-
-    function nextPhrase() {{
-        const el = document.getElementById("thinking");
-        phraseIdx = (phraseIdx + 1) % phrases.length;
-        el.style.opacity = 0;
-        setTimeout(() => {{ el.textContent = phrases[phraseIdx]; el.style.opacity = 1; }}, 250);
-    }}
-
-    function setBar(val) {{
-        pct = Math.min(val, 100);
-        document.querySelector(".progress-fill").style.width = pct + "%";
-        document.getElementById("pct").textContent = Math.round(pct) + "%";
-    }}
-
-    // Timer-based progress: ticks every 80ms. Ceiling limits how far it goes.
-    let crawlTimer = null;
-    function startCrawl(ceiling) {{
-        crawlTimer = setInterval(() => {{
-            if (pct >= ceiling) {{ clearInterval(crawlTimer); return; }}
-            const gap = ceiling - pct;
-            const step = Math.max(0.15, gap * 0.02);
-            setBar(pct + step);
-        }}, 80);
-    }}
-
-    function finishBar(cb) {{
-        clearInterval(crawlTimer);
-        const fin = setInterval(() => {{
-            if (pct >= 100) {{
-                clearInterval(fin);
-                setBar(100);
-                cb();
-                return;
-            }}
-            setBar(pct + 1.2);
-        }}, 30);
-    }}
-
-    function showDone() {{
-        document.querySelector(".loader-card").classList.add("done");
-        const el = document.getElementById("thinking");
-        el.style.opacity = 0;
-        setTimeout(() => {{
-            el.textContent = "All done!";
-            el.style.opacity = 1;
-            document.querySelector(".thinking-sub").innerHTML = "Redirecting to your results...";
-        }}, 300);
-        setTimeout(() => {{ window.location.href = "/batches/" + batchId + "/review"; }}, 1400);
-    }}
-
-    function tryFinish() {{
-        if (!serverReady) return;
-        const elapsed = Date.now() - pageStart;
-        const wait = Math.max(0, MIN_SHOW - elapsed);
-        setTimeout(() => {{ finishBar(showDone); }}, wait);
-    }}
-
-    async function startProcessing() {{
-        setInterval(nextPhrase, 1800);
-        startCrawl(80);
-
-        const form = new FormData();
-        form.append("upload_id", "{upload_id}");
-        form.append("mode", "{mode}");
-        form.append("target_language", "{target_language}");
-        form.append("optimize_fields", "{optimize_fields}");
-        form.append("mappings_json", document.getElementById("mj").value);
-
-        try {{
-            const resp = await fetch("/batches/run", {{ method: "POST", body: form }});
-            if (!resp.ok) {{
-                clearInterval(crawlTimer);
-                const err = await resp.json();
-                alert(err.detail || "Processing failed.");
-                window.location.href = "/";
-                return;
-            }}
-            const data = await resp.json();
-            batchId = data.batch_id;
-            serverReady = true;
-            tryFinish();
-        }} catch(e) {{
-            clearInterval(crawlTimer);
-            alert("Something went wrong. Please try again.");
-            window.location.href = "/";
-        }}
-    }}
-    </script>
 </head>
-<body onload="startProcessing()">
-    <input type="hidden" id="mj" value="{mappings_escaped}" />
-
-    <div class="topbar">
-        <a href="/" class="topbar-logo"><img src="/assets/logo-dark.png" alt="Sartozo.AI" class="logo-light" /><img src="/assets/logo-light.png" alt="Sartozo.AI" class="logo-dark" /></a>
-        <div class="topbar-right">
-            <button class="theme-btn" data-theme="light" onclick="setTheme('light')" title="Light">&#9788;</button>
-            <button class="theme-btn" data-theme="dark" onclick="setTheme('dark')" title="Dark">&#9790;</button>
+<body>
+    <nav class="nav">
+        <a href="/" class="nav-logo"><img src="/assets/logo-light.png" alt="Sartozo.AI" /></a>
+        <div class="nav-links">
+            <a href="/upload" class="nav-link">Optimize Feed</a>
+            <a href="/settings" class="nav-link">Settings</a>
         </div>
-    </div>
+    </nav>
 
-    <div class="page-center">
-        <div class="card loader-card">
+    <main class="main">
+        <div class="loader">
             <div class="icon-wrap">
                 <div class="spinner"></div>
                 <div class="checkmark">&#10003;</div>
             </div>
-            <div class="thinking-text" id="thinking">Boiling the water</div>
+            <div class="thinking" id="thinking">Boiling the water</div>
             <div class="thinking-sub">This may take a moment depending on catalog size<span class="dots"></span></div>
-            <div class="progress-bar"><div class="progress-fill"></div></div>
+            <div class="progress"><div class="progress-fill"></div></div>
             <div class="progress-pct" id="pct">0%</div>
         </div>
-    </div>
+    </main>
+
+    <input type="hidden" id="mj" value="{mappings_escaped}" />
+    <script>
+    const phrases = [
+        "Boiling the water","Reading every title carefully","Consulting the SEO oracle",
+        "Judging descriptions like a copywriter","Feeding data to hungry algorithms",
+        "Counting all the pixels","Negotiating with search engines","Brewing some strong coffee",
+        "Polishing product copy to a shine","Teaching products to sell themselves",
+        "Whispering sweet keywords","Waking up the AI hamsters","Sprinkling conversion fairy dust",
+        "Ironing out the wrinkles","Double-checking for hallucinations",
+        "Asking ChatGPT's cousin for help","Optimizing like there is no tomorrow",
+        "Rewriting titles with passion","Making descriptions actually readable",
+        "Convincing the algorithm you are worthy","Almost there, pinky promise"
+    ];
+    let phraseIdx=0, pct=0, batchId=null, serverReady=false;
+    const pageStart=Date.now(), MIN_SHOW=5000;
+
+    function nextPhrase(){{
+        const el=document.getElementById("thinking");
+        phraseIdx=(phraseIdx+1)%phrases.length;
+        el.style.opacity=0;
+        setTimeout(()=>{{el.textContent=phrases[phraseIdx];el.style.opacity=1;}},250);
+    }}
+    function setBar(val){{
+        pct=Math.min(val,100);
+        document.querySelector(".progress-fill").style.width=pct+"%";
+        document.getElementById("pct").textContent=Math.round(pct)+"%";
+    }}
+    let crawlTimer=null;
+    function startCrawl(ceiling){{
+        crawlTimer=setInterval(()=>{{
+            if(pct>=ceiling){{clearInterval(crawlTimer);return;}}
+            setBar(pct+Math.max(0.15,(ceiling-pct)*0.02));
+        }},80);
+    }}
+    function finishBar(cb){{
+        clearInterval(crawlTimer);
+        const fin=setInterval(()=>{{
+            if(pct>=100){{clearInterval(fin);setBar(100);cb();return;}}
+            setBar(pct+1.2);
+        }},30);
+    }}
+    function showDone(){{
+        document.querySelector(".loader").classList.add("done");
+        const el=document.getElementById("thinking");
+        el.style.opacity=0;
+        setTimeout(()=>{{el.textContent="All done!";el.style.opacity=1;document.querySelector(".thinking-sub").innerHTML="Redirecting to your results...";}},300);
+        setTimeout(()=>{{window.location.href="/batches/"+batchId+"/review";}},1400);
+    }}
+    function tryFinish(){{
+        if(!serverReady)return;
+        setTimeout(()=>{{finishBar(showDone);}},Math.max(0,MIN_SHOW-(Date.now()-pageStart)));
+    }}
+    async function startProcessing(){{
+        setInterval(nextPhrase,1800);
+        startCrawl(80);
+        const form=new FormData();
+        form.append("upload_id","{upload_id}");
+        form.append("mode","{mode}");
+        form.append("target_language","{target_language}");
+        form.append("optimize_fields","{optimize_fields}");
+        form.append("mappings_json",document.getElementById("mj").value);
+        try{{
+            const resp=await fetch("/batches/run",{{method:"POST",body:form}});
+            if(!resp.ok){{clearInterval(crawlTimer);const err=await resp.json();alert(err.detail||"Processing failed.");window.location.href="/upload";return;}}
+            const data=await resp.json();
+            batchId=data.batch_id;
+            serverReady=true;
+            tryFinish();
+        }}catch(e){{clearInterval(crawlTimer);alert("Something went wrong.");window.location.href="/upload";}}
+    }}
+    startProcessing();
+    </script>
 </body>
 </html>"""
 
@@ -520,9 +962,9 @@ def _build_mapping_page(
         sample_preview = " | ".join(sample_vals) if sample_vals else ""
         select_rows += f"""
         <tr>
-            <td><strong>{col}</strong></td>
-            <td class="text-mono" style="color:var(--text-tertiary);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{sample_preview}</td>
-            <td><select class="field-select mapping-select" data-col="{col}" style="width:100%;">{opts}</select></td>
+            <td class="col-name">{col}</td>
+            <td class="sample">{sample_preview}</td>
+            <td><select data-col="{col}">{opts}</select></td>
         </tr>"""
 
     return f"""<!DOCTYPE html>
@@ -530,28 +972,113 @@ def _build_mapping_page(
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Map columns &mdash; ProductManager.AI</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-    <script>
-    function setTheme(t){{document.documentElement.setAttribute("data-theme",t);localStorage.setItem("pm_theme",t);
-        document.querySelectorAll(".theme-btn").forEach(b=>b.classList.toggle("active",b.dataset.theme===t));}}
-    (function(){{setTheme(localStorage.getItem("pm_theme")||"light")}})();
+    <title>Map columns &mdash; Sartozo.AI</title>
+    <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
 
+    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
+    .nav-logo img {{ height: 32px; filter: brightness(0) invert(1); }}
+    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
+    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
+    .nav-link:hover, .nav-link.active {{ color: #fff; }}
+    .nav-cta {{ background: #fff; color: #000; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; }}
+
+    .container {{ max-width: 900px; margin: 40px auto; padding: 0 24px; }}
+    .title {{ font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 12px; }}
+    .subtitle {{ color: rgba(255,255,255,0.6); font-size: 0.95rem; margin-bottom: 32px; line-height: 1.6; }}
+    .subtitle strong {{ color: #fff; }}
+
+    .table-container {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }}
+    table {{ width: 100%; border-collapse: collapse; }}
+    th {{ text-align: left; padding: 12px 16px; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.1); }}
+    td {{ padding: 12px 16px; font-size: 0.9rem; border-bottom: 1px solid rgba(255,255,255,0.05); }}
+    tr:last-child td {{ border-bottom: none; }}
+    .col-name {{ font-weight: 500; color: #fff; }}
+    .sample {{ color: rgba(255,255,255,0.4); font-family: monospace; font-size: 0.8rem; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+
+    select {{ width: 100%; padding: 10px 14px; font-size: 0.85rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; background: rgba(255,255,255,0.05); color: #fff; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='white' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }}
+    select:focus {{ outline: none; border-color: rgba(255,255,255,0.3); }}
+    select option {{ background: #111; color: #fff; }}
+
+    .options-box {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px 24px; margin-bottom: 24px; }}
+    .options-title {{ font-weight: 600; font-size: 0.95rem; margin-bottom: 14px; }}
+    .checkboxes {{ display: flex; gap: 32px; flex-wrap: wrap; }}
+    .checkbox-label {{ display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.9rem; color: rgba(255,255,255,0.8); }}
+    .checkbox-label input {{ width: 18px; height: 18px; accent-color: #f97316; }}
+
+    .actions {{ display: flex; gap: 12px; }}
+    .btn {{ padding: 14px 28px; font-size: 0.95rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s; text-align: center; text-decoration: none; }}
+    .btn-back {{ flex: 1; background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #fff; }}
+    .btn-back:hover {{ border-color: rgba(255,255,255,0.4); }}
+    .btn-primary {{ flex: 2; background: #fff; color: #000; }}
+    .btn-primary:hover {{ opacity: 0.9; transform: translateY(-1px); }}
+
+    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 24px auto; }} .checkboxes {{ gap: 16px; }} }}
+    </style>
+</head>
+<body>
+    <nav class="nav">
+        <a href="/" class="nav-logo"><img src="/assets/logo-light.png" alt="Sartozo.AI" /></a>
+        <div class="nav-links">
+            <a href="/upload" class="nav-link active">Optimize Feed</a>
+            <a href="/settings" class="nav-link">Settings</a>
+            <a href="/upload" class="nav-cta">Get Started</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1 class="title"><span>&#9881;</span> Map your columns</h1>
+        <p class="subtitle">
+            We detected <strong>{len(csv_columns)}</strong> columns and <strong>{total_rows}</strong> rows in your CSV.
+            Assign each column to the correct product field. Fields marked <em>-- skip --</em> will go into extra attributes.
+        </p>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr><th>Your CSV column</th><th>Sample data</th><th>Maps to</th></tr>
+                </thead>
+                <tbody>{select_rows}</tbody>
+            </table>
+        </div>
+
+        <div class="options-box">
+            <p class="options-title">Which fields should AI optimize?</p>
+            <div class="checkboxes">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="opt_title" checked /> Optimize titles
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="opt_desc" checked /> Optimize descriptions
+                </label>
+            </div>
+        </div>
+
+        <form id="confirm-form" method="post" action="/batches/confirm">
+            <input type="hidden" name="upload_id" value="{upload_id}" />
+            <input type="hidden" name="mode" value="{mode}" />
+            <input type="hidden" name="target_language" value="{target_language}" />
+            <input type="hidden" id="mappings_json" name="mappings_json" value="" />
+            <input type="hidden" id="optimize_fields" name="optimize_fields" value="title,description" />
+        </form>
+
+        <div class="actions">
+            <a href="/upload" class="btn btn-back">&larr; Back</a>
+            <button class="btn btn-primary" onclick="submitMappings()">Confirm & process &rarr;</button>
+        </div>
+    </div>
+
+    <script>
     function submitMappings(){{
-        const selects=document.querySelectorAll(".mapping-select");
-        const mapping={{}};
-        const used={{}};
-        let hasTitle=false,hasId=false;
+        const selects=document.querySelectorAll("select");
+        const mapping={{}}, used={{}};
+        let hasTitle=false, hasId=false;
         selects.forEach(s=>{{
-            const col=s.dataset.col;
-            const val=s.value;
+            const col=s.dataset.col, val=s.value;
             if(val){{
-                if(used[val]){{
-                    alert('Field "'+val+'" is assigned to multiple columns. Each field can only be used once.');
-                    throw new Error("duplicate");
-                }}
-                used[val]=true;
-                mapping[col]=val;
+                if(used[val]){{alert('Field "'+val+'" is assigned to multiple columns.');return;}}
+                used[val]=true; mapping[col]=val;
                 if(val==="title")hasTitle=true;
                 if(val==="id")hasId=true;
             }}
@@ -560,80 +1087,13 @@ def _build_mapping_page(
         if(!hasId){{alert("Please assign at least the ID field.");return;}}
         document.getElementById("mappings_json").value=JSON.stringify(mapping);
         const fields=[];
-        if(document.getElementById("opt_title").checked) fields.push("title");
-        if(document.getElementById("opt_desc").checked) fields.push("description");
-        if(fields.length===0){{alert("Select at least one field to optimize.");return;}}
+        if(document.getElementById("opt_title").checked)fields.push("title");
+        if(document.getElementById("opt_desc").checked)fields.push("description");
+        if(!fields.length){{alert("Select at least one field to optimize.");return;}}
         document.getElementById("optimize_fields").value=fields.join(",");
         document.getElementById("confirm-form").submit();
     }}
     </script>
-</head>
-<body>
-    <div class="topbar">
-        <a href="/" class="topbar-logo"><img src="/assets/logo-dark.png" alt="Sartozo.AI" class="logo-light" /><img src="/assets/logo-light.png" alt="Sartozo.AI" class="logo-dark" /></a>
-        <div class="topbar-right">
-            <button class="theme-btn" data-theme="light" onclick="setTheme('light')" title="Light">&#9788;</button>
-            <button class="theme-btn" data-theme="dark" onclick="setTheme('dark')" title="Dark">&#9790;</button>
-        </div>
-    </div>
-
-    <div class="page-center" style="padding-top:28px;">
-        <div class="card" style="max-width:820px;">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-                <span style="font-size:1.6rem;">&#9881;</span>
-                <h1 class="heading-lg">Map your columns</h1>
-            </div>
-            <p class="text-secondary" style="margin-bottom:20px;">
-                We detected <strong>{len(csv_columns)}</strong> columns and <strong>{total_rows}</strong> rows in your CSV.
-                Assign each column to the correct product field. We pre-filled what we could guess.
-                Fields marked <em>-- skip --</em> will go into extra attributes.
-            </p>
-
-            <div class="table-wrap" style="margin-bottom:20px;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Your CSV column</th>
-                            <th>Sample data</th>
-                            <th>Maps to</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {select_rows}
-                    </tbody>
-                </table>
-            </div>
-
-            <div style="margin-bottom:20px;padding:16px 18px;border-radius:10px;border:1px solid var(--border);background:var(--card-bg);">
-                <p style="font-weight:600;margin-bottom:10px;font-size:0.95rem;">Which fields should AI optimize?</p>
-                <div style="display:flex;gap:24px;flex-wrap:wrap;">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.9rem;">
-                        <input type="checkbox" id="opt_title" checked style="width:18px;height:18px;accent-color:var(--accent);" />
-                        Optimize titles
-                    </label>
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.9rem;">
-                        <input type="checkbox" id="opt_desc" checked style="width:18px;height:18px;accent-color:var(--accent);" />
-                        Optimize descriptions
-                    </label>
-                </div>
-            </div>
-
-            <form id="confirm-form" method="post" action="/batches/confirm">
-                <input type="hidden" name="upload_id" value="{upload_id}" />
-                <input type="hidden" name="mode" value="{mode}" />
-                <input type="hidden" name="target_language" value="{target_language}" />
-                <input type="hidden" id="mappings_json" name="mappings_json" value="" />
-                <input type="hidden" id="optimize_fields" name="optimize_fields" value="title,description" />
-            </form>
-
-            <div style="display:flex;gap:10px;">
-                <a href="/" class="btn btn-outline" style="flex:1;text-align:center;">&larr; Back</a>
-                <button class="btn btn-primary" style="flex:2;" onclick="submitMappings()">
-                    Confirm &amp; process &rarr;
-                </button>
-            </div>
-        </div>
-    </div>
 </body>
 </html>"""
 
@@ -735,20 +1195,27 @@ def review_batch(batch_id: str):
             score_cls = "score-mid"
         else:
             score_cls = "score-low"
-        score_cell = f'<span class="score-badge {score_cls}">{sc}</span>' if sc > 0 else ''
+        score_cell = f'<span class="score {score_cls}">{sc}</span>' if sc > 0 else ''
+        old_title = (r.product.title or '')[:80]
+        new_title = (r.optimized_title or '')[:100]
+        old_desc = (r.product.description or '')[:80] + ('...' if len(r.product.description or '') > 80 else '')
+        new_desc = (r.optimized_description or '')[:100] + ('...' if len(r.optimized_description or '') > 100 else '')
+        trans_title = (r.translated_title or '')[:80]
+        trans_desc = (r.translated_description or '')[:80] + ('...' if len(r.translated_description or '') > 80 else '')
         rows_html += f"""
         <tr data-id="{r.product.id}" data-status="{r.status.value}">
             <td><input type="checkbox" name="product_id" value="{r.product.id}" /></td>
-            <td class="text-mono">{r.product.id}</td>
-            <td>{r.product.title}</td>
-            <td><strong>{r.optimized_title or ''}</strong></td>
-            <td>{r.product.description}</td>
-            <td>{r.optimized_description or ''}</td>
-            <td>{r.translated_description or ''}</td>
+            <td class="mono">{r.product.id}</td>
+            <td>{old_title}</td>
+            <td class="new-content">{new_title}</td>
+            <td>{old_desc}</td>
+            <td class="new-content">{new_desc}</td>
+            <td>{trans_title}</td>
+            <td>{trans_desc}</td>
             <td>{score_cell}</td>
             <td><span class="badge">{r.action.value}</span></td>
             <td><span class="pill {pill_cls}">{r.status.value}</span></td>
-            <td class="note-text">{r.notes or r.error or ''}</td>
+            <td class="note">{r.notes or r.error or ''}</td>
         </tr>
         """
 
@@ -758,82 +1225,107 @@ def review_batch(batch_id: str):
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Review &mdash; {batch_id[:8]}</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-    <script>
-    function setTheme(t){{document.documentElement.setAttribute("data-theme",t);localStorage.setItem("pm_theme",t);
-        document.querySelectorAll(".theme-btn").forEach(b=>b.classList.toggle("active",b.dataset.theme===t));}}
-    (function(){{setTheme(localStorage.getItem("pm_theme")||"light")}})();
+    <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; }}
 
-    function applyFilters(){{
-        const s=document.getElementById("search").value.toLowerCase();
-        const f=document.getElementById("statusFilter").value;
-        document.querySelectorAll("tbody tr").forEach(row=>{{
-            const text=row.innerText.toLowerCase();
-            const st=row.dataset.status||"";
-            let ok=true;
-            if(s&&!text.includes(s))ok=false;
-            if(f&&st!==f)ok=false;
-            row.style.display=ok?"":"none";
-        }});
-    }}
+    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; background: rgba(10,10,10,0.95); backdrop-filter: blur(10px); z-index: 100; }}
+    .nav-logo img {{ height: 32px; filter: brightness(0) invert(1); }}
+    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
+    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
+    .nav-link:hover {{ color: #fff; }}
 
-    let sortCol=-1, sortAsc=true;
-    const numericCols = new Set([7]);
-    function sortTable(colIdx){{
-        const tbody=document.querySelector("tbody");
-        const rows=Array.from(tbody.querySelectorAll("tr"));
-        if(sortCol===colIdx){{ sortAsc=!sortAsc; }} else {{ sortCol=colIdx; sortAsc=true; }}
-        const isNum = numericCols.has(colIdx);
-        rows.sort((a,b)=>{{
-            const aT=(a.children[colIdx]||{{}}).textContent||"";
-            const bT=(b.children[colIdx]||{{}}).textContent||"";
-            if(isNum){{
-                const aN=parseFloat(aT)||0, bN=parseFloat(bT)||0;
-                return sortAsc ? aN-bN : bN-aN;
-            }}
-            return sortAsc ? aT.localeCompare(bT) : bT.localeCompare(aT);
-        }});
-        rows.forEach(r=>tbody.appendChild(r));
-        document.querySelectorAll("th").forEach((th,i)=>{{
-            th.classList.remove("sorted-asc","sorted-desc");
-            if(i===colIdx) th.classList.add(sortAsc?"sorted-asc":"sorted-desc");
-        }});
-    }}
+    .container {{ max-width: 1700px; margin: 0 auto; padding: 32px 48px; }}
 
-    async function submitRegenerate(e){{
-        e.preventDefault();
-        const ids=Array.from(document.querySelectorAll("input[name='product_id']:checked")).map(c=>c.value);
-        if(!ids.length){{alert("Select at least one product.");return;}}
-        const r=await fetch("/batches/{batch_id}/regenerate",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify(ids)}});
-        if(!r.ok){{alert("Regeneration failed.");return;}}
-        window.location.reload();
-    }}
+    .header {{ display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }}
+    .header h1 {{ font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; }}
+    .header .batch-id {{ font-size: 0.85rem; color: rgba(255,255,255,0.4); font-family: monospace; margin-top: 4px; }}
+    .header-actions {{ display: flex; gap: 10px; }}
+    .btn {{ padding: 10px 18px; font-size: 0.85rem; font-weight: 500; border-radius: 6px; cursor: pointer; transition: all 0.2s; text-decoration: none; border: none; }}
+    .btn-outline {{ background: transparent; border: 1px solid rgba(255,255,255,0.2); color: #fff; }}
+    .btn-outline:hover {{ border-color: rgba(255,255,255,0.4); }}
+    .btn-primary {{ background: #f97316; color: #fff; }}
+    .btn-primary:hover {{ background: #ea580c; }}
 
-    function toggleAll(src){{document.querySelectorAll("input[name='product_id']").forEach(c=>c.checked=src.checked);}}
-    </script>
+    .insight {{ background: linear-gradient(135deg, rgba(249,115,22,0.12), rgba(249,115,22,0.04)); border: 1px solid rgba(249,115,22,0.25); border-radius: 12px; padding: 20px 24px; margin-bottom: 24px; display: flex; gap: 16px; }}
+    .insight-icon {{ font-size: 1.5rem; }}
+    .insight-title {{ font-weight: 600; margin-bottom: 6px; color: #f97316; }}
+    .insight-text {{ font-size: 0.9rem; color: rgba(255,255,255,0.7); line-height: 1.6; }}
+    .insight-text strong {{ color: #fb923c; }}
+
+    .stats {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 24px; }}
+    @media (max-width: 900px) {{ .stats {{ grid-template-columns: repeat(3, 1fr); }} }}
+    .stat {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 16px 20px; text-align: center; }}
+    .stat-value {{ font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }}
+    .stat-label {{ font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.5); }}
+    .stat-done {{ color: #f97316; }}
+    .stat-review {{ color: #fbbf24; }}
+    .stat-failed {{ color: #ef4444; }}
+    .stat-score {{ color: #fb923c; }}
+
+    .controls {{ display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }}
+    .controls-left {{ display: flex; gap: 12px; flex: 1; }}
+    .search {{ flex: 1; max-width: 300px; padding: 10px 14px; font-size: 0.85rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; background: rgba(255,255,255,0.05); color: #fff; }}
+    .search::placeholder {{ color: rgba(255,255,255,0.4); }}
+    .search:focus {{ outline: none; border-color: #f97316; }}
+    .filter {{ padding: 10px 14px; font-size: 0.85rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; background: rgba(255,255,255,0.05); color: #fff; cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='white' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }}
+    .filter option {{ background: #111; }}
+
+    .table-container {{ background: #111; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden; }}
+    .table-wrap {{ overflow-x: auto; }}
+    table {{ width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1400px; }}
+    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 0; }}
+    th:hover {{ color: #f97316; }}
+    th.sorted-asc::after {{ content: ' ↑'; color: #f97316; }}
+    th.sorted-desc::after {{ content: ' ↓'; color: #f97316; }}
+    td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; }}
+    td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8) {{ max-width: 220px; overflow: hidden; text-overflow: ellipsis; }}
+    tr:last-child td {{ border-bottom: none; }}
+    tr:nth-child(even) {{ background: rgba(255,255,255,0.015); }}
+    tr:hover {{ background: rgba(249,115,22,0.05); }}
+    .mono {{ font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: rgba(255,255,255,0.5); }}
+    .note {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); max-width: 150px; }}
+    .new-content {{ color: #fff; font-weight: 500; }}
+
+    .badge {{ display: inline-block; padding: 5px 10px; font-size: 0.68rem; font-weight: 600; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }}
+    .pill {{ display: inline-block; padding: 5px 12px; font-size: 0.68rem; font-weight: 700; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.03em; }}
+    .pill-done {{ background: rgba(249,115,22,0.15); color: #f97316; }}
+    .pill-needs_review {{ background: rgba(251,191,36,0.15); color: #fbbf24; }}
+    .pill-failed {{ background: rgba(239,68,68,0.15); color: #ef4444; }}
+    .pill-skipped {{ background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5); }}
+
+    .score {{ display: inline-block; padding: 5px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; min-width: 42px; text-align: center; }}
+    .score-high {{ background: rgba(249,115,22,0.15); color: #f97316; }}
+    .score-mid {{ background: rgba(251,191,36,0.15); color: #fbbf24; }}
+    .score-low {{ background: rgba(239,68,68,0.15); color: #ef4444; }}
+
+    input[type="checkbox"] {{ width: 18px; height: 18px; accent-color: #f97316; cursor: pointer; }}
+
+    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ padding: 24px; }} }}
+    </style>
 </head>
 <body>
-    <div class="topbar">
-        <a href="/" class="topbar-logo"><img src="/assets/logo-dark.png" alt="Sartozo.AI" class="logo-light" /><img src="/assets/logo-light.png" alt="Sartozo.AI" class="logo-dark" /></a>
-        <div class="topbar-right">
-            <button class="theme-btn" data-theme="light" onclick="setTheme('light')" title="Light">&#9788;</button>
-            <button class="theme-btn" data-theme="dark" onclick="setTheme('dark')" title="Dark">&#9790;</button>
+    <nav class="nav">
+        <a href="/" class="nav-logo"><img src="/assets/logo-light.png" alt="Sartozo.AI" /></a>
+        <div class="nav-links">
+            <a href="/upload" class="nav-link">Optimize Feed</a>
+            <a href="/settings" class="nav-link">Settings</a>
         </div>
-    </div>
+    </nav>
 
-    <div class="page-wide">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+    <div class="container">
+        <div class="header">
             <div>
-                <h1 class="heading-lg">Batch review</h1>
-                <p class="text-mono" style="margin-top:4px;">ID: {batch_id}</p>
+                <h1>Batch review</h1>
+                <p class="batch-id">ID: {batch_id}</p>
             </div>
-            <div style="display:flex;gap:8px;">
-                <a href="/" class="btn btn-outline btn-sm">&larr; New batch</a>
-                <a href="/batches/{batch_id}/export" class="btn btn-outline btn-sm">&#8681; Download CSV</a>
+            <div class="header-actions">
+                <a href="/upload" class="btn btn-outline">&larr; New batch</a>
+                <a href="/batches/{batch_id}/export" class="btn btn-outline">&#8681; Download CSV</a>
             </div>
         </div>
 
-        <div class="insight-card">
+        <div class="insight">
             <div class="insight-icon">&#9889;</div>
             <div class="insight-body">
                 <p class="insight-title">Optimization Summary</p>
@@ -847,58 +1339,91 @@ def review_batch(batch_id: str):
             </div>
         </div>
 
-        <div class="stats-row">
-            <div class="stat-card"><div class="stat-value">{total}</div><div class="stat-label">Total</div></div>
-            <div class="stat-card"><div class="stat-value" style="color:var(--status-done-text);">{done}</div><div class="stat-label">Done</div></div>
-            <div class="stat-card"><div class="stat-value" style="color:var(--status-review-text);">{review}</div><div class="stat-label">Review</div></div>
-            <div class="stat-card"><div class="stat-value" style="color:var(--status-failed-text);">{failed}</div><div class="stat-label">Failed</div></div>
-            <div class="stat-card"><div class="stat-value">{skipped}</div><div class="stat-label">Skipped</div></div>
-            <div class="stat-card"><div class="stat-value" style="color:var(--accent);">{avg_score}</div><div class="stat-label">Avg Score</div></div>
+        <div class="stats">
+            <div class="stat"><div class="stat-value">{total}</div><div class="stat-label">Total</div></div>
+            <div class="stat"><div class="stat-value stat-done">{done}</div><div class="stat-label">Done</div></div>
+            <div class="stat"><div class="stat-value stat-review">{review}</div><div class="stat-label">Review</div></div>
+            <div class="stat"><div class="stat-value stat-failed">{failed}</div><div class="stat-label">Failed</div></div>
+            <div class="stat"><div class="stat-value">{skipped}</div><div class="stat-label">Skipped</div></div>
+            <div class="stat"><div class="stat-value stat-score">{avg_score}</div><div class="stat-label">Avg Score</div></div>
         </div>
 
-        <div class="card-wide">
-            <div class="controls">
-                <div class="controls-left">
-                    <input id="search" class="search-box" placeholder="Search products..." oninput="applyFilters()" />
-                    <select id="statusFilter" class="filter-select" onchange="applyFilters()">
-                        <option value="">All statuses</option>
-                        <option value="done">Done</option>
-                        <option value="needs_review">Needs review</option>
-                        <option value="failed">Failed</option>
-                        <option value="skipped">Skipped</option>
-                    </select>
-                </div>
-                <div class="controls-right">
-                    <button type="submit" form="regen-form" class="btn btn-primary btn-sm">&#x21bb; Regenerate selected</button>
-                </div>
+        <div class="controls">
+            <div class="controls-left">
+                <input id="search" class="search" placeholder="Search products..." oninput="applyFilters()" />
+                <select id="statusFilter" class="filter" onchange="applyFilters()">
+                    <option value="">All statuses</option>
+                    <option value="done">Done</option>
+                    <option value="needs_review">Needs review</option>
+                    <option value="failed">Failed</option>
+                    <option value="skipped">Skipped</option>
+                </select>
             </div>
+            <button type="submit" form="regen-form" class="btn btn-primary">&#x21bb; Regenerate selected</button>
+        </div>
 
+        <div class="table-container">
             <div class="table-wrap">
                 <form id="regen-form" onsubmit="submitRegenerate(event)">
                     <table>
                         <thead>
                             <tr>
-                                <th style="width:36px;"><input type="checkbox" onclick="toggleAll(this)" /></th>
-                                <th class="sortable" onclick="sortTable(1)">ID</th>
-                                <th class="sortable" onclick="sortTable(2)">Old title</th>
-                                <th class="sortable" onclick="sortTable(3)">New title</th>
-                                <th class="sortable" onclick="sortTable(4)">Old description</th>
-                                <th class="sortable" onclick="sortTable(5)">New description</th>
-                                <th class="sortable" onclick="sortTable(6)">Translated</th>
-                                <th class="sortable" onclick="sortTable(7)">Score</th>
-                                <th class="sortable" onclick="sortTable(8)">Action</th>
-                                <th class="sortable" onclick="sortTable(9)">Status</th>
-                                <th class="sortable" onclick="sortTable(10)">Notes</th>
+                                <th style="width:40px;"><input type="checkbox" onclick="toggleAll(this)" /></th>
+                                <th onclick="sortTable(1)">ID</th>
+                                <th onclick="sortTable(2)">Old title</th>
+                                <th onclick="sortTable(3)">New title</th>
+                                <th onclick="sortTable(4)">Old description</th>
+                                <th onclick="sortTable(5)">New description</th>
+                                <th onclick="sortTable(6)">Translated title</th>
+                                <th onclick="sortTable(7)">Translated desc</th>
+                                <th onclick="sortTable(8)">Score</th>
+                                <th onclick="sortTable(9)">Action</th>
+                                <th onclick="sortTable(10)">Status</th>
+                                <th onclick="sortTable(11)">Notes</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            {rows_html}
-                        </tbody>
+                        <tbody>{rows_html}</tbody>
                     </table>
                 </form>
             </div>
         </div>
     </div>
+
+    <script>
+    function applyFilters(){{
+        const s=document.getElementById("search").value.toLowerCase();
+        const f=document.getElementById("statusFilter").value;
+        document.querySelectorAll("tbody tr").forEach(row=>{{
+            const text=row.innerText.toLowerCase();
+            const st=row.dataset.status||"";
+            row.style.display=((!s||text.includes(s))&&(!f||st===f))?"":"none";
+        }});
+    }}
+    let sortCol=-1, sortAsc=true;
+    const numericCols=new Set([8]);
+    function sortTable(colIdx){{
+        const tbody=document.querySelector("tbody");
+        const rows=Array.from(tbody.querySelectorAll("tr"));
+        if(sortCol===colIdx)sortAsc=!sortAsc;else{{sortCol=colIdx;sortAsc=true;}}
+        rows.sort((a,b)=>{{
+            const aT=(a.children[colIdx]||{{}}).textContent||"";
+            const bT=(b.children[colIdx]||{{}}).textContent||"";
+            if(numericCols.has(colIdx)){{const aN=parseFloat(aT)||0,bN=parseFloat(bT)||0;return sortAsc?aN-bN:bN-aN;}}
+            return sortAsc?aT.localeCompare(bT):bT.localeCompare(aT);
+        }});
+        rows.forEach(r=>tbody.appendChild(r));
+        document.querySelectorAll("th").forEach((th,i)=>{{th.classList.remove("sorted-asc","sorted-desc");if(i===colIdx)th.classList.add(sortAsc?"sorted-asc":"sorted-desc");}});
+    }}
+    async function submitRegenerate(e){{
+        e.preventDefault();
+        const ids=Array.from(document.querySelectorAll("input[name='product_id']:checked")).map(c=>c.value);
+        if(!ids.length){{alert("Select at least one product.");return;}}
+        const r=await fetch("/batches/{batch_id}/regenerate",{{method:"POST",headers:{{"Content-Type":"application/json"}},body:JSON.stringify(ids)}});
+        if(!r.ok){{alert("Regeneration failed.");return;}}
+        window.location.reload();
+    }}
+    function toggleAll(src){{document.querySelectorAll("input[name='product_id']").forEach(c=>c.checked=src.checked);}}
+    </script>
 </body>
 </html>"""
     return HTMLResponse(content=html)
@@ -907,4 +1432,196 @@ def review_batch(batch_id: str):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Settings page
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page():
+    api_key_masked = ""
+    if _settings["openai_api_key"]:
+        key = _settings["openai_api_key"]
+        api_key_masked = key[:7] + "..." + key[-4:] if len(key) > 15 else "••••••••"
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settings &mdash; Sartozo.AI</title>
+    <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
+
+    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
+    .nav-logo img {{ height: 32px; filter: brightness(0) invert(1); }}
+    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
+    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
+    .nav-link:hover {{ color: #fff; }}
+    .nav-link.active {{ color: #fff; }}
+
+    .container {{ max-width: 700px; margin: 48px auto; padding: 0 24px; }}
+    .title {{ font-size: 1.75rem; font-weight: 600; margin-bottom: 32px; letter-spacing: -0.02em; }}
+
+    .tabs {{ display: flex; gap: 8px; margin-bottom: 32px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0; }}
+    .tab {{ padding: 12px 20px; font-size: 0.9rem; font-weight: 500; color: rgba(255,255,255,0.5); background: none; border: none; cursor: pointer; position: relative; transition: color 0.2s; }}
+    .tab:hover {{ color: rgba(255,255,255,0.8); }}
+    .tab.active {{ color: #fff; }}
+    .tab.active::after {{ content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: #fff; }}
+    .tab-content {{ display: none; }}
+    .tab-content.active {{ display: block; }}
+
+    .group {{ margin-bottom: 28px; }}
+    .group-title {{ font-weight: 600; font-size: 1rem; margin-bottom: 8px; }}
+    .group-desc {{ font-size: 0.85rem; color: rgba(255,255,255,0.5); margin-bottom: 14px; line-height: 1.5; }}
+    .group-desc a {{ color: #f97316; }}
+    .group-desc code {{ background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; }}
+
+    textarea {{ width: 100%; min-height: 140px; padding: 14px 16px; font-size: 0.85rem; font-family: monospace; line-height: 1.5; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; resize: vertical; }}
+    textarea:focus {{ outline: none; border-color: rgba(255,255,255,0.3); }}
+
+    input[type="password"] {{ width: 100%; padding: 12px 16px; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; }}
+    input[type="password"]:focus {{ outline: none; border-color: rgba(255,255,255,0.3); }}
+
+    .key-status {{ font-size: 0.85rem; color: rgba(255,255,255,0.5); margin-bottom: 14px; }}
+    .key-status code {{ background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px; }}
+
+    .btn {{ padding: 12px 24px; font-size: 0.9rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s; }}
+    .btn-primary {{ background: #fff; color: #000; }}
+    .btn-primary:hover {{ opacity: 0.9; }}
+
+    .save-msg {{ display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; font-size: 0.85rem; color: #f97316; opacity: 0; transition: opacity 0.3s; }}
+    .save-msg.show {{ opacity: 1; }}
+
+    .note-box {{ margin-top: 28px; padding: 16px 20px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); }}
+    .note-box p {{ font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 0; line-height: 1.5; }}
+    .note-box strong {{ color: rgba(255,255,255,0.8); }}
+
+    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 32px auto; }} }}
+    </style>
+</head>
+<body>
+    <nav class="nav">
+        <a href="/" class="nav-logo"><img src="/assets/logo-light.png" alt="Sartozo.AI" /></a>
+        <div class="nav-links">
+            <a href="/upload" class="nav-link">Optimize Feed</a>
+            <a href="/settings" class="nav-link active">Settings</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1 class="title">Settings</h1>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="tab-prompts" onclick="switchTab('tab-prompts')">Prompts</button>
+            <button class="tab" data-tab="tab-api" onclick="switchTab('tab-api')">API Keys</button>
+        </div>
+
+        <div id="tab-prompts" class="tab-content active">
+            <div class="group">
+                <div class="group-title">Title Optimization Prompt</div>
+                <p class="group-desc">
+                    This prompt is sent to the AI when optimizing product titles.
+                    Variables: <code>{{title}}</code>, <code>{{category}}</code>, <code>{{brand}}</code>, <code>{{attributes}}</code>
+                </p>
+                <textarea id="prompt_title">{_settings["prompt_title"]}</textarea>
+            </div>
+
+            <div class="group">
+                <div class="group-title">Description Generation Prompt</div>
+                <p class="group-desc">
+                    This prompt is sent to the AI when generating product descriptions.
+                    Variables: <code>{{title}}</code>, <code>{{category}}</code>, <code>{{brand}}</code>, <code>{{attributes}}</code>, <code>{{description}}</code>
+                </p>
+                <textarea id="prompt_description">{_settings["prompt_description"]}</textarea>
+            </div>
+
+            <div style="display:flex;align-items:center;">
+                <button class="btn btn-primary" onclick="savePrompts()">Save prompts</button>
+                <span id="prompts-status" class="save-msg">&#10003; Saved</span>
+            </div>
+        </div>
+
+        <div id="tab-api" class="tab-content">
+            <div class="group">
+                <div class="group-title">OpenAI API Key</div>
+                <p class="group-desc">
+                    Enter your OpenAI API key to enable AI-powered generation.
+                    Get your key from <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a>.
+                </p>
+                <div class="key-status">
+                    Current: <code id="key-display" style="{'display:inline;' if api_key_masked else 'display:none;'}">{api_key_masked}</code>
+                    <span id="no-key" style="{'display:none;' if api_key_masked else ''}">Not set</span>
+                </div>
+                <input type="password" id="openai_key" placeholder="sk-..." />
+            </div>
+
+            <div style="display:flex;align-items:center;">
+                <button class="btn btn-primary" onclick="saveApiKey()">Save API key</button>
+                <span id="apikey-status" class="save-msg">&#10003; Saved</span>
+            </div>
+
+            <div class="note-box">
+                <p><strong>Note:</strong> With an API key, the system uses OpenAI GPT-4o-mini for generation. Without one, a placeholder algorithm demonstrates the flow.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function switchTab(tabId){{
+        document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+        document.querySelector('[data-tab="'+tabId+'"]').classList.add('active');
+        document.getElementById(tabId).classList.add('active');
+    }}
+    async function savePrompts(){{
+        const resp=await fetch('/api/settings/prompts',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{prompt_title:document.getElementById('prompt_title').value,prompt_description:document.getElementById('prompt_description').value}})}});
+        if(resp.ok)showSaved('prompts-status');
+    }}
+    async function saveApiKey(){{
+        const key=document.getElementById('openai_key').value;
+        const resp=await fetch('/api/settings/apikey',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{openai_api_key:key}})}});
+        if(resp.ok){{
+            showSaved('apikey-status');
+            if(key){{document.getElementById('key-display').textContent=key.substring(0,7)+'...'+key.slice(-4);document.getElementById('key-display').style.display='inline';document.getElementById('no-key').style.display='none';}}
+            document.getElementById('openai_key').value='';
+        }}
+    }}
+    function showSaved(id){{const el=document.getElementById(id);el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2500);}}
+    </script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
+@app.post("/api/settings/prompts")
+async def save_prompts(data: dict):
+    if "prompt_title" in data:
+        _settings["prompt_title"] = data["prompt_title"]
+    if "prompt_description" in data:
+        _settings["prompt_description"] = data["prompt_description"]
+    # Sync to AI provider immediately
+    storage._ai.set_prompts(_settings["prompt_title"], _settings["prompt_description"])
+    return {"status": "ok"}
+
+
+@app.post("/api/settings/apikey")
+async def save_api_key(data: dict):
+    if "openai_api_key" in data:
+        _settings["openai_api_key"] = data["openai_api_key"]
+        storage._ai.set_api_key(data["openai_api_key"])
+        # Also sync prompts so they're ready to use
+        storage._ai.set_prompts(_settings["prompt_title"], _settings["prompt_description"])
+    return {"status": "ok"}
+
+
+@app.get("/api/settings")
+def get_settings():
+    return {
+        "prompt_title": _settings["prompt_title"],
+        "prompt_description": _settings["prompt_description"],
+        "has_api_key": bool(_settings["openai_api_key"]),
+    }
 

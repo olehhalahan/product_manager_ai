@@ -80,11 +80,18 @@ class InMemoryStorage:
                         result.optimized_description = self._ai.generate_description(result.product)
 
                 if result.action == ProductAction.TRANSLATE:
-                    source = result.optimized_description or result.product.description
-                    result.translated_description = self._ai.translate_text(
-                        source,
-                        target_language=self.default_target_language,
-                    )
+                    title_source = result.optimized_title or result.product.title
+                    desc_source = result.optimized_description or result.product.description
+                    if title_source:
+                        result.translated_title = self._ai.translate_text(
+                            title_source,
+                            target_language=self.default_target_language,
+                        )
+                    if desc_source:
+                        result.translated_description = self._ai.translate_text(
+                            desc_source,
+                            target_language=self.default_target_language,
+                        )
 
                 result.score = self._ai.score_optimization(
                     result.product, result.optimized_title, result.optimized_description
@@ -116,11 +123,18 @@ class InMemoryStorage:
                 result.optimized_description = self._ai.generate_description(result.product)
 
                 if result.action == ProductAction.TRANSLATE:
-                    source = result.optimized_description or result.product.description
-                    result.translated_description = self._ai.translate_text(
-                        source,
-                        target_language=self.default_target_language,
-                    )
+                    title_source = result.optimized_title or result.product.title
+                    desc_source = result.optimized_description or result.product.description
+                    if title_source:
+                        result.translated_title = self._ai.translate_text(
+                            title_source,
+                            target_language=self.default_target_language,
+                        )
+                    if desc_source:
+                        result.translated_description = self._ai.translate_text(
+                            desc_source,
+                            target_language=self.default_target_language,
+                        )
 
                 result.score = self._ai.score_optimization(
                     result.product, result.optimized_title, result.optimized_description

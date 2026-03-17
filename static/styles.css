@@ -101,7 +101,20 @@ a { color: var(--text-primary); text-decoration: none; }
 [data-theme="dark"] .topbar-logo .logo-light { display: none; }
 [data-theme="dark"] .topbar-logo .logo-dark { display: block; }
 
-.topbar-right { display: flex; align-items: center; gap: 8px; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.topbar-link {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+.topbar-link:hover {
+    background: var(--bg-2);
+    color: var(--text);
+}
 
 .theme-btn {
     display: inline-flex;
@@ -479,6 +492,95 @@ th.sorted-desc::after { content: "\2193"; opacity: 0.8; }
     background: linear-gradient(135deg, var(--card-bg), #1a1a2e);
     box-shadow: 0 1px 6px rgba(0,0,0,0.2);
 }
+
+/* ── Tabs ── */
+.tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+}
+.tab-btn {
+    padding: 12px 20px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    margin-bottom: -1px;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ── Settings page ── */
+.setting-group {
+    margin-bottom: 28px;
+}
+.setting-group-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text);
+}
+.setting-description {
+    font-size: 0.82rem;
+    color: var(--text-tertiary);
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+.prompt-textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+    line-height: 1.6;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    resize: vertical;
+}
+.prompt-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+.api-key-input {
+    width: 100%;
+    max-width: 500px;
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+}
+.api-key-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+}
+.save-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    color: var(--status-done-text);
+    margin-left: 12px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.save-status.show { opacity: 1; }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {

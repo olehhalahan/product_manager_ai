@@ -62,6 +62,7 @@ class ProductResult(BaseModel):
     status: ProductStatus
     optimized_title: Optional[str] = None
     optimized_description: Optional[str] = None
+    translated_title: Optional[str] = None
     translated_description: Optional[str] = None
     score: int = 0
     notes: Optional[str] = None
