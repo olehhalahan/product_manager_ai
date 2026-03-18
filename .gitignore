@@ -28,3 +28,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Persisted app data
+data/

@@ -68,6 +68,11 @@ class InMemoryStorage:
 
             result.status = ProductStatus.PROCESSING
             try:
+                # Calculate original score before optimization
+                result.original_score = self._ai.score_optimization(
+                    result.product, result.product.title, result.product.description
+                )
+                
                 if result.action in {
                     ProductAction.GENERATE_NEW,
                     ProductAction.IMPROVE_EXISTING,
