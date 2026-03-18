@@ -1329,7 +1329,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
 
 def _build_upload_page(user_role: str = "customer") -> str:
     admin_nav = _admin_nav_links(active="", user_role=user_role)
-    return _UPLOAD_TEMPLATE.replace("<!-- ADMIN_NAV -->", admin_nav)
+    return _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", GTM_HEAD).replace("<!-- ADMIN_NAV -->", admin_nav)
 
 
 @app.get("/", response_class=HTMLResponse)
