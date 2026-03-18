@@ -161,7 +161,12 @@ async def auth_google(request: Request):
         client = oauth.create_client("google")
     except Exception:
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
-    redirect_uri = str(request.url_for("auth_google_callback"))
+    # Use DEPLOY_URL when behind reverse proxy so redirect_uri matches Google Console
+    deploy_url = (os.getenv("DEPLOY_URL") or "").rstrip("/")
+    if deploy_url:
+        redirect_uri = f"{deploy_url}/auth/google/callback"
+    else:
+        redirect_uri = str(request.url_for("auth_google_callback"))
     return await client.authorize_redirect(request, redirect_uri)
 
 
@@ -925,9 +930,12 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
         providers.append((f'<a href="/auth/google{next_param}" class="auth-btn auth-google">Continue with Google</a>', True))
     if has_apple:
         providers.append((f'<a href="/auth/apple{next_param}" class="auth-btn auth-apple">Continue with Apple</a>', True))
-    # Dev bypass when OAuth not configured (for local testing)
+    # Dev bypass when OAuth not configured (for local testing only)
     if not providers:
-        dev_bypass = os.getenv("AUTH_DEV_BYPASS", "1").lower() in ("1", "true", "yes")
+        # In production (DEPLOY_URL set), never show dev mode
+        deploy_url = os.getenv("DEPLOY_URL", "")
+        is_production = bool(deploy_url)
+        dev_bypass = not is_production and os.getenv("AUTH_DEV_BYPASS", "1").lower() in ("1", "true", "yes")
         if dev_bypass:
             providers.append((f'<a href="/auth/dev{next_param}" class="auth-btn auth-google">Continue (dev mode)</a>', True))
         else:
