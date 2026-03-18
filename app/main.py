@@ -14,6 +14,7 @@ import uuid
 
 from .models import NormalizedProduct, BatchStatus, BatchSummary
 from .services.importer import parse_csv_file
+from .services.csv_security import validate_csv_content
 from .services.normalizer import normalize_records, guess_mapping, INTERNAL_FIELDS
 from .services.rule_engine import decide_actions_for_products
 from .services.exporter import generate_result_csv
@@ -557,6 +558,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
 
     /* Footer */
     .hp-footer { padding: 32px 48px; text-align: center; font-size: 0.82rem; color: var(--hp-muted); border-top: 1px solid var(--hp-border); }
+    .hp-footer a { color: var(--hp-muted); text-decoration: none; }
+    .hp-footer a:hover { color: var(--hp-fg); text-decoration: underline; }
 
     /* Back to top button */
     .back-to-top { position: fixed; bottom: 32px; right: 32px; width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: var(--hp-text); font-size: 1.2rem; cursor: pointer; opacity: 0; visibility: hidden; transform: translateY(20px); transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); z-index: 999; }
@@ -826,7 +829,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     </section>
 
     <footer class="hp-footer">
-        &copy; 2024 Sartozo.AI &mdash; AI-powered product feed optimization
+        &copy; 2026 Cartozo.AI - AI-powered product feed optimization &middot; Powered by <a href="https://zanzarra.com/" target="_blank" rel="noopener noreferrer">Zanzarra</a>
     </footer>
 
     <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">
@@ -1332,6 +1335,10 @@ async def preview_csv(
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded.")
 
+    is_safe, security_error = validate_csv_content(text, len(content))
+    if not is_safe:
+        raise HTTPException(status_code=400, detail=security_error)
+
     records = parse_csv_file(io.StringIO(text))
     if not records:
         raise HTTPException(status_code=400, detail="CSV appears empty or has no rows.")
@@ -1796,9 +1803,15 @@ async def create_batch(
 
     content = await file.read()
     try:
-        records = parse_csv_file(io.StringIO(content.decode("utf-8")))
+        text = content.decode("utf-8")
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded.")
+
+    is_safe, security_error = validate_csv_content(text, len(content))
+    if not is_safe:
+        raise HTTPException(status_code=400, detail=security_error)
+
+    records = parse_csv_file(io.StringIO(text))
 
     batch_id = str(uuid.uuid4())
     normalized_products: List[NormalizedProduct] = normalize_records(records)
