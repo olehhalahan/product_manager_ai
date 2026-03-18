@@ -2096,17 +2096,16 @@ async def review_batch(request: Request, batch_id: str):
     .col-sticky {{ position: sticky; z-index: 2; }}
     .col-action {{ right: 0; min-width: 110px; }}
     .col-score {{ right: 110px; min-width: 180px; }}
-    th.col-sticky {{ z-index: 3; }}
+    th.col-sticky {{ z-index: 3; background: #161616; }}
     td.col-sticky {{ background: #111; }}
     tr:nth-child(even) td.col-sticky {{ background: #131313; }}
-    tr:hover td.col-sticky {{ background: rgba(255,255,255,0.06); }}
-    td.col-sticky {{ border-left: 1px solid rgba(255,255,255,0.08); }}
-    th.col-score {{ border-left: 1px solid rgba(255,255,255,0.08); }}
+    tr:hover td.col-sticky {{ background: #1a1a1a; }}
+    td.col-sticky, th.col-score {{ border-left: 1px solid rgba(255,255,255,0.08); }}
+    [data-theme="light"] th.col-sticky {{ background: #f1f5f9; }}
     [data-theme="light"] td.col-sticky {{ background: #fff; }}
     [data-theme="light"] tr:nth-child(even) td.col-sticky {{ background: #f8fafc; }}
-    [data-theme="light"] tr:hover td.col-sticky {{ background: rgba(15,23,42,0.05); }}
-    [data-theme="light"] td.col-sticky {{ border-left-color: rgba(15,23,42,0.08); }}
-    [data-theme="light"] th.col-score {{ border-left-color: rgba(15,23,42,0.08); }}
+    [data-theme="light"] tr:hover td.col-sticky {{ background: #f1f5f9; }}
+    [data-theme="light"] td.col-sticky, [data-theme="light"] th.col-score {{ border-left-color: rgba(15,23,42,0.08); }}
     .product-link {{ display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.9); text-decoration: none; font-size: 0.9rem; transition: all 0.2s; }}
     .product-link:hover {{ background: rgba(255,255,255,0.2); transform: scale(1.1); }}
     .no-link {{ color: rgba(255,255,255,0.2); }}
