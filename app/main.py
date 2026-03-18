@@ -1001,7 +1001,11 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     [data-theme="light"] .dropzone { border-color: rgba(15,23,42,0.2); }
     [data-theme="light"] .dropzone:hover, [data-theme="light"] .dropzone.dragover { border-color: rgba(15,23,42,0.4); background: rgba(15,23,42,0.02); }
     [data-theme="light"] .dropzone.has-file { border-color: #ea580c; background: rgba(249,115,22,0.06); }
-    [data-theme="light"] .dropzone-text strong, [data-theme="light"] .dropzone.has-file .dropzone-text { color: #ea580c; }
+    [data-theme="light"] .dropzone-text { color: rgba(15,23,42,0.6); }
+    [data-theme="light"] .dropzone-text strong { color: #0f172a; }
+    [data-theme="light"] .dropzone.has-file .dropzone-text { color: #ea580c; }
+    [data-theme="light"] .dropzone-icon { color: rgba(15,23,42,0.4); }
+    [data-theme="light"] .dropzone.has-file .dropzone-icon { color: #ea580c; }
     [data-theme="light"] .dropzone-hint { color: rgba(15,23,42,0.5); }
     [data-theme="light"] .dropzone-filename, [data-theme="light"] .dropzone-thanks { color: rgba(15,23,42,0.8); }
     [data-theme="light"] select { border-color: rgba(15,23,42,0.15); background-color: rgba(255,255,255,0.9); color: #0f172a; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%230f172a' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; }
@@ -1071,6 +1075,33 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     .hint { margin-top: 24px; text-align: center; font-size: 0.82rem; color: rgba(255,255,255,0.4); }
     .hint code { background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
 
+    .label-hint { font-weight: 400; color: rgba(255,255,255,0.4); font-size: 0.78rem; }
+    [data-theme="light"] .label-hint { color: rgba(15,23,42,0.4); }
+
+    .combo-wrap { position: relative; }
+    .combo-input { width: 100%; padding: 12px 40px 12px 16px; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; box-sizing: border-box; }
+    .combo-input:focus { outline: none; border-color: rgba(255,255,255,0.3); }
+    .combo-input::placeholder { color: rgba(255,255,255,0.35); }
+    .combo-arrow { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 0.55rem; color: rgba(255,255,255,0.4); pointer-events: none; transition: transform 0.2s; }
+    .combo-wrap.open .combo-arrow { transform: translateY(-50%) rotate(180deg); }
+    .combo-list { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; list-style: none; margin: 0; padding: 4px 0; z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .combo-wrap.open .combo-list { display: block; }
+    .combo-list li { padding: 10px 16px; font-size: 0.88rem; color: rgba(255,255,255,0.85); cursor: pointer; transition: background 0.15s; }
+    .combo-list li:hover { background: rgba(255,255,255,0.08); }
+    .combo-list li.selected { background: rgba(255,255,255,0.06); font-weight: 600; }
+    .combo-list li.hidden { display: none; }
+    .combo-desc { color: rgba(255,255,255,0.35); font-size: 0.78rem; font-weight: 400; }
+
+    [data-theme="light"] .combo-input { background: rgba(255,255,255,0.9); border-color: rgba(15,23,42,0.15); color: #0f172a; }
+    [data-theme="light"] .combo-input:focus { border-color: rgba(15,23,42,0.3); }
+    [data-theme="light"] .combo-input::placeholder { color: rgba(15,23,42,0.35); }
+    [data-theme="light"] .combo-arrow { color: rgba(15,23,42,0.4); }
+    [data-theme="light"] .combo-list { background: #fff; border-color: rgba(15,23,42,0.12); box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+    [data-theme="light"] .combo-list li { color: #0f172a; }
+    [data-theme="light"] .combo-list li:hover { background: rgba(15,23,42,0.05); }
+    [data-theme="light"] .combo-list li.selected { background: rgba(15,23,42,0.04); }
+    [data-theme="light"] .combo-desc { color: rgba(15,23,42,0.4); }
+
     @media (max-width: 768px) { .nav { padding: 16px 24px; } .nav-link { display: none; } .container { margin: 40px auto; } }
     </style>
 </head>
@@ -1104,6 +1135,26 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
                     <input id="file" name="file" type="file" accept=".csv" required />
                 </div>
                 <div id="file-error" class="file-error"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="label" for="product_type">Product type <span class="label-hint">(affects GMC validation rules)</span></label>
+                <div class="combo-wrap" id="comboWrap">
+                    <input type="text" class="combo-input" id="productTypeInput" placeholder="Search or select product type..." autocomplete="off" />
+                    <input type="hidden" name="product_type" id="productTypeValue" value="standard" />
+                    <div class="combo-arrow" id="comboArrow">&#9660;</div>
+                    <ul class="combo-list" id="comboList">
+                        <li data-value="standard" class="selected">Standard products <span class="combo-desc">— GTIN required</span></li>
+                        <li data-value="custom">Custom / Personalized products <span class="combo-desc">— no GTIN needed</span></li>
+                        <li data-value="handmade">Handmade products <span class="combo-desc">— no GTIN needed</span></li>
+                        <li data-value="vintage">Vintage / Antique products <span class="combo-desc">— no GTIN needed</span></li>
+                        <li data-value="private_label">Store brand / Private label <span class="combo-desc">— no GTIN needed</span></li>
+                        <li data-value="bundle">Product bundles <span class="combo-desc">— no GTIN needed</span></li>
+                        <li data-value="digital">Digital products / Software <span class="combo-desc">— no GTIN needed</span></li>
+                        <li data-value="services">Services / Subscriptions <span class="combo-desc">— no GTIN needed</span></li>
+                        <li data-value="promotional">Promotional items <span class="combo-desc">— no GTIN needed</span></li>
+                    </ul>
+                </div>
             </div>
 
             <div class="row">
@@ -1188,6 +1239,49 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
         zone.ondrop=e=>{e.preventDefault();zone.classList.remove("dragover");if(e.dataTransfer.files.length&&validate(e.dataTransfer.files[0])){inp.files=e.dataTransfer.files;showSuccess(e.dataTransfer.files[0].name);}};
         inp.onchange=()=>{if(inp.files.length&&validate(inp.files[0]))showSuccess(inp.files[0].name);};
         document.querySelector("form").onsubmit=e=>{if(!inp.files.length||!validate(inp.files[0]))e.preventDefault();};
+        /* Searchable combo box for product type */
+        const cWrap=document.getElementById("comboWrap"),cInput=document.getElementById("productTypeInput");
+        const cList=document.getElementById("comboList"),cVal=document.getElementById("productTypeValue");
+        const cItems=Array.from(cList.querySelectorAll("li"));
+        const selItem=cList.querySelector("li.selected");
+        if(selItem)cInput.value=selItem.textContent.split("—")[0].trim();
+
+        cInput.addEventListener("focus",()=>{cWrap.classList.add("open");filterItems("");});
+        cInput.addEventListener("input",()=>{cWrap.classList.add("open");filterItems(cInput.value);});
+        document.addEventListener("click",(e)=>{if(!cWrap.contains(e.target))cWrap.classList.remove("open");});
+        document.getElementById("comboArrow").parentElement.addEventListener("click",(e)=>{
+            if(e.target===cInput)return;
+            cWrap.classList.toggle("open");
+            if(cWrap.classList.contains("open")){cInput.focus();filterItems("");}
+        });
+
+        function filterItems(q){
+            const lower=q.toLowerCase().trim();
+            cItems.forEach(li=>{
+                const text=li.textContent.toLowerCase();
+                li.classList.toggle("hidden",lower.length>0&&!text.includes(lower));
+            });
+        }
+
+        cItems.forEach(li=>{
+            li.addEventListener("click",()=>{
+                cItems.forEach(x=>x.classList.remove("selected"));
+                li.classList.add("selected");
+                cVal.value=li.dataset.value;
+                cInput.value=li.textContent.split("—")[0].trim();
+                cWrap.classList.remove("open");
+            });
+        });
+
+        cInput.addEventListener("keydown",(e)=>{
+            const visible=cItems.filter(li=>!li.classList.contains("hidden"));
+            if(e.key==="Enter"&&visible.length===1){
+                e.preventDefault();
+                visible[0].click();
+            }
+            if(e.key==="Escape")cWrap.classList.remove("open");
+        });
+
         const themeToggle=document.getElementById("themeToggle");
         if(themeToggle){const THEME_KEY="hp-theme";function getT(){return localStorage.getItem(THEME_KEY)||"dark";}function setT(t){document.documentElement.setAttribute("data-theme",t);localStorage.setItem(THEME_KEY,t);themeToggle.textContent=t==="dark"?"\u2600":"\u263E";}themeToggle.onclick=()=>setT(getT()==="dark"?"light":"dark");setT(getT());}
     })();
@@ -1224,6 +1318,7 @@ async def preview_csv(
     mode: str = Form("optimize"),
     target_language: Optional[str] = Form(None),
     row_limit: int = Form(0),
+    product_type: str = Form("standard"),
 ):
     redir = require_login_redirect(request, "/upload")
     if redir:
@@ -1253,6 +1348,7 @@ async def preview_csv(
         "records": records,
         "mode": mode,
         "target_language": target_language or "",
+        "product_type": product_type,
     }
 
     user = get_current_user(request)
@@ -1265,6 +1361,7 @@ async def preview_csv(
         mode=mode,
         target_language=target_language or "",
         total_rows=len(records),
+        product_type=product_type,
         user_role=role,
     ))
 
@@ -1277,6 +1374,7 @@ async def confirm_mapping(
     target_language: str = Form(""),
     mappings_json: str = Form(...),
     optimize_fields: str = Form("title,description"),
+    product_type: str = Form("standard"),
 ):
     redir = require_login_redirect(request, "/upload")
     if redir:
@@ -1287,7 +1385,7 @@ async def confirm_mapping(
 
     user = get_current_user(request)
     role = user.get("role", "customer") if user else "customer"
-    return HTMLResponse(content=_build_processing_page(upload_id, mode, target_language, mappings_json, optimize_fields, user_role=role))
+    return HTMLResponse(content=_build_processing_page(upload_id, mode, target_language, mappings_json, optimize_fields, product_type=product_type, user_role=role))
 
 
 @app.post("/batches/run")
@@ -1297,6 +1395,7 @@ async def run_processing(
     mode: str = Form("optimize"),
     target_language: str = Form(""),
     optimize_fields: str = Form("title,description"),
+    product_type: str = Form("standard"),
     mappings_json: str = Form(...),
 ):
     require_login_http(request)  # Returns 401 JSON for fetch
@@ -1312,7 +1411,7 @@ async def run_processing(
     normalized_products: List[NormalizedProduct] = normalize_records(records, custom_mapping=custom_mapping)
 
     actions = decide_actions_for_products(normalized_products, mode=mode)
-    storage.create_batch(batch_id=batch_id, products=normalized_products, actions=actions)
+    storage.create_batch(batch_id=batch_id, products=normalized_products, actions=actions, product_type=product_type)
 
     if target_language:
         storage.default_target_language = target_language
@@ -1327,7 +1426,7 @@ async def run_processing(
     return {"batch_id": batch_id}
 
 
-def _build_processing_page(upload_id: str, mode: str, target_language: str, mappings_json: str, optimize_fields: str = "title,description", user_role: str = "customer") -> str:
+def _build_processing_page(upload_id: str, mode: str, target_language: str, mappings_json: str, optimize_fields: str = "title,description", product_type: str = "standard", user_role: str = "customer") -> str:
     mappings_escaped = mappings_json.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -1468,6 +1567,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
         form.append("mode","{mode}");
         form.append("target_language","{target_language}");
         form.append("optimize_fields","{optimize_fields}");
+        form.append("product_type","{product_type}");
         form.append("mappings_json",document.getElementById("mj").value);
         try{{
             const resp=await fetch("/batches/run",{{method:"POST",body:form}});
@@ -1497,6 +1597,7 @@ def _build_mapping_page(
     mode: str,
     target_language: str,
     total_rows: int = 0,
+    product_type: str = "standard",
     user_role: str = "customer",
 ) -> str:
     internal_options = ["-- skip --"] + INTERNAL_FIELDS
@@ -1641,6 +1742,7 @@ def _build_mapping_page(
             <input type="hidden" name="upload_id" value="{upload_id}" />
             <input type="hidden" name="mode" value="{mode}" />
             <input type="hidden" name="target_language" value="{target_language}" />
+            <input type="hidden" name="product_type" value="{product_type}" />
             <input type="hidden" id="mappings_json" name="mappings_json" value="" />
             <input type="hidden" id="optimize_fields" name="optimize_fields" value="title,description" />
         </form>
@@ -1841,7 +1943,51 @@ async def review_batch(request: Request, batch_id: str):
     scores = [r.score for r in batch.products if r.score > 0]
     avg_score = round(sum(scores) / len(scores)) if scores else 0
 
+    gmc_err_count = sum(len(r.gmc_errors) for r in batch.products)
+    gmc_warn_count = sum(len(r.gmc_warnings) for r in batch.products)
+    gmc_products_with_errors = sum(1 for r in batch.products if r.gmc_errors)
+    gmc_products_with_warnings = sum(1 for r in batch.products if r.gmc_warnings and not r.gmc_errors)
+    gmc_products_clean = sum(1 for r in batch.products if not r.gmc_errors and not r.gmc_warnings and r.status.value != "skipped")
+    # Error-free = no hard errors (warnings are recommendations, not failures)
+    gmc_products_error_free = (total - skipped) - gmc_products_with_errors
+    gmc_error_free_pct = round(gmc_products_error_free / (total - skipped) * 100) if (total - skipped) > 0 else 0
+    gmc_products_pass = gmc_products_clean
+
+    _ptype_labels = {
+        "standard": "Standard", "custom": "Custom / Personalized",
+        "handmade": "Handmade", "vintage": "Vintage / Antique",
+        "private_label": "Private label", "bundle": "Bundles",
+        "digital": "Digital / Software", "services": "Services",
+        "promotional": "Promotional",
+    }
+    ptype_label = _ptype_labels.get(batch.product_type, batch.product_type)
+
+    from collections import Counter
+    _issue_counter: Counter = Counter()
+    _issue_severity: dict = {}
+    for r in batch.products:
+        for e in r.gmc_errors:
+            _issue_counter[e] += 1
+            _issue_severity[e] = "error"
+        for w in r.gmc_warnings:
+            _issue_counter[w] += 1
+            if w not in _issue_severity:
+                _issue_severity[w] = "warn"
+    top_issues = _issue_counter.most_common(5)
+
     import html as html_module
+
+    top_issues_html = ""
+    if top_issues:
+        issue_items = ""
+        for issue_text, count in top_issues:
+            sev = _issue_severity.get(issue_text, "warn")
+            icon = "&#10006;" if sev == "error" else "&#9888;"
+            sev_cls = "gmc-ti-err" if sev == "error" else "gmc-ti-warn"
+            issue_items += f'<li class="gmc-ti-item {sev_cls}"><span class="gmc-ti-icon">{icon}</span><span class="gmc-ti-text">{html_module.escape(issue_text)}</span><span class="gmc-ti-count">{count}</span></li>'
+        top_issues_html = f'<div class="gmc-top-issues"><div class="gmc-ti-label">Most common issues found in your source CSV data</div><ul class="gmc-ti-list">{issue_items}</ul></div>'
+
+    from .services.validator import validate_title, validate_description
     
     rows_html = ""
     for r in batch.products:
@@ -1869,44 +2015,99 @@ async def review_batch(request: Request, batch_id: str):
         action_display = action_map.get(r.action.value, r.action.value)
         action_cls = "action-done" if r.status.value == "done" else ""
         
-        old_title = html_module.escape(r.product.title or '')[:80]
-        new_title = html_module.escape(r.optimized_title or '')
+        old_title_raw = r.product.title or ''
+        old_title = html_module.escape(old_title_raw)[:80]
+        new_title_raw = r.optimized_title or ''
+        new_title = html_module.escape(new_title_raw)
         old_desc_raw = r.product.description or ''
         old_desc_full = html_module.escape(old_desc_raw)
-        new_desc_full = html_module.escape(r.optimized_description or '')
+        new_desc_raw = r.optimized_description or ''
+        new_desc_full = html_module.escape(new_desc_raw)
         trans_title = html_module.escape(r.translated_title or '')
         trans_desc = html_module.escape(r.translated_description or '')
         product_url = r.product.url or ''
         link_cell = f'<a href="{product_url}" target="_blank" class="product-link" title="{product_url}">&#8599;</a>' if product_url else '<span class="no-link">—</span>'
         image_url = html_module.escape(r.product.image_url or '')
         image_cell = f'<a href="{image_url}" target="_blank" class="img-thumb-link" title="{image_url}"><img src="{image_url}" class="img-thumb" alt="" onerror="this.parentElement.innerHTML=\'—\'" /></a>' if image_url else '<span class="no-link">—</span>'
-        
-        # Description cells with expand/collapse (truncate at ~120 chars for preview)
+
+        # ── Per-field GMC validation (old vs new) ────────────────────
+        old_title_issues = validate_title(old_title_raw)
+        new_title_issues = validate_title(new_title_raw) if new_title_raw else []
+        old_desc_issues = validate_description(old_desc_raw, old_title_raw)
+        new_desc_issues = validate_description(new_desc_raw, new_title_raw) if new_desc_raw else []
+
+        old_title_issue_keys = {m for _, m in old_title_issues}
+        new_title_issue_keys = {m for _, m in new_title_issues}
+        old_desc_issue_keys = {m for _, m in old_desc_issues}
+        new_desc_issue_keys = {m for _, m in new_desc_issues}
+
+        def _build_issue_tags(issues):
+            parts = []
+            for sev, msg in issues:
+                cls = "gmc-tag-err" if sev == "error" else "gmc-tag-warn"
+                icon = "&#10006;" if sev == "error" else "&#9888;"
+                parts.append(f'<span class="gmc-tag {cls}">{icon} {html_module.escape(msg)}</span>')
+            return "".join(parts)
+
+        def _build_fixed_tags(old_issues, new_issue_keys):
+            parts = []
+            for _, msg in old_issues:
+                if msg not in new_issue_keys:
+                    parts.append(f'<span class="gmc-tag gmc-tag-fixed">&#10004; Fixed: {html_module.escape(msg)}</span>')
+            return "".join(parts)
+
+        old_title_tags = _build_issue_tags(old_title_issues)
+        new_title_fixed = _build_fixed_tags(old_title_issues, new_title_issue_keys) if new_title_raw else ""
+        new_title_remaining = _build_issue_tags(new_title_issues) if new_title_raw else ""
+        old_desc_tags = _build_issue_tags(old_desc_issues)
+        new_desc_fixed = _build_fixed_tags(old_desc_issues, new_desc_issue_keys) if new_desc_raw else ""
+        new_desc_remaining = _build_issue_tags(new_desc_issues) if new_desc_raw else ""
+
+        gmc_suffix_old_title = f'<div class="gmc-tags">{old_title_tags}</div>' if old_title_tags else ''
+        gmc_suffix_new_title = f'<div class="gmc-tags">{new_title_fixed}{new_title_remaining}</div>' if (new_title_fixed or new_title_remaining) else ''
+        gmc_suffix_old_desc = f'<div class="gmc-tags">{old_desc_tags}</div>' if old_desc_tags else ''
+        gmc_suffix_new_desc = f'<div class="gmc-tags">{new_desc_fixed}{new_desc_remaining}</div>' if (new_desc_fixed or new_desc_remaining) else ''
+
+        # ── Description cells with expand/collapse ───────────────────
         desc_preview_len = 120
         old_desc_short = old_desc_full[:desc_preview_len] + ('...' if len(old_desc_full) > desc_preview_len else '')
         
         if len(old_desc_raw) > desc_preview_len:
-            old_desc_cell = f'<td class="desc-cell"><div class="desc-wrapper"><span class="desc-text" data-full="{html_module.escape(old_desc_raw)}">{old_desc_short}</span><button type="button" class="expand-btn" onclick="toggleDesc(this)"><span class="expand-icon">&#9660;</span> show more</button></div></td>'
+            old_desc_cell = f'<td class="desc-cell"><div class="desc-wrapper"><span class="desc-text" data-full="{html_module.escape(old_desc_raw)}">{old_desc_short}</span><button type="button" class="expand-btn" onclick="toggleDesc(this)"><span class="expand-icon">&#9660;</span> show more</button></div>{gmc_suffix_old_desc}</td>'
         else:
-            old_desc_cell = f'<td>{old_desc_full or "—"}</td>'
+            old_desc_cell = f'<td>{old_desc_full or "—"}{gmc_suffix_old_desc}</td>'
         
         if len(new_desc_full) > desc_preview_len:
-            new_desc_cell = f'<td class="desc-cell editable-wrap"><div class="desc-wrapper"><span class="desc-text editable-cell desc-collapsed" contenteditable="true" data-field="optimized_description" data-product="{r.product.id}">{new_desc_full}</span><button type="button" class="expand-btn" onclick="toggleDescEditable(this)"><span class="expand-icon">&#9660;</span> show more</button></div></td>'
+            new_desc_cell = f'<td class="desc-cell editable-wrap"><div class="desc-wrapper"><span class="desc-text editable-cell desc-collapsed" contenteditable="true" data-field="optimized_description" data-product="{r.product.id}">{new_desc_full}</span><button type="button" class="expand-btn" onclick="toggleDescEditable(this)"><span class="expand-icon">&#9660;</span> show more</button></div>{gmc_suffix_new_desc}</td>'
         else:
             new_desc_cell = f'<td class="editable-cell" contenteditable="true" data-field="optimized_description" data-product="{r.product.id}">{new_desc_full}</td>'
+            if gmc_suffix_new_desc:
+                new_desc_cell = f'<td><div class="cell-with-gmc"><span class="editable-cell" contenteditable="true" data-field="optimized_description" data-product="{r.product.id}">{new_desc_full}</span>{gmc_suffix_new_desc}</div></td>'
         
         if len(trans_desc) > desc_preview_len:
             trans_desc_cell = f'<td class="desc-cell editable-wrap"><div class="desc-wrapper"><span class="desc-text editable-cell desc-collapsed" contenteditable="true" data-field="translated_description" data-product="{r.product.id}">{trans_desc}</span><button type="button" class="expand-btn" onclick="toggleDescEditable(this)"><span class="expand-icon">&#9660;</span> show more</button></div></td>'
         else:
             trans_desc_cell = f'<td class="editable-cell" contenteditable="true" data-field="translated_description" data-product="{r.product.id}">{trans_desc}</td>'
-        
+
+        # ── GMC data attribute for row filter ────────────────────────
+        gmc_errs = r.gmc_errors
+        gmc_warns = r.gmc_warnings
+        gmc_status = 'error' if gmc_errs else 'warn' if gmc_warns else 'pass'
+
+        # ── Title cells with inline GMC tags ─────────────────────────
+        old_title_cell = f'<td>{old_title}{gmc_suffix_old_title}</td>'
+        if gmc_suffix_new_title:
+            new_title_cell = f'<td><div class="cell-with-gmc"><span class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</span>{gmc_suffix_new_title}</div></td>'
+        else:
+            new_title_cell = f'<td class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</td>'
+
         rows_html += f"""
-        <tr data-id="{r.product.id}" data-status="{r.status.value}">
+        <tr data-id="{r.product.id}" data-status="{r.status.value}" data-gmc="{gmc_status}">
             <td><input type="checkbox" name="product_id" value="{r.product.id}" /></td>
             <td class="img-cell">{image_cell}</td>
             <td class="link-cell">{link_cell}</td>
-            <td>{old_title}</td>
-            <td class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</td>
+            {old_title_cell}
+            {new_title_cell}
             {old_desc_cell}
             {new_desc_cell}
             <td class="editable-cell" contenteditable="true" data-field="translated_title" data-product="{r.product.id}">{trans_title}</td>
@@ -2153,7 +2354,76 @@ async def review_batch(request: Request, batch_id: str):
 
     input[type="checkbox"] {{ width: 18px; height: 18px; accent-color: #fff; cursor: pointer; }}
 
-    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ padding: 24px; }} }}
+    /* GMC Validation Panel — horizontal compact layout */
+    .gmc-panel {{ display: flex; align-items: center; gap: 24px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 16px 24px; margin-bottom: 20px; flex-wrap: wrap; }}
+    .gmc-panel-left {{ display: flex; align-items: center; gap: 12px; flex-shrink: 0; }}
+    .gmc-panel-icon {{ color: rgba(255,255,255,0.5); display: flex; align-items: center; }}
+    .gmc-panel-title {{ font-size: 0.82rem; font-weight: 600; color: rgba(255,255,255,0.9); white-space: nowrap; }}
+    .gmc-panel-subtitle {{ font-size: 0.72rem; color: rgba(255,255,255,0.4); margin-top: 2px; }}
+    .gmc-panel-center {{ flex: 1; min-width: 0; }}
+    .gmc-panel-bar {{ height: 6px; border-radius: 3px; background: rgba(255,255,255,0.06); display: flex; overflow: hidden; }}
+    .gmc-bar-fill {{ height: 100%; transition: width 0.4s ease; }}
+    .gmc-bar-pass {{ background: #22c55e; }}
+    .gmc-bar-warn {{ background: #f59e0b; }}
+    .gmc-bar-err {{ background: #ef4444; }}
+    .gmc-legend {{ display: flex; gap: 16px; margin-top: 8px; }}
+    .gmc-legend-item {{ display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; color: rgba(255,255,255,0.55); }}
+    .gmc-legend-dot {{ width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }}
+    .gmc-dot-pass {{ background: #22c55e; }}
+    .gmc-dot-warn {{ background: #f59e0b; }}
+    .gmc-dot-err {{ background: #ef4444; }}
+    .gmc-panel-right {{ flex-shrink: 0; }}
+    .gmc-pass-ring {{ position: relative; width: 52px; height: 52px; }}
+    .gmc-ring-svg {{ width: 100%; height: 100%; transform: rotate(-90deg); }}
+    .gmc-ring-bg {{ fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 3; }}
+    .gmc-ring-fill {{ fill: none; stroke: #22c55e; stroke-width: 3; stroke-linecap: round; }}
+    .gmc-ring-fill--warn {{ fill: none; stroke: #f59e0b; stroke-width: 3; stroke-linecap: round; }}
+    .gmc-ring-label {{ position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%); font-size: 0.72rem; font-weight: 700; color: rgba(255,255,255,0.9); white-space: nowrap; }}
+    .gmc-ring-sublabel {{ position: absolute; top: 62%; left: 50%; transform: translate(-50%, -50%); font-size: 0.55rem; color: rgba(255,255,255,0.4); white-space: nowrap; }}
+
+    /* Inline GMC tags inside title/description cells */
+    .gmc-tags {{ display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }}
+    .gmc-tag {{ display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 600; line-height: 1.4; white-space: nowrap; }}
+    .gmc-tag-err {{ background: rgba(239,68,68,0.12); color: #ef4444; }}
+    .gmc-tag-warn {{ background: rgba(245,158,11,0.12); color: #f59e0b; }}
+    .gmc-tag-fixed {{ background: rgba(34,197,94,0.12); color: #22c55e; }}
+    .cell-with-gmc {{ display: flex; flex-direction: column; }}
+
+    /* Top issues list inside GMC panel */
+    .gmc-top-issues {{ width: 100%; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 4px; padding-top: 12px; }}
+    .gmc-ti-label {{ font-size: 0.72rem; font-weight: 600; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }}
+    .gmc-ti-list {{ list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }}
+    .gmc-ti-item {{ display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; background: rgba(255,255,255,0.02); font-size: 0.8rem; }}
+    .gmc-ti-icon {{ flex-shrink: 0; font-size: 0.7rem; width: 16px; text-align: center; }}
+    .gmc-ti-text {{ flex: 1; color: rgba(255,255,255,0.8); }}
+    .gmc-ti-count {{ flex-shrink: 0; font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border-radius: 10px; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.6); }}
+    .gmc-ti-err .gmc-ti-icon {{ color: #ef4444; }}
+    .gmc-ti-err .gmc-ti-count {{ background: rgba(239,68,68,0.12); color: #ef4444; }}
+    .gmc-ti-warn .gmc-ti-icon {{ color: #f59e0b; }}
+    .gmc-ti-warn .gmc-ti-count {{ background: rgba(245,158,11,0.12); color: #f59e0b; }}
+
+    /* Light theme GMC */
+    [data-theme="light"] .gmc-panel {{ background: rgba(255,255,255,0.8); border-color: rgba(15,23,42,0.1); }}
+    [data-theme="light"] .gmc-panel-icon {{ color: rgba(15,23,42,0.5); }}
+    [data-theme="light"] .gmc-panel-title {{ color: #0f172a; }}
+    [data-theme="light"] .gmc-panel-subtitle {{ color: rgba(15,23,42,0.45); }}
+    [data-theme="light"] .gmc-panel-bar {{ background: rgba(15,23,42,0.08); }}
+    [data-theme="light"] .gmc-legend-item {{ color: rgba(15,23,42,0.55); }}
+    [data-theme="light"] .gmc-ring-bg {{ stroke: rgba(15,23,42,0.08); }}
+    [data-theme="light"] .gmc-ring-label {{ color: #0f172a; }}
+    [data-theme="light"] .gmc-ring-sublabel {{ color: rgba(15,23,42,0.4); }}
+    [data-theme="light"] .gmc-tag-err {{ background: rgba(239,68,68,0.1); }}
+    [data-theme="light"] .gmc-tag-warn {{ background: rgba(245,158,11,0.1); }}
+    [data-theme="light"] .gmc-tag-fixed {{ background: rgba(34,197,94,0.1); }}
+    [data-theme="light"] .gmc-top-issues {{ border-top-color: rgba(15,23,42,0.08); }}
+    [data-theme="light"] .gmc-ti-label {{ color: rgba(15,23,42,0.45); }}
+    [data-theme="light"] .gmc-ti-item {{ background: rgba(15,23,42,0.02); }}
+    [data-theme="light"] .gmc-ti-text {{ color: rgba(15,23,42,0.8); }}
+    [data-theme="light"] .gmc-ti-count {{ background: rgba(15,23,42,0.06); color: rgba(15,23,42,0.6); }}
+    [data-theme="light"] .gmc-ti-err .gmc-ti-count {{ background: rgba(239,68,68,0.1); color: #ef4444; }}
+    [data-theme="light"] .gmc-ti-warn .gmc-ti-count {{ background: rgba(245,158,11,0.1); color: #f59e0b; }}
+
+    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ padding: 24px; }} .gmc-panel {{ flex-direction: column; align-items: stretch; }} .gmc-legend {{ flex-wrap: wrap; gap: 8px; }} }}
     </style>
 </head>
 <body>
@@ -2202,6 +2472,41 @@ async def review_batch(request: Request, batch_id: str):
             <div class="stat"><div class="stat-value stat-score">{avg_score}</div><div class="stat-label">Avg score</div></div>
         </div>
 
+        <div class="gmc-panel">
+            <div class="gmc-panel-left">
+                <div class="gmc-panel-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+                </div>
+                <div>
+                    <div class="gmc-panel-title">GMC Validation</div>
+                    <div class="gmc-panel-subtitle">{gmc_err_count} errors, {gmc_warn_count} warnings across {total - skipped} products &middot; {ptype_label}</div>
+                </div>
+            </div>
+            <div class="gmc-panel-center">
+                <div class="gmc-panel-bar">
+                    <div class="gmc-bar-fill gmc-bar-pass" style="width:{round(gmc_products_clean / (total - skipped) * 100) if (total - skipped) > 0 else 0}%"></div>
+                    <div class="gmc-bar-fill gmc-bar-warn" style="width:{round(gmc_products_with_warnings / (total - skipped) * 100) if (total - skipped) > 0 else 0}%"></div>
+                    <div class="gmc-bar-fill gmc-bar-err" style="width:{round(gmc_products_with_errors / (total - skipped) * 100) if (total - skipped) > 0 else 0}%"></div>
+                </div>
+                <div class="gmc-legend">
+                    <span class="gmc-legend-item"><span class="gmc-legend-dot gmc-dot-pass"></span> {gmc_products_clean} clean</span>
+                    <span class="gmc-legend-item"><span class="gmc-legend-dot gmc-dot-warn"></span> {gmc_products_with_warnings} warnings only</span>
+                    <span class="gmc-legend-item"><span class="gmc-legend-dot gmc-dot-err"></span> {gmc_products_with_errors} errors</span>
+                </div>
+            </div>
+            <div class="gmc-panel-right">
+                <div class="gmc-pass-ring" title="Error-free rate: {gmc_error_free_pct}% of products have no hard errors">
+                    <svg viewBox="0 0 36 36" class="gmc-ring-svg">
+                        <path class="gmc-ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path class="gmc-ring-fill{'--warn' if gmc_products_with_errors == 0 and gmc_products_with_warnings > 0 else ''}" stroke-dasharray="{gmc_error_free_pct}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <div class="gmc-ring-label">{gmc_error_free_pct}%</div>
+                    <div class="gmc-ring-sublabel">error-free</div>
+                </div>
+            </div>
+            {top_issues_html}
+        </div>
+
         <div class="controls">
             <div class="controls-left">
                 <input id="search" class="search" placeholder="Search products..." oninput="applyFilters()" />
@@ -2211,6 +2516,12 @@ async def review_batch(request: Request, batch_id: str):
                     <option value="needs_review">Needs review</option>
                     <option value="failed">Failed</option>
                     <option value="skipped">Skipped</option>
+                </select>
+                <select id="gmcFilter" class="filter" onchange="applyFilters()">
+                    <option value="">All GMC</option>
+                    <option value="pass">&#10004; Passed</option>
+                    <option value="warn">&#9888; Warnings</option>
+                    <option value="error">&#10006; Errors</option>
                 </select>
             </div>
             <button type="submit" form="regen-form" class="btn btn-primary">&#x21bb; Regenerate selected</button>
@@ -2251,10 +2562,12 @@ async def review_batch(request: Request, batch_id: str):
     function applyFilters(){{
         const s=document.getElementById("search").value.toLowerCase();
         const f=document.getElementById("statusFilter").value;
+        const g=document.getElementById("gmcFilter").value;
         document.querySelectorAll("tbody tr").forEach(row=>{{
             const text=row.innerText.toLowerCase();
             const st=row.dataset.status||"";
-            row.style.display=((!s||text.includes(s))&&(!f||st===f))?"":"none";
+            const gmc=row.dataset.gmc||"";
+            row.style.display=((!s||text.includes(s))&&(!f||st===f)&&(!g||gmc===g))?"":"none";
         }});
     }}
     let sortCol=-1, sortAsc=true;

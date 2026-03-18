@@ -86,7 +86,7 @@ class AIProvider:
             )
             result = self._call_openai(prompt)
             if result:
-                return result[:130]
+                return self._clean_title(result, max_len=70)
 
         # Fallback to placeholder algorithm
         base_lower = base.lower()
@@ -125,16 +125,26 @@ class AIProvider:
 
         primary = base
         if primary_adds:
-            primary = f"{base} {' '.join(primary_adds)}"
+            for pa in primary_adds:
+                candidate = f"{primary} {pa}"
+                if len(candidate) > 55:
+                    break
+                primary = candidate
 
         secondary = self._build_secondary_phrase(product, base_lower, base_words)
 
-        if secondary:
+        if secondary and len(primary) + 3 + len(secondary) <= 70:
             title = f"{primary} | {secondary}"
+        elif secondary:
+            remaining = 70 - len(primary) - 3
+            if remaining > 8:
+                title = f"{primary} | {secondary[:remaining].rsplit(' ', 1)[0]}"
+            else:
+                title = primary
         else:
             title = primary
 
-        result = self._clean_title(title, max_len=130)
+        result = self._clean_title(title, max_len=70)
 
         if result.lower().strip() == base_lower.strip():
             result = self._force_expand(base, product)
@@ -349,12 +359,15 @@ class AIProvider:
             product.description or "", set(), limit=3
         )
         if desc_words:
-            return f"{base} {' '.join(desc_words)} | {base} Set"
+            raw = f"{base} {' '.join(desc_words)} | {base} Set"
+            return self._clean_title(raw, max_len=70)
 
         if product.brand:
-            return f"{base} by {product.brand} | Premium {base}"
+            raw = f"{base} by {product.brand} | Premium {base}"
+            return self._clean_title(raw, max_len=70)
 
-        return f"{base} Set | Premium {base} Collection"
+        raw = f"{base} Set | Premium {base} Collection"
+        return self._clean_title(raw, max_len=70)
 
     # ------------------------------------------------------------------ #
     #  Private helpers — description
@@ -402,7 +415,7 @@ class AIProvider:
         return ""
 
     @staticmethod
-    def _clean_title(title: str, max_len: int = 130) -> str:
+    def _clean_title(title: str, max_len: int = 70) -> str:
         title = re.sub(r"\s{2,}", " ", title).strip()
         if len(title) > max_len:
             cut = title[:max_len].rsplit(" ", 1)[0]

@@ -9,7 +9,7 @@ from ..models import (
     ProductStatus,
 )
 from .ai_provider import AIProvider
-from .validator import validate_product_result
+from .validator import validate_gmc, validate_product_result
 
 
 class InMemoryStorage:
@@ -28,6 +28,7 @@ class InMemoryStorage:
         batch_id: str,
         products: List[NormalizedProduct],
         actions: Dict[str, ProductAction],
+        product_type: str = "standard",
     ) -> None:
         results: List[ProductResult] = []
         for p in products:
@@ -44,6 +45,7 @@ class InMemoryStorage:
             id=batch_id,
             status=BatchStatus.NORMALIZED,
             products=results,
+            product_type=product_type,
         )
 
     def get_batch(self, batch_id: str) -> Optional[Batch]:
@@ -68,7 +70,6 @@ class InMemoryStorage:
 
             result.status = ProductStatus.PROCESSING
             try:
-                # Calculate original score before optimization
                 result.original_score = self._ai.score_optimization(
                     result.product, result.product.title, result.product.description
                 )
@@ -102,10 +103,17 @@ class InMemoryStorage:
                     result.product, result.optimized_title, result.optimized_description
                 )
 
-                errors = validate_product_result(result)
-                if errors:
+                gmc_errs, gmc_warns = validate_gmc(result, product_type=batch.product_type)
+                result.gmc_errors = gmc_errs
+                result.gmc_warnings = gmc_warns
+
+                all_issues = gmc_errs + gmc_warns
+                if gmc_errs:
                     result.status = ProductStatus.NEEDS_REVIEW
-                    result.notes = "; ".join(errors)
+                    result.notes = "; ".join(all_issues)
+                elif gmc_warns:
+                    result.status = ProductStatus.DONE
+                    result.notes = "; ".join(all_issues)
                 else:
                     result.status = ProductStatus.DONE
             except Exception as exc:  # noqa: BLE001
@@ -145,10 +153,17 @@ class InMemoryStorage:
                     result.product, result.optimized_title, result.optimized_description
                 )
 
-                errors = validate_product_result(result)
-                if errors:
+                gmc_errs, gmc_warns = validate_gmc(result, product_type=batch.product_type)
+                result.gmc_errors = gmc_errs
+                result.gmc_warnings = gmc_warns
+
+                all_issues = gmc_errs + gmc_warns
+                if gmc_errs:
                     result.status = ProductStatus.NEEDS_REVIEW
-                    result.notes = "; ".join(errors)
+                    result.notes = "; ".join(all_issues)
+                elif gmc_warns:
+                    result.status = ProductStatus.DONE
+                    result.notes = "; ".join(all_issues)
                 else:
                     result.status = ProductStatus.DONE
                     result.notes = None
@@ -179,4 +194,3 @@ class InMemoryStorage:
             skipped=skipped,
             needs_review=needs_review,
         )
-

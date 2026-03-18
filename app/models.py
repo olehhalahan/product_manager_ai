@@ -69,6 +69,9 @@ class ProductResult(BaseModel):
     notes: Optional[str] = None
     error: Optional[str] = None
 
+    gmc_errors: List[str] = Field(default_factory=list)
+    gmc_warnings: List[str] = Field(default_factory=list)
+
     # v1.2: basic cost tracking fields (to be filled by real AI calls)
     prompt_tokens: int = 0
     completion_tokens: int = 0
@@ -80,6 +83,7 @@ class Batch(BaseModel):
     id: str
     status: BatchStatus
     products: List[ProductResult]
+    product_type: str = "standard"
 
     # v1.2: aggregate cost / metadata
     client_id: Optional[str] = None
