@@ -36,14 +36,16 @@ from datetime import datetime, timezone
 
 app = FastAPI(title="Product Content Optimizer", docs_url=None)
 
-# Google Tag Manager - inject in all page headers
-GTM_HEAD = """    <!-- Google Tag Manager -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-})(window,document,'script','dataLayer','GTM-W25B668S');</script>
-    <!-- End Google Tag Manager -->
+# Google tag (gtag.js) - inject in all page headers
+GTM_HEAD = """    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D410FQ1NZB"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-D410FQ1NZB');
+    </script>
 """
 app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
 
@@ -282,13 +284,15 @@ def _admin_nav_links(active: str = "", user_role: str = "customer") -> str:
 HOMEPAGE_HTML = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-    <!-- Google Tag Manager -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-})(window,document,'script','dataLayer','GTM-W25B668S');</script>
-    <!-- End Google Tag Manager -->
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D410FQ1NZB"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-D410FQ1NZB');
+    </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sartozo.AI — AI-Powered Product Feed Optimization</title>
@@ -651,7 +655,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             <div class="hp-particle"></div>
         </div>
 
-        <div class="hp-badge">Sartozo.AI for E-commerce</div>
+        <div class="hp-badge">Cartozo.AI for E-commerce</div>
         <h1 class="hp-title">Optimize Every Product<br/>for Maximum Visibility</h1>
         <p class="hp-sub">
             AI-powered optimization for your product titles and descriptions. Boost search rankings, increase clicks, and drive more sales.
