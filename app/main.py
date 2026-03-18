@@ -1902,8 +1902,6 @@ async def review_batch(request: Request, batch_id: str):
         <tr data-id="{r.product.id}" data-status="{r.status.value}">
             <td><input type="checkbox" name="product_id" value="{r.product.id}" /></td>
             <td class="img-cell">{image_cell}</td>
-            <td class="score-cell">{score_cell}</td>
-            <td><span class="badge {action_cls}">{action_display}</span></td>
             <td class="link-cell">{link_cell}</td>
             <td>{old_title}</td>
             <td class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</td>
@@ -1913,6 +1911,8 @@ async def review_batch(request: Request, batch_id: str):
             {trans_desc_cell}
             <td><span class="pill {pill_cls}">{r.status.value}</span></td>
             <td class="note">{r.notes or r.error or ''}</td>
+            <td class="score-cell col-sticky col-score">{score_cell}</td>
+            <td class="col-sticky col-action"><span class="badge {action_cls}">{action_display}</span></td>
         </tr>
         """
 
@@ -2080,8 +2080,8 @@ async def review_batch(request: Request, batch_id: str):
     th.sorted-asc::after {{ content: ' ↑'; color: #fff; }}
     th.sorted-desc::after {{ content: ' ↓'; color: #fff; }}
     td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; }}
-    td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10) {{ max-width: 220px; }}
-    td:nth-child(5), td:nth-child(6), td:nth-child(9) {{ overflow: hidden; text-overflow: ellipsis; }}
+    td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9) {{ max-width: 220px; }}
+    td:nth-child(4), td:nth-child(5), td:nth-child(8) {{ overflow: hidden; text-overflow: ellipsis; }}
     .desc-cell {{ overflow: visible; }}
     tr:last-child td {{ border-bottom: none; }}
     tr:nth-child(even) {{ background: rgba(255,255,255,0.015); }}
@@ -2092,6 +2092,21 @@ async def review_batch(request: Request, batch_id: str):
     .th-center {{ text-align: center; }}
     .score-cell {{ text-align: center; white-space: nowrap; }}
     .link-cell {{ text-align: center; }}
+
+    .col-sticky {{ position: sticky; z-index: 2; }}
+    .col-action {{ right: 0; min-width: 90px; }}
+    .col-score {{ right: 90px; min-width: 90px; }}
+    th.col-sticky {{ z-index: 3; }}
+    td.col-sticky {{ background: #111; }}
+    tr:nth-child(even) td.col-sticky {{ background: #131313; }}
+    tr:hover td.col-sticky {{ background: rgba(255,255,255,0.06); }}
+    td.col-sticky {{ border-left: 1px solid rgba(255,255,255,0.08); }}
+    th.col-score {{ border-left: 1px solid rgba(255,255,255,0.08); }}
+    [data-theme="light"] td.col-sticky {{ background: #fff; }}
+    [data-theme="light"] tr:nth-child(even) td.col-sticky {{ background: #f8fafc; }}
+    [data-theme="light"] tr:hover td.col-sticky {{ background: rgba(15,23,42,0.05); }}
+    [data-theme="light"] td.col-sticky {{ border-left-color: rgba(15,23,42,0.08); }}
+    [data-theme="light"] th.col-score {{ border-left-color: rgba(15,23,42,0.08); }}
     .product-link {{ display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.9); text-decoration: none; font-size: 0.9rem; transition: all 0.2s; }}
     .product-link:hover {{ background: rgba(255,255,255,0.2); transform: scale(1.1); }}
     .no-link {{ color: rgba(255,255,255,0.2); }}
@@ -2210,17 +2225,17 @@ async def review_batch(request: Request, batch_id: str):
                             <tr>
                                 <th style="width:40px;"><input type="checkbox" onclick="toggleAll(this)" /></th>
                                 <th style="width:60px;" class="th-center">Image</th>
-                                <th onclick="sortTable(2)" class="th-center">Score</th>
-                                <th onclick="sortTable(3)" class="th-center">Action</th>
                                 <th style="width:50px;" class="th-center">Link</th>
-                                <th onclick="sortTable(5)">Old title</th>
-                                <th onclick="sortTable(6)">New title</th>
-                                <th onclick="sortTable(7)">Old description</th>
-                                <th onclick="sortTable(8)">New description</th>
-                                <th onclick="sortTable(9)">Translated title</th>
-                                <th onclick="sortTable(10)">Translated desc</th>
-                                <th onclick="sortTable(11)">Status</th>
-                                <th onclick="sortTable(12)">Notes</th>
+                                <th onclick="sortTable(3)">Old title</th>
+                                <th onclick="sortTable(4)">New title</th>
+                                <th onclick="sortTable(5)">Old description</th>
+                                <th onclick="sortTable(6)">New description</th>
+                                <th onclick="sortTable(7)">Translated title</th>
+                                <th onclick="sortTable(8)">Translated desc</th>
+                                <th onclick="sortTable(9)">Status</th>
+                                <th onclick="sortTable(10)">Notes</th>
+                                <th onclick="sortTable(11)" class="th-center col-sticky col-score">Score</th>
+                                <th onclick="sortTable(12)" class="th-center col-sticky col-action">Action</th>
                             </tr>
                         </thead>
                         <tbody>{rows_html}</tbody>
@@ -2242,7 +2257,7 @@ async def review_batch(request: Request, batch_id: str):
         }});
     }}
     let sortCol=-1, sortAsc=true;
-    const numericCols=new Set([1]);
+    const numericCols=new Set([11]);
     function sortTable(colIdx){{
         const tbody=document.querySelector("tbody");
         const rows=Array.from(tbody.querySelectorAll("tr"));
