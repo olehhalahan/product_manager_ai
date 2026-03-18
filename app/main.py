@@ -36,8 +36,9 @@ from datetime import datetime, timezone
 
 app = FastAPI(title="Product Content Optimizer", docs_url=None)
 
-# Google tag (gtag.js) - inject in all page headers
-GTM_HEAD = """    <!-- Google tag (gtag.js) -->
+# Favicon + Google tag - inject in all page headers
+GTM_HEAD = """    <link rel="icon" href="/assets/favicon.png" type="image/png" />
+    <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-D410FQ1NZB"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -160,7 +161,7 @@ async def login_page(request: Request):
     has_google = bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"))
     has_apple = bool(os.getenv("APPLE_CLIENT_ID") and os.getenv("APPLE_KEY_ID") and os.getenv("APPLE_TEAM_ID") and os.getenv("APPLE_PRIVATE_KEY"))
     next_url = request.query_params.get("next", "/upload")
-    return HTMLResponse(content=_build_login_page(next_url=next_url, has_google=has_google, has_apple=has_apple))
+    return HTMLResponse(content=_build_login_page(next_url=next_url, has_google=has_google, has_apple=has_apple, request_host=request.headers.get("host", "")))
 
 
 @app.get("/auth/google")
@@ -284,6 +285,7 @@ def _admin_nav_links(active: str = "", user_role: str = "customer") -> str:
 HOMEPAGE_HTML = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+    <link rel="icon" href="/assets/favicon.png" type="image/png" />
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-D410FQ1NZB"></script>
     <script>
@@ -295,7 +297,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Sartozo.AI — AI-Powered Product Feed Optimization</title>
+    <title>Cartozo.ai — AI-Powered Product Feed Optimization</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <link rel="stylesheet" href="/static/styles.css" />
@@ -621,7 +623,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
     </div>
     <nav class="hp-nav">
-        <a href="/" class="hp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Sartozo.AI" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Sartozo.AI" /></a>
+        <a href="/" class="hp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="hp-nav-links">
             <a href="#features" class="hp-nav-link">Features</a>
             <a href="#feed-structure" class="hp-nav-link">Feed Structure</a>
@@ -655,7 +657,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             <div class="hp-particle"></div>
         </div>
 
-        <div class="hp-badge">Cartozo.AI for E-commerce</div>
+        <div class="hp-badge">Cartozo.ai for E-commerce</div>
         <h1 class="hp-title">Optimize Every Product<br/>for Maximum Visibility</h1>
         <p class="hp-sub">
             AI-powered optimization for your product titles and descriptions. Boost search rankings, increase clicks, and drive more sales.
@@ -855,7 +857,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     </section>
 
     <footer class="hp-footer">
-        &copy; 2026 Cartozo.AI - AI-powered product feed optimization &middot; Powered by <a href="https://zanzarra.com/" target="_blank" rel="noopener noreferrer">Zanzarra</a>
+        &copy; 2026 Cartozo.ai - AI-powered product feed optimization &middot; Powered by <a href="https://zanzarra.com/" target="_blank" rel="noopener noreferrer">Zanzarra</a>
     </footer>
 
     <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">
@@ -941,7 +943,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
 </html>"""
 
 
-def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_apple: bool = False) -> str:
+def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_apple: bool = False, request_host: str = "") -> str:
     """Build login page HTML. Only show providers that are configured."""
     from urllib.parse import quote
     import os
@@ -953,9 +955,9 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
         providers.append((f'<a href="/auth/apple{next_param}" class="auth-btn auth-apple">Continue with Apple</a>', True))
     # Dev bypass when OAuth not configured (for local testing only)
     if not providers:
-        # In production (DEPLOY_URL set), never show dev mode
+        # In production (DEPLOY_URL set or cartozo.ai host), never show dev mode
         deploy_url = os.getenv("DEPLOY_URL", "")
-        is_production = bool(deploy_url)
+        is_production = bool(deploy_url) or (request_host and "cartozo.ai" in request_host.lower())
         dev_bypass = not is_production and os.getenv("AUTH_DEV_BYPASS", "1").lower() in ("1", "true", "yes")
         if dev_bypass:
             providers.append((f'<a href="/auth/dev{next_param}" class="auth-btn auth-google">Continue (dev mode)</a>', True))
@@ -968,7 +970,7 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
 {GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Sign in &mdash; Sartozo.AI</title>
+    <title>Sign in &mdash; Cartozo.ai</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
@@ -998,7 +1000,7 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
 </head>
 <body>
     <nav class="nav">
-        <a href="/" class="nav-logo"><img src="/assets/logo-light.png" alt="Sartozo.AI" /></a>
+        <a href="/" class="nav-logo"><img src="/assets/logo-light.png" alt="Cartozo.ai" /></a>
         <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">&#9728;</button>
     </nav>
     <div class="login-box">
@@ -1023,7 +1025,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
 {GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Upload feed &mdash; Sartozo.AI</title>
+    <title>Upload feed &mdash; Cartozo.ai</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
@@ -1141,7 +1143,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
     <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Sartozo.AI" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Sartozo.AI" /></a>
+        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
             <a href="/upload" class="nav-link active">Optimize Feed</a>
             <!-- ADMIN_NAV -->
@@ -1472,7 +1474,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
 {GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Processing &mdash; Sartozo.AI</title>
+    <title>Processing &mdash; Cartozo.ai</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
@@ -1525,7 +1527,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
 </head>
 <body>
     <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Sartozo.AI" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Sartozo.AI" /></a>
+        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
             <a href="/upload" class="nav-link">Optimize Feed</a>
             {_admin_nav_links(user_role=user_role)}
@@ -1665,7 +1667,7 @@ def _build_mapping_page(
 {GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Map columns &mdash; Sartozo.AI</title>
+    <title>Map columns &mdash; Cartozo.ai</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
@@ -1737,7 +1739,7 @@ def _build_mapping_page(
 </head>
 <body>
     <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Sartozo.AI" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Sartozo.AI" /></a>
+        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
             <a href="/upload" class="nav-link active">Optimize Feed</a>
             {_admin_nav_links(user_role=user_role)}
@@ -2475,7 +2477,7 @@ async def review_batch(request: Request, batch_id: str):
 </head>
 <body>
     <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Sartozo.AI" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Sartozo.AI" /></a>
+        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
             <a href="/upload" class="nav-link">Optimize Feed</a>
             {_admin_nav_links(user_role=user_role)}
@@ -2940,7 +2942,7 @@ async def settings_page(request: Request):
 {GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Settings &mdash; Sartozo.AI</title>
+    <title>Settings &mdash; Cartozo.ai</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
@@ -3024,7 +3026,7 @@ async def settings_page(request: Request):
 </head>
 <body>
     <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Sartozo.AI" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Sartozo.AI" /></a>
+        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
             <a href="/upload" class="nav-link">Optimize Feed</a>
             {_admin_nav_links(active="settings", user_role="admin")}
@@ -3219,7 +3221,7 @@ async def admin_feedback_page(request: Request):
 {GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Feedback &mdash; Sartozo.AI Admin</title>
+    <title>Feedback &mdash; Cartozo.ai Admin</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
@@ -3279,7 +3281,7 @@ async def admin_feedback_page(request: Request):
 </head>
 <body>
     <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Sartozo.AI" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Sartozo.AI" /></a>
+        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
             <a href="/upload" class="nav-link">Optimize Feed</a>
             {_admin_nav_links(active="feedback", user_role="admin")}
@@ -3353,7 +3355,7 @@ async def admin_users_page(request: Request):
 {GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Users &mdash; Sartozo.AI Admin</title>
+    <title>Users &mdash; Cartozo.ai Admin</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
@@ -3415,7 +3417,7 @@ async def admin_users_page(request: Request):
 </head>
 <body>
     <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Sartozo.AI" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Sartozo.AI" /></a>
+        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
             <a href="/upload" class="nav-link">Optimize Feed</a>
             {_admin_nav_links(active="users", user_role="admin")}
