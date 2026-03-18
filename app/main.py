@@ -1362,7 +1362,8 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     .nav-link:hover {{ color: #fff; }}
 
     .main {{ flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }}
-    .loader {{ text-align: center; max-width: 400px; }}
+    .loader {{ text-align: center; max-width: 460px; width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 48px 40px; }}
+    [data-theme="light"] .loader {{ background: #fff; border-color: rgba(15,23,42,0.1); box-shadow: 0 4px 24px rgba(0,0,0,0.06); }}
 
     .icon-wrap {{ width: 64px; height: 64px; margin: 0 auto 24px; position: relative; }}
     .spinner {{ width: 64px; height: 64px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #f97316; border-radius: 50%; animation: spin 1s cubic-bezier(0.4,0,0.2,1) infinite; }}
