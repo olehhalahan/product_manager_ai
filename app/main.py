@@ -1500,13 +1500,14 @@ def _build_mapping_page(
     user_role: str = "customer",
 ) -> str:
     internal_options = ["-- skip --"] + INTERNAL_FIELDS
+    field_labels = {"image_url": "image_link"}
     select_rows = ""
     for col in csv_columns:
         current = guessed.get(col, "")
         opts = ""
         for opt in internal_options:
             val = "" if opt == "-- skip --" else opt
-            label = opt
+            label = field_labels.get(opt, opt)
             selected = 'selected' if val == current else ''
             opts += f'<option value="{val}" {selected}>{label}</option>'
         sample_vals = [str(row.get(col, ""))[:60] for row in sample_rows]
