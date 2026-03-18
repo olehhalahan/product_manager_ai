@@ -1876,6 +1876,8 @@ async def review_batch(request: Request, batch_id: str):
         trans_desc = html_module.escape(r.translated_description or '')
         product_url = r.product.url or ''
         link_cell = f'<a href="{product_url}" target="_blank" class="product-link" title="{product_url}">&#8599;</a>' if product_url else '<span class="no-link">—</span>'
+        image_url = html_module.escape(r.product.image_url or '')
+        image_cell = f'<a href="{image_url}" target="_blank" class="img-thumb-link" title="{image_url}"><img src="{image_url}" class="img-thumb" alt="" onerror="this.parentElement.innerHTML=\'—\'" /></a>' if image_url else '<span class="no-link">—</span>'
         
         # Description cells with expand/collapse (truncate at ~120 chars for preview)
         desc_preview_len = 120
@@ -1899,6 +1901,7 @@ async def review_batch(request: Request, batch_id: str):
         rows_html += f"""
         <tr data-id="{r.product.id}" data-status="{r.status.value}">
             <td><input type="checkbox" name="product_id" value="{r.product.id}" /></td>
+            <td class="img-cell">{image_cell}</td>
             <td class="score-cell">{score_cell}</td>
             <td><span class="badge {action_cls}">{action_display}</span></td>
             <td class="link-cell">{link_cell}</td>
@@ -2093,6 +2096,12 @@ async def review_batch(request: Request, batch_id: str):
     .product-link:hover {{ background: rgba(255,255,255,0.2); transform: scale(1.1); }}
     .no-link {{ color: rgba(255,255,255,0.2); }}
 
+    .img-cell {{ text-align: center; width: 60px; padding: 8px !important; }}
+    .img-thumb-link {{ display: inline-block; border-radius: 6px; overflow: hidden; transition: transform 0.2s; }}
+    .img-thumb-link:hover {{ transform: scale(1.15); }}
+    .img-thumb {{ width: 44px; height: 44px; object-fit: cover; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); display: block; }}
+    [data-theme="light"] .img-thumb {{ background: rgba(15,23,42,0.04); border-color: rgba(15,23,42,0.1); }}
+
     .badge {{ display: inline-block; padding: 5px 10px; font-size: 0.68rem; font-weight: 600; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.7); }}
     .pill {{ display: inline-block; padding: 5px 12px; font-size: 0.68rem; font-weight: 700; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.03em; }}
     .pill-done {{ background: rgba(255,255,255,0.12); color: #e5e5e5; }}
@@ -2200,17 +2209,18 @@ async def review_batch(request: Request, batch_id: str):
                         <thead>
                             <tr>
                                 <th style="width:40px;"><input type="checkbox" onclick="toggleAll(this)" /></th>
-                                <th onclick="sortTable(1)" class="th-center">Score</th>
-                                <th onclick="sortTable(2)" class="th-center">Action</th>
+                                <th style="width:60px;" class="th-center">Image</th>
+                                <th onclick="sortTable(2)" class="th-center">Score</th>
+                                <th onclick="sortTable(3)" class="th-center">Action</th>
                                 <th style="width:50px;" class="th-center">Link</th>
-                                <th onclick="sortTable(4)">Old title</th>
-                                <th onclick="sortTable(5)">New title</th>
-                                <th onclick="sortTable(6)">Old description</th>
-                                <th onclick="sortTable(7)">New description</th>
-                                <th onclick="sortTable(8)">Translated title</th>
-                                <th onclick="sortTable(9)">Translated desc</th>
-                                <th onclick="sortTable(10)">Status</th>
-                                <th onclick="sortTable(11)">Notes</th>
+                                <th onclick="sortTable(5)">Old title</th>
+                                <th onclick="sortTable(6)">New title</th>
+                                <th onclick="sortTable(7)">Old description</th>
+                                <th onclick="sortTable(8)">New description</th>
+                                <th onclick="sortTable(9)">Translated title</th>
+                                <th onclick="sortTable(10)">Translated desc</th>
+                                <th onclick="sortTable(11)">Status</th>
+                                <th onclick="sortTable(12)">Notes</th>
                             </tr>
                         </thead>
                         <tbody>{rows_html}</tbody>
