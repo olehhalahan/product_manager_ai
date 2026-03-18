@@ -35,6 +35,16 @@ from datetime import datetime, timezone
 
 
 app = FastAPI(title="Product Content Optimizer", docs_url=None)
+
+# Google Tag Manager - inject in all page headers
+GTM_HEAD = """    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-W25B668S');</script>
+    <!-- End Google Tag Manager -->
+"""
 app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
 
 storage = InMemoryStorage()
@@ -272,6 +282,13 @@ def _admin_nav_links(active: str = "", user_role: str = "customer") -> str:
 HOMEPAGE_HTML = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-W25B668S');</script>
+    <!-- End Google Tag Manager -->
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sartozo.AI — AI-Powered Product Feed Optimization</title>
@@ -944,6 +961,7 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+{GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sign in &mdash; Sartozo.AI</title>
@@ -998,6 +1016,7 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
 _UPLOAD_TEMPLATE = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+{GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Upload feed &mdash; Sartozo.AI</title>
@@ -1446,6 +1465,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+{GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Processing &mdash; Sartozo.AI</title>
@@ -1638,6 +1658,7 @@ def _build_mapping_page(
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+{GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Map columns &mdash; Sartozo.AI</title>
@@ -2143,6 +2164,7 @@ async def review_batch(request: Request, batch_id: str):
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+{GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Review &mdash; {batch_id[:8]}</title>
@@ -2911,6 +2933,7 @@ async def settings_page(request: Request):
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+{GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Settings &mdash; Sartozo.AI</title>
@@ -3189,6 +3212,7 @@ async def admin_feedback_page(request: Request):
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+{GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Feedback &mdash; Sartozo.AI Admin</title>
@@ -3322,6 +3346,7 @@ async def admin_users_page(request: Request):
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+{GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Users &mdash; Sartozo.AI Admin</title>
