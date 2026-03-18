@@ -2094,8 +2094,8 @@ async def review_batch(request: Request, batch_id: str):
     .link-cell {{ text-align: center; }}
 
     .col-sticky {{ position: sticky; z-index: 2; }}
-    .col-action {{ right: 0; min-width: 90px; }}
-    .col-score {{ right: 90px; min-width: 90px; }}
+    .col-action {{ right: 0; min-width: 100px; }}
+    .col-score {{ right: 100px; min-width: 140px; }}
     th.col-sticky {{ z-index: 3; }}
     td.col-sticky {{ background: #111; }}
     tr:nth-child(even) td.col-sticky {{ background: #131313; }}
