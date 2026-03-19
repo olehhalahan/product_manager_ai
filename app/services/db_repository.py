@@ -34,6 +34,10 @@ Original description: {description}
 Return only the description, nothing else."""
 
 
+DEFAULT_SEO_META_TITLE = "Cartozo.ai — AI-Powered Product Feed Optimization"
+DEFAULT_SEO_META_DESCRIPTION = "AI-powered optimization for your product titles and descriptions. Boost search rankings, increase clicks, and drive more sales. Ready for Google Merchant Center."
+
+
 def get_settings(db: Session) -> Dict[str, str]:
     """Get settings as dict. Returns defaults if not in DB."""
     rows = db.execute(select(Setting)).scalars().all() or []
@@ -44,6 +48,19 @@ def get_settings(db: Session) -> Dict[str, str]:
         settings["prompt_description"] = DEFAULT_PROMPT_DESCRIPTION
     if "openai_api_key" not in settings:
         settings["openai_api_key"] = ""
+    # SEO defaults
+    if "seo_meta_title" not in settings:
+        settings["seo_meta_title"] = DEFAULT_SEO_META_TITLE
+    if "seo_meta_description" not in settings:
+        settings["seo_meta_description"] = DEFAULT_SEO_META_DESCRIPTION
+    if "seo_og_title" not in settings:
+        settings["seo_og_title"] = DEFAULT_SEO_META_TITLE
+    if "seo_og_description" not in settings:
+        settings["seo_og_description"] = DEFAULT_SEO_META_DESCRIPTION
+    if "seo_og_image" not in settings:
+        settings["seo_og_image"] = ""
+    if "seo_og_site_name" not in settings:
+        settings["seo_og_site_name"] = "Cartozo.ai"
     return settings
 
 

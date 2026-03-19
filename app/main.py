@@ -234,13 +234,14 @@ async def logout(request: Request):
 
 
 def _admin_nav_links(active: str = "", user_role: str = "customer") -> str:
-    """Generate admin-only nav links (Feedback, Users, Settings) if user is admin."""
+    """Generate admin-only nav links (Feedback, Users, Settings, SEO) if user is admin."""
     if user_role != "admin":
         return ""
     links = []
     links.append(f'<a href="/admin/feedback" class="nav-link{" active" if active == "feedback" else ""}">Feedback</a>')
     links.append(f'<a href="/admin/users" class="nav-link{" active" if active == "users" else ""}">Users</a>')
     links.append(f'<a href="/settings" class="nav-link{" active" if active == "settings" else ""}">Settings</a>')
+    links.append(f'<a href="/admin/seo" class="nav-link{" active" if active == "seo" else ""}">SEO</a>')
     return "\n            ".join(links)
 
 
@@ -259,7 +260,15 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Cartozo.ai — AI-Powered Product Feed Optimization</title>
+    <title>{SEO_META_TITLE}</title>
+    <meta name="description" content="{SEO_META_DESCRIPTION}" />
+    <meta property="og:title" content="{SEO_OG_TITLE}" />
+    <meta property="og:description" content="{SEO_OG_DESCRIPTION}" />
+    <meta property="og:image" content="{SEO_OG_IMAGE}" />
+    <meta property="og:site_name" content="{SEO_OG_SITE_NAME}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="{SEO_OG_TITLE}" />
+    <meta name="twitter:description" content="{SEO_OG_DESCRIPTION}" />
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <link rel="stylesheet" href="/static/styles.css" />
@@ -1297,9 +1306,27 @@ def _build_upload_page(user_role: str = "customer") -> str:
     return _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", GTM_HEAD).replace("{GTM_BODY}", GTM_BODY).replace("<!-- ADMIN_NAV -->", admin_nav)
 
 
+def _build_homepage_html() -> str:
+    """Build homepage HTML with SEO meta from settings."""
+    import html as html_module
+    s = _get_settings()
+    meta_title = s.get("seo_meta_title") or "Cartozo.ai — AI-Powered Product Feed Optimization"
+    meta_desc = s.get("seo_meta_description") or "AI-powered optimization for your product titles and descriptions."
+    og_title = s.get("seo_og_title") or meta_title
+    og_desc = s.get("seo_og_description") or meta_desc
+    og_image = s.get("seo_og_image") or ""
+    og_site = s.get("seo_og_site_name") or "Cartozo.ai"
+    return HOMEPAGE_HTML.replace("{SEO_META_TITLE}", html_module.escape(meta_title)).replace(
+        "{SEO_META_DESCRIPTION}", html_module.escape(meta_desc)).replace(
+        "{SEO_OG_TITLE}", html_module.escape(og_title)).replace(
+        "{SEO_OG_DESCRIPTION}", html_module.escape(og_desc)).replace(
+        "{SEO_OG_IMAGE}", html_module.escape(og_image)).replace(
+        "{SEO_OG_SITE_NAME}", html_module.escape(og_site))
+
+
 @app.get("/", response_class=HTMLResponse)
 def homepage():
-    return HTMLResponse(content=HOMEPAGE_HTML)
+    return HTMLResponse(content=_build_homepage_html())
 
 
 @app.get("/upload", response_class=HTMLResponse)
@@ -3440,6 +3467,196 @@ async def admin_users_page(request: Request):
     </div>
 
     <script>
+    (function(){{
+        const t=document.getElementById("themeToggle");
+        if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\\u2600":"\\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
+    }})();
+    </script>
+    <script src="/static/page-transition.js"></script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin: SEO page
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/admin/seo")
+async def api_admin_seo(request: Request):
+    require_admin_http(request)
+    s = _get_settings()
+    return {
+        "seo_meta_title": s.get("seo_meta_title", ""),
+        "seo_meta_description": s.get("seo_meta_description", ""),
+        "seo_og_title": s.get("seo_og_title", ""),
+        "seo_og_description": s.get("seo_og_description", ""),
+        "seo_og_image": s.get("seo_og_image", ""),
+        "seo_og_site_name": s.get("seo_og_site_name", ""),
+    }
+
+
+@app.post("/api/admin/seo")
+async def api_admin_seo_save(request: Request):
+    require_admin_http(request)
+    data = await request.json()
+    from .db import get_db
+    from .services.db_repository import set_setting
+    with get_db() as db:
+        if "seo_meta_title" in data:
+            set_setting(db, "seo_meta_title", str(data["seo_meta_title"]))
+        if "seo_meta_description" in data:
+            set_setting(db, "seo_meta_description", str(data["seo_meta_description"]))
+        if "seo_og_title" in data:
+            set_setting(db, "seo_og_title", str(data["seo_og_title"]))
+        if "seo_og_description" in data:
+            set_setting(db, "seo_og_description", str(data["seo_og_description"]))
+        if "seo_og_image" in data:
+            set_setting(db, "seo_og_image", str(data["seo_og_image"]))
+        if "seo_og_site_name" in data:
+            set_setting(db, "seo_og_site_name", str(data["seo_og_site_name"]))
+    return JSONResponse({"ok": True})
+
+
+@app.get("/admin/seo", response_class=HTMLResponse)
+async def admin_seo_page(request: Request):
+    redir = require_admin_redirect(request, "/admin/seo")
+    if redir:
+        return redir
+
+    s = _get_settings()
+
+    html = f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+{GTM_HEAD}
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SEO &mdash; Cartozo.ai Admin</title>
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+    <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
+    <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
+    [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
+    [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
+    [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
+    [data-theme="light"] .nav-link:hover {{ color: #0f172a; }}
+    [data-theme="light"] .group-desc {{ color: rgba(15,23,42,0.6); }}
+    [data-theme="light"] input, [data-theme="light"] textarea {{ border-color: rgba(15,23,42,0.15); background: rgba(255,255,255,0.9); color: #0f172a; }}
+    [data-theme="light"] input:focus, [data-theme="light"] textarea:focus {{ border-color: rgba(15,23,42,0.3); }}
+    [data-theme="light"] .btn-primary {{ background: #0f172a; color: #fff; }}
+    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
+    .nav-logo img {{ height: 32px; }}
+    .nav-logo .logo-light {{ display: block; filter: brightness(0) invert(1); }}
+    .nav-logo .logo-dark {{ display: none; }}
+    [data-theme="light"] .nav-logo .logo-light {{ display: none; }}
+    [data-theme="light"] .nav-logo .logo-dark {{ display: block; filter: none; }}
+    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
+    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
+    .nav-link:hover {{ color: #fff; }}
+    .nav-link.active {{ color: #fff; }}
+    .theme-btn {{ display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
+    .theme-btn:hover {{ color: #fff; background: rgba(255,255,255,0.08); }}
+    [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
+    [data-theme="light"] .theme-btn:hover {{ color: #0f172a; background: rgba(15,23,42,0.06); }}
+
+    .container {{ max-width: 700px; margin: 48px auto; padding: 0 24px; }}
+    .title {{ font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; }}
+    .sub {{ color: rgba(255,255,255,0.5); font-size: 0.95rem; margin-bottom: 32px; }}
+    [data-theme="light"] .sub {{ color: rgba(15,23,42,0.5); }}
+
+    .group {{ margin-bottom: 28px; }}
+    .group-title {{ font-weight: 600; font-size: 1rem; margin-bottom: 8px; }}
+    .group-desc {{ font-size: 0.85rem; color: rgba(255,255,255,0.5); margin-bottom: 14px; line-height: 1.5; }}
+    input, textarea {{ width: 100%; padding: 12px 16px; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; }}
+    input:focus, textarea:focus {{ outline: none; border-color: rgba(255,255,255,0.3); }}
+    textarea {{ min-height: 100px; resize: vertical; }}
+
+    .btn {{ padding: 12px 24px; font-size: 0.9rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s; }}
+    .btn-primary {{ background: #fff; color: #000; }}
+    .btn-primary:hover {{ opacity: 0.9; }}
+    .save-msg {{ display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; font-size: 0.85rem; color: #f97316; opacity: 0; transition: opacity 0.3s; }}
+    .save-msg.show {{ opacity: 1; }}
+
+    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 32px auto; }} }}
+    </style>
+</head>
+<body>
+{GTM_BODY}
+    <nav class="nav">
+        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
+        <div class="nav-links">
+            <a href="/upload" class="nav-link">Optimize Feed</a>
+            {_admin_nav_links(active="seo", user_role="admin")}
+            <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
+            <a href="/logout" class="nav-link">Log out</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1 class="title">SEO Settings</h1>
+        <p class="sub">Edit meta tags for search engines and social sharing. Applied to the homepage.</p>
+
+        <div class="group">
+            <div class="group-title">Meta Title</div>
+            <p class="group-desc">Page title for search results (recommended 50–60 chars).</p>
+            <input type="text" id="seo_meta_title" placeholder="Cartozo.ai — AI-Powered Product Feed Optimization" value="{s.get("seo_meta_title", "").replace(chr(34), "&quot;")}" maxlength="120" />
+        </div>
+
+        <div class="group">
+            <div class="group-title">Meta Description</div>
+            <p class="group-desc">Description for search results (recommended 150–160 chars).</p>
+            <textarea id="seo_meta_description" placeholder="AI-powered optimization for your product titles..." maxlength="320">{s.get("seo_meta_description", "").replace("<", "&lt;").replace(">", "&gt;")}</textarea>
+        </div>
+
+        <div class="group">
+            <div class="group-title">Open Graph Title</div>
+            <p class="group-desc">Title when shared on Facebook, LinkedIn, etc.</p>
+            <input type="text" id="seo_og_title" placeholder="Same as Meta Title" value="{s.get("seo_og_title", "").replace(chr(34), "&quot;")}" maxlength="120" />
+        </div>
+
+        <div class="group">
+            <div class="group-title">Open Graph Description</div>
+            <p class="group-desc">Description when shared on social.</p>
+            <textarea id="seo_og_description" placeholder="Same as Meta Description" maxlength="320">{s.get("seo_og_description", "").replace("<", "&lt;").replace(">", "&gt;")}</textarea>
+        </div>
+
+        <div class="group">
+            <div class="group-title">Open Graph Image URL</div>
+            <p class="group-desc">Full URL to image for social sharing (e.g. https://cartozo.ai/assets/og-image.png). Recommended 1200×630px.</p>
+            <input type="url" id="seo_og_image" placeholder="https://..." value="{s.get("seo_og_image", "").replace(chr(34), "&quot;")}" />
+        </div>
+
+        <div class="group">
+            <div class="group-title">Site Name</div>
+            <p class="group-desc">Brand/site name for Open Graph.</p>
+            <input type="text" id="seo_og_site_name" placeholder="Cartozo.ai" value="{s.get("seo_og_site_name", "").replace(chr(34), "&quot;")}" maxlength="64" />
+        </div>
+
+        <div style="display:flex;align-items:center;">
+            <button class="btn btn-primary" onclick="saveSeo()">Save SEO settings</button>
+            <span id="seo-status" class="save-msg">&#10003; Saved</span>
+        </div>
+    </div>
+
+    <script>
+    async function saveSeo(){{
+        const data = {{
+            seo_meta_title: document.getElementById('seo_meta_title').value,
+            seo_meta_description: document.getElementById('seo_meta_description').value,
+            seo_og_title: document.getElementById('seo_og_title').value,
+            seo_og_description: document.getElementById('seo_og_description').value,
+            seo_og_image: document.getElementById('seo_og_image').value,
+            seo_og_site_name: document.getElementById('seo_og_site_name').value
+        }};
+        const resp = await fetch('/api/admin/seo', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(data) }});
+        if (resp.ok) {{
+            const el = document.getElementById('seo-status');
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 2500);
+        }}
+    }}
     (function(){{
         const t=document.getElementById("themeToggle");
         if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\\u2600":"\\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
