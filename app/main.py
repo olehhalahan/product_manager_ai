@@ -1430,35 +1430,42 @@ async def run_processing(
     mappings_json: str = Form(...),
 ):
     require_login_http(request)  # Returns 401 JSON for fetch
-    from .db import get_db
-    from .services.db_repository import delete_pending_upload
-    with get_db() as db:
-        pending = delete_pending_upload(db, upload_id)
-    if not pending:
-        raise HTTPException(status_code=400, detail="Upload session expired.")
+    try:
+        from .db import get_db
+        from .services.db_repository import delete_pending_upload
+        with get_db() as db:
+            pending = delete_pending_upload(db, upload_id)
+        if not pending:
+            raise HTTPException(status_code=400, detail="Upload session expired.")
 
-    custom_mapping: dict = json.loads(mappings_json)
-    records = pending["records"]
-    opt_set = set(optimize_fields.split(","))
+        custom_mapping: dict = json.loads(mappings_json)
+        records = pending["records"]
+        opt_set = set(optimize_fields.split(","))
 
-    batch_id = str(uuid.uuid4())
-    normalized_products: List[NormalizedProduct] = normalize_records(records, custom_mapping=custom_mapping)
+        batch_id = str(uuid.uuid4())
+        normalized_products: List[NormalizedProduct] = normalize_records(records, custom_mapping=custom_mapping)
 
-    actions = decide_actions_for_products(normalized_products, mode=mode)
-    storage.create_batch(batch_id=batch_id, products=normalized_products, actions=actions, product_type=product_type)
+        actions = decide_actions_for_products(normalized_products, mode=mode)
+        storage.create_batch(batch_id=batch_id, products=normalized_products, actions=actions, product_type=product_type)
 
-    if target_language:
-        storage.default_target_language = target_language
-    elif mode == "translate":
-        storage.default_target_language = "en"
+        if target_language:
+            storage.default_target_language = target_language
+        elif mode == "translate":
+            storage.default_target_language = "en"
 
-    # Pass current prompts to AI provider
-    s = _get_settings()
-    storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
+        # Pass current prompts to AI provider
+        s = _get_settings()
+        storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
 
-    storage.process_batch_synchronously(batch_id, optimize_fields=opt_set)
+        storage.process_batch_synchronously(batch_id, optimize_fields=opt_set)
 
-    return {"batch_id": batch_id}
+        return {"batch_id": batch_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.exception("batches/run failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
 
 
 def _build_processing_page(upload_id: str, mode: str, target_language: str, mappings_json: str, optimize_fields: str = "title,description", product_type: str = "standard", user_role: str = "customer") -> str:
