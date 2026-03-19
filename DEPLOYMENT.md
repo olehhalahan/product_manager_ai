@@ -15,6 +15,7 @@ For production, set these **environment variables** in your hosting platform (Di
 | `GOOGLE_CLIENT_SECRET` | Yes | From same credentials |
 | `DEPLOY_URL` | Yes | `https://cartozo.ai` |
 | `SESSION_SECRET` | Yes | Random string, 32+ chars |
+| `GTM_CONTAINER_ID` | No | GTM container (e.g. `GTM-XXXXXX`). In GTM: Google Tag / GA4 Config, Trigger: All Pages |
 
 **SQLite (default):** No setup needed. Database file is created at `data/app.db` on first run. Ideal for DigitalOcean Droplet (single server).
 

@@ -38,19 +38,24 @@ from datetime import datetime, timezone
 
 app = FastAPI(title="Product Content Optimizer", docs_url=None)
 
-# Favicon + Google tag - inject in page headers (gtag in head for reliable tracking)
-GTM_HEAD = """    <link rel="icon" href="/assets/favicon.png" type="image/png" />
+# Favicon + GTM container only (GA4 via GTM: Google Tag / GA4 Config, Trigger: All Pages)
+import os as _os
+_GTM_ID = _os.getenv("GTM_CONTAINER_ID", "")
+_GTM_HEAD = f"""    <link rel="icon" href="/assets/favicon.png" type="image/png" />
     <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D410FQ1NZB"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-D410FQ1NZB');
-    </script>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':
+new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i;f.parentNode.insertBefore(j,f);}})(window,document,'script','dataLayer','{_GTM_ID}');</script>
+    <!-- End Google Tag Manager -->
+""" if _GTM_ID else """    <link rel="icon" href="/assets/favicon.png" type="image/png" />
+    <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
 """
-GTM_BODY = ""
+_GTM_BODY = f"""    <!-- Google Tag Manager (noscript) -->
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id={_GTM_ID}" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <!-- End Google Tag Manager (noscript) -->
+""" if _GTM_ID else ""
+GTM_HEAD = _GTM_HEAD
+GTM_BODY = _GTM_BODY
 app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
 
 
@@ -62,8 +67,6 @@ def startup():
 
 
 storage = PostgresStorage()
-
-import os as _os
 
 _PROJECT_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _DATA_DIR = _os.path.join(_PROJECT_ROOT, "data")
@@ -243,16 +246,7 @@ def _admin_nav_links(active: str = "", user_role: str = "customer") -> str:
 HOMEPAGE_HTML = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-    <link rel="icon" href="/assets/favicon.png" type="image/png" />
-    <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D410FQ1NZB"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-D410FQ1NZB');
-    </script>
+{GTM_HEAD}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{SEO_META_TITLE}</title>
@@ -1311,7 +1305,8 @@ def _build_homepage_html() -> str:
     og_desc = s.get("seo_og_description") or meta_desc
     og_image = s.get("seo_og_image") or ""
     og_site = s.get("seo_og_site_name") or "Cartozo.ai"
-    return HOMEPAGE_HTML.replace("{SEO_META_TITLE}", html_module.escape(meta_title)).replace(
+    return HOMEPAGE_HTML.replace("{GTM_HEAD}", GTM_HEAD).replace(
+        "{SEO_META_TITLE}", html_module.escape(meta_title)).replace(
         "{SEO_META_DESCRIPTION}", html_module.escape(meta_desc)).replace(
         "{SEO_OG_TITLE}", html_module.escape(og_title)).replace(
         "{SEO_OG_DESCRIPTION}", html_module.escape(og_desc)).replace(
