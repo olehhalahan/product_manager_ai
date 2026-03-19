@@ -7,8 +7,8 @@ import re
 import csv as csv_module
 from typing import Tuple
 
-# Max file size (bytes) - 10MB
-MAX_CSV_SIZE = 10 * 1024 * 1024
+# Max file size (bytes) - 40MB
+MAX_CSV_SIZE = 40 * 1024 * 1024
 
 # Max cell length - prevents huge single cells
 MAX_CELL_LENGTH = 50000

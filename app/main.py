@@ -119,9 +119,8 @@ async def login_page(request: Request):
     if request.session.get("user"):
         next_url = request.query_params.get("next", "/upload")
         return RedirectResponse(url=next_url, status_code=302)
-    import os
-    has_google = bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"))
-    has_apple = bool(os.getenv("APPLE_CLIENT_ID") and os.getenv("APPLE_KEY_ID") and os.getenv("APPLE_TEAM_ID") and os.getenv("APPLE_PRIVATE_KEY"))
+    has_google = bool(_os.getenv("GOOGLE_CLIENT_ID") and _os.getenv("GOOGLE_CLIENT_SECRET"))
+    has_apple = bool(_os.getenv("APPLE_CLIENT_ID") and _os.getenv("APPLE_KEY_ID") and _os.getenv("APPLE_TEAM_ID") and _os.getenv("APPLE_PRIVATE_KEY"))
     next_url = request.query_params.get("next", "/upload")
     return HTMLResponse(content=_build_login_page(next_url=next_url, has_google=has_google, has_apple=has_apple, request_host=request.headers.get("host", "")))
 
@@ -137,7 +136,7 @@ async def auth_google(request: Request):
     except Exception:
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
     # Use DEPLOY_URL when behind reverse proxy so redirect_uri matches Google Console
-    deploy_url = (os.getenv("DEPLOY_URL") or "").rstrip("/")
+    deploy_url = (_os.getenv("DEPLOY_URL") or "").rstrip("/")
     if deploy_url:
         redirect_uri = f"{deploy_url}/auth/google/callback"
     else:
@@ -209,8 +208,7 @@ async def auth_apple_callback(request: Request):
 @app.get("/auth/dev")
 async def auth_dev(request: Request):
     """Dev bypass: create fake session when OAuth not configured (for local testing)."""
-    import os
-    if not (os.getenv("GOOGLE_CLIENT_ID") or os.getenv("APPLE_CLIENT_ID")):
+    if not (_os.getenv("GOOGLE_CLIENT_ID") or _os.getenv("APPLE_CLIENT_ID")):
         next_url = request.query_params.get("next", "/upload")
         email = "oleh.halahan@zanzarra.com"
         user = {
@@ -928,9 +926,9 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
     # Dev bypass when OAuth not configured (for local testing only)
     if not providers:
         # In production (DEPLOY_URL set or cartozo.ai host), never show dev mode
-        deploy_url = os.getenv("DEPLOY_URL", "")
+        deploy_url = _os.getenv("DEPLOY_URL", "")
         is_production = bool(deploy_url) or (request_host and "cartozo.ai" in request_host.lower())
-        dev_bypass = not is_production and os.getenv("AUTH_DEV_BYPASS", "1").lower() in ("1", "true", "yes")
+        dev_bypass = not is_production and _os.getenv("AUTH_DEV_BYPASS", "1").lower() in ("1", "true", "yes")
         if dev_bypass:
             providers.append((f'<a href="/auth/dev{next_param}" class="auth-btn auth-google">Continue (dev mode)</a>', True))
         else:
