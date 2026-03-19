@@ -1,6 +1,8 @@
 from dotenv import load_dotenv
 from pathlib import Path
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+_root = Path(__file__).resolve().parent.parent
+load_dotenv(_root / ".env")
+load_dotenv(_root / ".env.local")  # local overrides (gitignored)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Query, Request
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse

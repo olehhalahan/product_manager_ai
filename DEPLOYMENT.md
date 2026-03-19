@@ -1,5 +1,11 @@
 # Deployment (cartozo.ai)
 
+**Branching:** See [BRANCHING.md](BRANCHING.md). Deploy from `live` branch.
+
+**Config:** Local dev uses `.env` + `.env.local` (see `.env.local.example`). Production uses env vars in hosting UI.
+
+---
+
 For production, set these **environment variables** in your hosting platform (DigitalOcean Droplet, Railway, Render, etc.):
 
 | Variable | Required | Description |
