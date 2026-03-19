@@ -38,22 +38,24 @@ from datetime import datetime, timezone
 
 app = FastAPI(title="Product Content Optimizer", docs_url=None)
 
-# Favicon + GTM container only (GA4 via GTM: Google Tag / GA4 Config, Trigger: All Pages)
+# Favicon + GTM container (GA4 via GTM: Google Tag / GA4 Config, Trigger: All Pages)
 import os as _os
-_GTM_ID = _os.getenv("GTM_CONTAINER_ID", "")
+_GTM_ID = _os.getenv("GTM_CONTAINER_ID", "GTM-W25B668S")
 _GTM_HEAD = f"""    <link rel="icon" href="/assets/favicon.png" type="image/png" />
     <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
     <!-- Google Tag Manager -->
     <script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':
-new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i;f.parentNode.insertBefore(j,f);}})(window,document,'script','dataLayer','{_GTM_ID}');</script>
+new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+}})(window,document,'script','dataLayer','{_GTM_ID}');</script>
     <!-- End Google Tag Manager -->
-""" if _GTM_ID else """    <link rel="icon" href="/assets/favicon.png" type="image/png" />
-    <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
 """
 _GTM_BODY = f"""    <!-- Google Tag Manager (noscript) -->
-    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id={_GTM_ID}" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id={_GTM_ID}"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- End Google Tag Manager (noscript) -->
-""" if _GTM_ID else ""
+"""
 GTM_HEAD = _GTM_HEAD
 GTM_BODY = _GTM_BODY
 app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
