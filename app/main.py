@@ -36,19 +36,19 @@ from datetime import datetime, timezone
 
 app = FastAPI(title="Product Content Optimizer", docs_url=None)
 
-# Favicon + Google tag - inject in all page headers (scripts in hidden div to avoid visual display)
+# Favicon + Google tag - inject in page headers (gtag in head for reliable tracking)
 GTM_HEAD = """    <link rel="icon" href="/assets/favicon.png" type="image/png" />
     <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
-"""
-GTM_BODY = """    <div style="display:none!important" aria-hidden="true"><!-- Google tag (gtag.js) -->
+    <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-D410FQ1NZB"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
       gtag('config', 'G-D410FQ1NZB');
-    </script></div>
+    </script>
 """
+GTM_BODY = ""
 app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
 
 
@@ -249,6 +249,14 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
 <head>
     <link rel="icon" href="/assets/favicon.png" type="image/png" />
     <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D410FQ1NZB"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-D410FQ1NZB');
+    </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cartozo.ai — AI-Powered Product Feed Optimization</title>
