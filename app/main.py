@@ -18,7 +18,7 @@ from .services.csv_security import validate_csv_content
 from .services.normalizer import normalize_records, guess_mapping, INTERNAL_FIELDS
 from .services.rule_engine import decide_actions_for_products
 from .services.exporter import generate_result_csv
-from .services.storage import InMemoryStorage
+from .services.postgres_storage import PostgresStorage
 from .auth import (
     get_session_secret,
     get_oauth,
@@ -51,34 +51,15 @@ GTM_BODY = """    <div style="display:none!important" aria-hidden="true"><!-- Go
 """
 app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
 
-storage = InMemoryStorage()
 
-# Settings storage (in-memory, would be DB in production)
-_settings: dict = {
-    "openai_api_key": "",
-    "prompt_title": """You are an SEO expert. Optimize the following product title for search engines.
-Keep it under 120 characters. Include relevant keywords. Use a pipe separator for secondary phrases.
+@app.on_event("startup")
+def startup():
+    """Create database tables on startup."""
+    from .db import init_db
+    init_db()
 
-Original title: {title}
-Category: {category}
-Brand: {brand}
-Attributes: {attributes}
 
-Return only the optimized title, nothing else.""",
-    "prompt_description": """You are an e-commerce copywriter. Write a compelling product description.
-Keep it 2-3 paragraphs. Focus on benefits and features. Do not mention price.
-
-Product: {title}
-Category: {category}
-Brand: {brand}
-Attributes: {attributes}
-Original description: {description}
-
-Return only the description, nothing else.""",
-}
-
-# Temp store for uploaded CSV data waiting for column mapping confirmation.
-_pending_uploads: dict = {}
+storage = PostgresStorage()
 
 import os as _os
 
@@ -86,54 +67,28 @@ _PROJECT_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _DATA_DIR = _os.path.join(_PROJECT_ROOT, "data")
 _os.makedirs(_DATA_DIR, exist_ok=True)
 
-_FEEDBACK_FILE = _os.path.join(_DATA_DIR, "feedback.json")
-_USERS_FILE = _os.path.join(_DATA_DIR, "users.json")
+
+def _get_db_session():
+    """Yield a DB session for the current request."""
+    from .db import get_db
+    with get_db() as db:
+        yield db
 
 
-def _load_json(path: str, default):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return default
-
-
-def _save_json(path: str, data):
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    _os.replace(tmp, path)
-
-
-_feedback_store: list = _load_json(_FEEDBACK_FILE, [])
-_users_db: dict = _load_json(_USERS_FILE, {})
-
-
-def _save_feedback():
-    _save_json(_FEEDBACK_FILE, _feedback_store)
-
-
-def _save_users():
-    _save_json(_USERS_FILE, _users_db)
+def _get_settings():
+    """Load settings from DB."""
+    from .db import get_db
+    from .services.db_repository import get_settings as db_get_settings
+    with get_db() as db:
+        return db_get_settings(db)
 
 
 def _track_user(user: dict):
-    """Record user in tracking DB on login and persist to disk."""
-    email = user.get("email", "")
-    now = datetime.now(timezone.utc).isoformat()
-    if email not in _users_db:
-        _users_db[email] = {
-            "name": user.get("name", ""),
-            "email": email,
-            "provider": user.get("provider", ""),
-            "role": user.get("role", "customer"),
-            "first_seen": now,
-            "last_login": now,
-        }
-    else:
-        _users_db[email]["last_login"] = now
-        _users_db[email]["name"] = user.get("name", _users_db[email]["name"])
-    _save_users()
+    """Record user in DB on login."""
+    from .db import get_db
+    from .services.db_repository import upsert_user
+    with get_db() as db:
+        upsert_user(db, user)
 app.mount("/static", StaticFiles(directory=_os.path.join(_PROJECT_ROOT, "static")), name="static")
 app.mount("/assets", StaticFiles(directory=_os.path.join(_PROJECT_ROOT, "assets")), name="assets")
 
@@ -1386,12 +1341,10 @@ async def preview_csv(
     sample_rows = records[:5]
 
     upload_id = str(uuid.uuid4())
-    _pending_uploads[upload_id] = {
-        "records": records,
-        "mode": mode,
-        "target_language": target_language or "",
-        "product_type": product_type,
-    }
+    from .db import get_db
+    from .services.db_repository import save_pending_upload
+    with get_db() as db:
+        save_pending_upload(db, upload_id, records, mode, target_language or "", product_type)
 
     user = get_current_user(request)
     role = user.get("role", "customer") if user else "customer"
@@ -1421,7 +1374,10 @@ async def confirm_mapping(
     redir = require_login_redirect(request, "/upload")
     if redir:
         return redir
-    pending = _pending_uploads.get(upload_id)
+    from .db import get_db
+    from .services.db_repository import get_pending_upload
+    with get_db() as db:
+        pending = get_pending_upload(db, upload_id)
     if not pending:
         raise HTTPException(status_code=400, detail="Upload session expired. Please re-upload your CSV.")
 
@@ -1441,7 +1397,10 @@ async def run_processing(
     mappings_json: str = Form(...),
 ):
     require_login_http(request)  # Returns 401 JSON for fetch
-    pending = _pending_uploads.pop(upload_id, None)
+    from .db import get_db
+    from .services.db_repository import delete_pending_upload
+    with get_db() as db:
+        pending = delete_pending_upload(db, upload_id)
     if not pending:
         raise HTTPException(status_code=400, detail="Upload session expired.")
 
@@ -1461,7 +1420,8 @@ async def run_processing(
         storage.default_target_language = "en"
 
     # Pass current prompts to AI provider
-    storage._ai.set_prompts(_settings["prompt_title"], _settings["prompt_description"])
+    s = _get_settings()
+    storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
 
     storage.process_batch_synchronously(batch_id, optimize_fields=opt_set)
 
@@ -2910,15 +2870,10 @@ async def submit_feedback(request: Request, data: dict):
     safe_text = re.sub(r"[<>\[\]{}\\\"`]", "", text)
     safe_text = re.sub(r"<[^>]*>", "", safe_text)[:500]
     user = get_current_user(request)
-    _feedback_store.append({
-        "rating": int(rating),
-        "text": safe_text,
-        "batch_id": batch_id,
-        "email": user.get("email", "") if user else "",
-        "name": user.get("name", "") if user else "",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    })
-    _save_feedback()
+    from .db import get_db
+    from .services.db_repository import add_feedback
+    with get_db() as db:
+        add_feedback(db, int(rating), safe_text, batch_id, user.get("email", "") if user else "", user.get("name", "") if user else "")
     return {"status": "ok"}
 
 
@@ -2936,9 +2891,10 @@ async def settings_page(request: Request):
     redir = require_admin_redirect(request, "/settings")
     if redir:
         return redir
+    s = _get_settings()
     api_key_masked = ""
-    if _settings["openai_api_key"]:
-        key = _settings["openai_api_key"]
+    if s.get("openai_api_key"):
+        key = s["openai_api_key"]
         api_key_masked = key[:7] + "..." + key[-4:] if len(key) > 15 else "••••••••"
 
     html = f"""<!DOCTYPE html>
@@ -3055,7 +3011,7 @@ async def settings_page(request: Request):
                     This prompt is sent to the AI when optimizing product titles.
                     Variables: <code>{{{{title}}}}</code>, <code>{{{{category}}}}</code>, <code>{{{{brand}}}}</code>, <code>{{{{attributes}}}}</code>
                 </p>
-                <textarea id="prompt_title">{_settings["prompt_title"]}</textarea>
+                <textarea id="prompt_title">{s["prompt_title"]}</textarea>
             </div>
 
             <div class="group">
@@ -3064,7 +3020,7 @@ async def settings_page(request: Request):
                     This prompt is sent to the AI when generating product descriptions.
                     Variables: <code>{{{{title}}}}</code>, <code>{{{{category}}}}</code>, <code>{{{{brand}}}}</code>, <code>{{{{attributes}}}}</code>, <code>{{{{description}}}}</code>
                 </p>
-                <textarea id="prompt_description">{_settings["prompt_description"]}</textarea>
+                <textarea id="prompt_description">{s["prompt_description"]}</textarea>
             </div>
 
             <div style="display:flex;align-items:center;">
@@ -3133,31 +3089,40 @@ async def settings_page(request: Request):
 @app.post("/api/settings/prompts")
 async def save_prompts(request: Request, data: dict):
     require_admin_http(request)
-    if "prompt_title" in data:
-        _settings["prompt_title"] = data["prompt_title"]
-    if "prompt_description" in data:
-        _settings["prompt_description"] = data["prompt_description"]
-    storage._ai.set_prompts(_settings["prompt_title"], _settings["prompt_description"])
+    from .db import get_db
+    from .services.db_repository import set_setting
+    with get_db() as db:
+        if "prompt_title" in data:
+            set_setting(db, "prompt_title", data["prompt_title"])
+        if "prompt_description" in data:
+            set_setting(db, "prompt_description", data["prompt_description"])
+    s = _get_settings()
+    storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
     return {"status": "ok"}
 
 
 @app.post("/api/settings/apikey")
 async def save_api_key(request: Request, data: dict):
     require_admin_http(request)
+    from .db import get_db
+    from .services.db_repository import set_setting
     if "openai_api_key" in data:
-        _settings["openai_api_key"] = data["openai_api_key"]
+        with get_db() as db:
+            set_setting(db, "openai_api_key", data["openai_api_key"])
         storage._ai.set_api_key(data["openai_api_key"])
-        storage._ai.set_prompts(_settings["prompt_title"], _settings["prompt_description"])
+        s = _get_settings()
+        storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
     return {"status": "ok"}
 
 
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_admin_http(request)
+    s = _get_settings()
     return {
-        "prompt_title": _settings["prompt_title"],
-        "prompt_description": _settings["prompt_description"],
-        "has_api_key": bool(_settings["openai_api_key"]),
+        "prompt_title": s["prompt_title"],
+        "prompt_description": s["prompt_description"],
+        "has_api_key": bool(s.get("openai_api_key")),
     }
 
 
@@ -3181,13 +3146,21 @@ async def api_me(request: Request):
 @app.get("/api/admin/feedback")
 async def api_admin_feedback(request: Request):
     require_admin_http(request)
-    return {"feedback": list(reversed(_feedback_store))}
+    from .db import get_db
+    from .services.db_repository import get_all_feedback
+    with get_db() as db:
+        feedback_list = get_all_feedback(db)
+    return {"feedback": feedback_list}
 
 
 @app.get("/api/admin/users")
 async def api_admin_users(request: Request):
     require_admin_http(request)
-    return {"users": list(_users_db.values()), "total": len(_users_db)}
+    from .db import get_db
+    from .services.db_repository import get_all_users
+    with get_db() as db:
+        users_list = get_all_users(db)
+    return {"users": users_list, "total": len(users_list)}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3200,8 +3173,12 @@ async def admin_feedback_page(request: Request):
     if redir:
         return redir
 
+    from .db import get_db
+    from .services.db_repository import get_all_feedback
+    with get_db() as db:
+        feedback_list = get_all_feedback(db)
     rows_html = ""
-    for i, fb in enumerate(reversed(_feedback_store)):
+    for i, fb in enumerate(feedback_list):
         stars = "&#9733;" * fb.get("rating", 0) + "&#9734;" * (5 - fb.get("rating", 0))
         ts = fb.get("timestamp", "")[:19].replace("T", " ") if fb.get("timestamp") else "—"
         import html as _html
@@ -3218,8 +3195,8 @@ async def admin_feedback_page(request: Request):
             <td class="ts">{ts}</td>
         </tr>"""
 
-    total = len(_feedback_store)
-    avg = round(sum(f.get("rating", 0) for f in _feedback_store) / total, 1) if total else 0
+    total = len(feedback_list)
+    avg = round(sum(f.get("rating", 0) for f in feedback_list) / total, 1) if total else 0
 
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -3333,7 +3310,10 @@ async def admin_users_page(request: Request):
         return redir
 
     import html as _html
-    users_list = sorted(_users_db.values(), key=lambda u: u.get("last_login", ""), reverse=True)
+    from .db import get_db
+    from .services.db_repository import get_all_users
+    with get_db() as db:
+        users_list = get_all_users(db)
     rows_html = ""
     for i, u in enumerate(users_list):
         name = _html.escape(u.get("name", "—"))
