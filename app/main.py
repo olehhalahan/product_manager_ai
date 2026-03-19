@@ -232,15 +232,10 @@ async def logout(request: Request):
 
 
 def _admin_nav_links(active: str = "", user_role: str = "customer") -> str:
-    """Generate admin-only nav links (Feedback, Users, Settings, SEO) if user is admin."""
+    """Generate admin-only nav link (Settings) if user is admin."""
     if user_role != "admin":
         return ""
-    links = []
-    links.append(f'<a href="/admin/feedback" class="nav-link{" active" if active == "feedback" else ""}">Feedback</a>')
-    links.append(f'<a href="/admin/users" class="nav-link{" active" if active == "users" else ""}">Users</a>')
-    links.append(f'<a href="/settings" class="nav-link{" active" if active == "settings" else ""}">Settings</a>')
-    links.append(f'<a href="/admin/seo" class="nav-link{" active" if active == "seo" else ""}">SEO</a>')
-    return "\n            ".join(links)
+    return f'<a href="/settings" class="nav-link{" active" if active == "settings" else ""}">Settings</a>'
 
 
 HOMEPAGE_HTML = """<!DOCTYPE html>
@@ -2937,6 +2932,45 @@ async def settings_page(request: Request):
         key = s["openai_api_key"]
         api_key_masked = key[:7] + "..." + key[-4:] if len(key) > 15 else "••••••••"
 
+    import html as _html
+    from .db import get_db
+    from .services.db_repository import get_all_feedback, get_all_users
+
+    with get_db() as db:
+        feedback_list = get_all_feedback(db)
+        users_list = get_all_users(db)
+
+    feedback_rows = ""
+    for i, fb in enumerate(feedback_list):
+        stars = "&#9733;" * fb.get("rating", 0) + "&#9734;" * (5 - fb.get("rating", 0))
+        ts = fb.get("timestamp", "")[:19].replace("T", " ") if fb.get("timestamp") else "—"
+        text = _html.escape(fb.get("text", ""))[:200]
+        email = _html.escape(fb.get("email", "—"))
+        name = _html.escape(fb.get("name", ""))
+        batch = _html.escape(fb.get("batch_id", ""))
+        feedback_rows += f"""<tr><td>{i + 1}</td><td class="stars">{stars}</td><td class="text-cell">{text}</td><td>{name}<br><span class="email">{email}</span></td><td class="mono">{batch}</td><td class="ts">{ts}</td></tr>"""
+
+    users_rows = ""
+    for i, u in enumerate(users_list):
+        name = _html.escape(u.get("name", "—"))
+        email = _html.escape(u.get("email", ""))
+        provider = _html.escape(u.get("provider", ""))
+        role = u.get("role", "customer")
+        role_badge = '<span class="badge badge-admin">admin</span>' if role == "admin" else '<span class="badge badge-customer">customer</span>'
+        last_login = u.get("last_login", "")[:19].replace("T", " ") if u.get("last_login") else "—"
+        first_seen = u.get("first_seen", "")[:19].replace("T", " ") if u.get("first_seen") else "—"
+        users_rows += f"""<tr><td>{i + 1}</td><td><strong>{name}</strong><br><span class="email">{email}</span></td><td>{provider}</td><td>{role_badge}</td><td class="ts">{first_seen}</td><td class="ts">{last_login}</td></tr>"""
+
+    feedback_total = len(feedback_list)
+    feedback_avg = round(sum(f.get("rating", 0) for f in feedback_list) / feedback_total, 1) if feedback_total else 0
+    users_total = len(users_list)
+    admins = sum(1 for u in users_list if u.get("role") == "admin")
+    customers = users_total - admins
+
+    tab_param = request.query_params.get("tab", "prompts")
+    if tab_param not in ("prompts", "api", "seo", "users", "feedback"):
+        tab_param = "prompts"
+
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -2985,7 +3019,7 @@ async def settings_page(request: Request):
     .nav-link:hover {{ color: #fff; }}
     .nav-link.active {{ color: #fff; }}
 
-    .container {{ max-width: 700px; margin: 48px auto; padding: 0 24px; }}
+    .container {{ max-width: 1100px; margin: 48px auto; padding: 0 24px; }}
     .title {{ font-size: 1.75rem; font-weight: 600; margin-bottom: 32px; letter-spacing: -0.02em; }}
 
     .tabs {{ display: flex; gap: 8px; margin-bottom: 32px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0; }}
@@ -3022,7 +3056,38 @@ async def settings_page(request: Request):
     .note-box p {{ font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 0; line-height: 1.5; }}
     .note-box strong {{ color: rgba(255,255,255,0.8); }}
 
-    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 32px auto; }} }}
+    .stats {{ display: flex; gap: 24px; margin-bottom: 24px; flex-wrap: wrap; }}
+    .stat {{ padding: 20px 28px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); flex: 1; min-width: 120px; }}
+    [data-theme="light"] .stat {{ background: rgba(255,255,255,0.8); border-color: rgba(15,23,42,0.08); }}
+    .stat-val {{ font-size: 1.5rem; font-weight: 700; }}
+    .stat-label {{ font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 4px; }}
+    [data-theme="light"] .stat-label {{ color: rgba(15,23,42,0.5); }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 0.88rem; }}
+    th {{ text-align: left; padding: 12px 16px; font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.1); }}
+    [data-theme="light"] th {{ color: rgba(15,23,42,0.5); border-bottom-color: rgba(15,23,42,0.1); }}
+    td {{ padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }}
+    [data-theme="light"] td {{ border-bottom-color: rgba(15,23,42,0.06); }}
+    tr:hover td {{ background: rgba(255,255,255,0.02); }}
+    [data-theme="light"] tr:hover td {{ background: rgba(15,23,42,0.02); }}
+    .stars {{ color: #f59e0b; font-size: 1rem; white-space: nowrap; }}
+    .text-cell {{ max-width: 300px; word-break: break-word; }}
+    .email {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); }}
+    [data-theme="light"] .email {{ color: rgba(15,23,42,0.4); }}
+    .mono {{ font-family: monospace; font-size: 0.78rem; }}
+    .ts {{ font-size: 0.78rem; white-space: nowrap; color: rgba(255,255,255,0.5); }}
+    [data-theme="light"] .ts {{ color: rgba(15,23,42,0.5); }}
+    .badge {{ display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }}
+    .badge-admin {{ background: rgba(249,115,22,0.15); color: #f97316; }}
+    .badge-customer {{ background: rgba(99,102,241,0.15); color: #818cf8; }}
+    [data-theme="light"] .badge-admin {{ background: rgba(249,115,22,0.1); }}
+    [data-theme="light"] .badge-customer {{ background: rgba(99,102,241,0.1); }}
+    .empty {{ text-align: center; padding: 60px 24px; color: rgba(255,255,255,0.3); font-size: 1rem; }}
+    [data-theme="light"] .empty {{ color: rgba(15,23,42,0.3); }}
+    input[type="text"], input[type="url"] {{ width: 100%; padding: 12px 16px; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; }}
+    input[type="text"]:focus, input[type="url"]:focus {{ outline: none; border-color: rgba(255,255,255,0.3); }}
+    [data-theme="light"] input[type="text"], [data-theme="light"] input[type="url"] {{ border-color: rgba(15,23,42,0.15); background: rgba(255,255,255,0.9); color: #0f172a; }}
+    [data-theme="light"] input[type="text"]:focus, [data-theme="light"] input[type="url"]:focus {{ border-color: rgba(15,23,42,0.3); }}
+    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 32px auto; }} .stats {{ flex-direction: column; gap: 12px; }} }}
     </style>
 </head>
 <body>
@@ -3033,6 +3098,7 @@ async def settings_page(request: Request):
             <a href="/upload" class="nav-link">Optimize Feed</a>
             {_admin_nav_links(active="settings", user_role="admin")}
             <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
+            <a href="/logout" class="nav-link">Log out</a>
         </div>
     </nav>
 
@@ -3040,11 +3106,14 @@ async def settings_page(request: Request):
         <h1 class="title">Settings</h1>
 
         <div class="tabs">
-            <button class="tab active" data-tab="tab-prompts" onclick="switchTab('tab-prompts')">Prompts</button>
-            <button class="tab" data-tab="tab-api" onclick="switchTab('tab-api')">API Keys</button>
+            <button class="tab{' active' if tab_param == 'prompts' else ''}" data-tab="tab-prompts" onclick="switchTab('tab-prompts','prompts')">Prompts</button>
+            <button class="tab{' active' if tab_param == 'api' else ''}" data-tab="tab-api" onclick="switchTab('tab-api','api')">API Keys</button>
+            <button class="tab{' active' if tab_param == 'seo' else ''}" data-tab="tab-seo" onclick="switchTab('tab-seo','seo')">SEO</button>
+            <button class="tab{' active' if tab_param == 'users' else ''}" data-tab="tab-users" onclick="switchTab('tab-users','users')">Users</button>
+            <button class="tab{' active' if tab_param == 'feedback' else ''}" data-tab="tab-feedback" onclick="switchTab('tab-feedback','feedback')">Feedback</button>
         </div>
 
-        <div id="tab-prompts" class="tab-content active">
+        <div id="tab-prompts" class="tab-content{' active' if tab_param == 'prompts' else ''}">
             <div class="group">
                 <div class="group-title">Title Optimization Prompt</div>
                 <p class="group-desc">
@@ -3069,7 +3138,7 @@ async def settings_page(request: Request):
             </div>
         </div>
 
-        <div id="tab-api" class="tab-content">
+        <div id="tab-api" class="tab-content{' active' if tab_param == 'api' else ''}">
             <div class="group">
                 <div class="group-title">OpenAI API Key</div>
                 <p class="group-desc">
@@ -3092,14 +3161,78 @@ async def settings_page(request: Request):
                 <p><strong>Note:</strong> With an API key, the system uses OpenAI GPT-4o-mini for generation. Without one, a placeholder algorithm demonstrates the flow.</p>
             </div>
         </div>
+
+        <div id="tab-seo" class="tab-content{' active' if tab_param == 'seo' else ''}">
+            <p class="group-desc" style="margin-bottom:24px;">Edit meta tags for search engines and social sharing. Applied to the homepage.</p>
+            <div class="group">
+                <div class="group-title">Meta Title</div>
+                <p class="group-desc">Page title for search results (recommended 50–60 chars).</p>
+                <input type="text" id="seo_meta_title" placeholder="Cartozo.ai — AI-Powered Product Feed Optimization" value="{s.get("seo_meta_title", "").replace(chr(34), "&quot;")}" maxlength="120" />
+            </div>
+            <div class="group">
+                <div class="group-title">Meta Description</div>
+                <p class="group-desc">Description for search results (recommended 150–160 chars).</p>
+                <textarea id="seo_meta_description" placeholder="AI-powered optimization for your product titles..." maxlength="320">{s.get("seo_meta_description", "").replace("<", "&lt;").replace(">", "&gt;")}</textarea>
+            </div>
+            <div class="group">
+                <div class="group-title">Open Graph Title</div>
+                <p class="group-desc">Title when shared on Facebook, LinkedIn, etc.</p>
+                <input type="text" id="seo_og_title" placeholder="Same as Meta Title" value="{s.get("seo_og_title", "").replace(chr(34), "&quot;")}" maxlength="120" />
+            </div>
+            <div class="group">
+                <div class="group-title">Open Graph Description</div>
+                <p class="group-desc">Description when shared on social.</p>
+                <textarea id="seo_og_description" placeholder="Same as Meta Description" maxlength="320">{s.get("seo_og_description", "").replace("<", "&lt;").replace(">", "&gt;")}</textarea>
+            </div>
+            <div class="group">
+                <div class="group-title">Open Graph Image URL</div>
+                <p class="group-desc">Full URL to image for social sharing. Recommended 1200×630px.</p>
+                <input type="url" id="seo_og_image" placeholder="https://..." value="{s.get("seo_og_image", "").replace(chr(34), "&quot;")}" />
+            </div>
+            <div class="group">
+                <div class="group-title">Site Name</div>
+                <p class="group-desc">Brand/site name for Open Graph.</p>
+                <input type="text" id="seo_og_site_name" placeholder="Cartozo.ai" value="{s.get("seo_og_site_name", "").replace(chr(34), "&quot;")}" maxlength="64" />
+            </div>
+            <div style="display:flex;align-items:center;">
+                <button class="btn btn-primary" onclick="saveSeo()">Save SEO settings</button>
+                <span id="seo-status" class="save-msg">&#10003; Saved</span>
+            </div>
+        </div>
+
+        <div id="tab-users" class="tab-content{' active' if tab_param == 'users' else ''}">
+            <p class="group-desc" style="margin-bottom:24px;">{users_total} users have signed in</p>
+            <div class="stats">
+                <div class="stat"><div class="stat-val">{users_total}</div><div class="stat-label">Total users</div></div>
+                <div class="stat"><div class="stat-val">{admins}</div><div class="stat-label">Admins</div></div>
+                <div class="stat"><div class="stat-val">{customers}</div><div class="stat-label">Customers</div></div>
+            </div>
+            {"<table><thead><tr><th>#</th><th>User</th><th>Provider</th><th>Role</th><th>First seen</th><th>Last login</th></tr></thead><tbody>" + users_rows + "</tbody></table>" if users_total else '<div class="empty">No users have signed in yet.</div>'}
+        </div>
+
+        <div id="tab-feedback" class="tab-content{' active' if tab_param == 'feedback' else ''}">
+            <p class="group-desc" style="margin-bottom:24px;">{feedback_total} feedback entries collected</p>
+            <div class="stats">
+                <div class="stat"><div class="stat-val">{feedback_total}</div><div class="stat-label">Total responses</div></div>
+                <div class="stat"><div class="stat-val">{feedback_avg}</div><div class="stat-label">Average rating</div></div>
+                <div class="stat"><div class="stat-val">{"&#9733;" * round(feedback_avg) + "&#9734;" * (5 - round(feedback_avg)) if feedback_total else "—"}</div><div class="stat-label">Stars</div></div>
+            </div>
+            {"<table><thead><tr><th>#</th><th>Rating</th><th>Feedback</th><th>User</th><th>Batch</th><th>Date</th></tr></thead><tbody>" + feedback_rows + "</tbody></table>" if feedback_total else '<div class="empty">No feedback yet. Feedback will appear here as customers submit it.</div>'}
+        </div>
     </div>
 
     <script>
-    function switchTab(tabId){{
+    function switchTab(tabId, tabName){{
         document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
         document.querySelector('[data-tab="'+tabId+'"]').classList.add('active');
         document.getElementById(tabId).classList.add('active');
+        if(tabName) history.replaceState(null,'','/settings?tab='+tabName);
+    }}
+    async function saveSeo(){{
+        const data={{seo_meta_title:document.getElementById('seo_meta_title').value,seo_meta_description:document.getElementById('seo_meta_description').value,seo_og_title:document.getElementById('seo_og_title').value,seo_og_description:document.getElementById('seo_og_description').value,seo_og_image:document.getElementById('seo_og_image').value,seo_og_site_name:document.getElementById('seo_og_site_name').value}};
+        const resp=await fetch('/api/admin/seo',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});
+        if(resp.ok)showSaved('seo-status');
     }}
     async function savePrompts(){{
         const resp=await fetch('/api/settings/prompts',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{prompt_title:document.getElementById('prompt_title').value,prompt_description:document.getElementById('prompt_description').value}})}});
@@ -3216,135 +3349,11 @@ async def admin_feedback_page(request: Request):
     redir = require_admin_redirect(request, "/admin/feedback")
     if redir:
         return redir
-
-    from .db import get_db
-    from .services.db_repository import get_all_feedback
-    with get_db() as db:
-        feedback_list = get_all_feedback(db)
-    rows_html = ""
-    for i, fb in enumerate(feedback_list):
-        stars = "&#9733;" * fb.get("rating", 0) + "&#9734;" * (5 - fb.get("rating", 0))
-        ts = fb.get("timestamp", "")[:19].replace("T", " ") if fb.get("timestamp") else "—"
-        import html as _html
-        text = _html.escape(fb.get("text", ""))[:200]
-        email = _html.escape(fb.get("email", "—"))
-        name = _html.escape(fb.get("name", ""))
-        batch = _html.escape(fb.get("batch_id", ""))
-        rows_html += f"""<tr>
-            <td>{i + 1}</td>
-            <td class="stars">{stars}</td>
-            <td class="text-cell">{text}</td>
-            <td>{name}<br><span class="email">{email}</span></td>
-            <td class="mono">{batch}</td>
-            <td class="ts">{ts}</td>
-        </tr>"""
-
-    total = len(feedback_list)
-    avg = round(sum(f.get("rating", 0) for f in feedback_list) / total, 1) if total else 0
-
-    html = f"""<!DOCTYPE html>
-<html lang="en" data-theme="dark">
-<head>
-{GTM_HEAD}
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Feedback &mdash; Cartozo.ai Admin</title>
-    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
-    <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
-    <style>
-    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
-    [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
-
-    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
-    [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
-    .nav-logo img {{ height: 32px; }}
-    .nav-logo .logo-light {{ display: block; filter: brightness(0) invert(1); }}
-    .nav-logo .logo-dark {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-light {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-dark {{ display: block; filter: none; }}
-    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
-    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
-    .nav-link:hover {{ color: #fff; }}
-    .nav-link.active {{ color: #fff; }}
-    [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .nav-link:hover, [data-theme="light"] .nav-link.active {{ color: #0f172a; }}
-    .theme-btn {{ display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
-    .theme-btn:hover {{ color: #fff; background: rgba(255,255,255,0.08); }}
-    [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .theme-btn:hover {{ color: #0f172a; background: rgba(15,23,42,0.06); }}
-
-    .container {{ max-width: 1100px; margin: 48px auto; padding: 0 24px; }}
-    .page-title {{ font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; }}
-    .page-sub {{ color: rgba(255,255,255,0.5); font-size: 0.95rem; margin-bottom: 32px; }}
-    [data-theme="light"] .page-sub {{ color: rgba(15,23,42,0.5); }}
-
-    .stats {{ display: flex; gap: 24px; margin-bottom: 32px; }}
-    .stat {{ padding: 20px 28px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); flex: 1; }}
-    [data-theme="light"] .stat {{ background: rgba(255,255,255,0.8); border-color: rgba(15,23,42,0.08); }}
-    .stat-val {{ font-size: 1.75rem; font-weight: 700; }}
-    .stat-label {{ font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 4px; }}
-    [data-theme="light"] .stat-label {{ color: rgba(15,23,42,0.5); }}
-
-    table {{ width: 100%; border-collapse: collapse; font-size: 0.88rem; }}
-    th {{ text-align: left; padding: 12px 16px; font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.1); }}
-    [data-theme="light"] th {{ color: rgba(15,23,42,0.5); border-bottom-color: rgba(15,23,42,0.1); }}
-    td {{ padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }}
-    [data-theme="light"] td {{ border-bottom-color: rgba(15,23,42,0.06); }}
-    tr:hover td {{ background: rgba(255,255,255,0.02); }}
-    [data-theme="light"] tr:hover td {{ background: rgba(15,23,42,0.02); }}
-    .stars {{ color: #f59e0b; font-size: 1rem; white-space: nowrap; }}
-    .text-cell {{ max-width: 300px; word-break: break-word; }}
-    .email {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); }}
-    [data-theme="light"] .email {{ color: rgba(15,23,42,0.4); }}
-    .mono {{ font-family: monospace; font-size: 0.78rem; }}
-    .ts {{ font-size: 0.78rem; white-space: nowrap; color: rgba(255,255,255,0.5); }}
-    [data-theme="light"] .ts {{ color: rgba(15,23,42,0.5); }}
-    .empty {{ text-align: center; padding: 60px 24px; color: rgba(255,255,255,0.3); font-size: 1rem; }}
-    [data-theme="light"] .empty {{ color: rgba(15,23,42,0.3); }}
-
-    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 32px auto; }} .stats {{ flex-direction: column; gap: 12px; }} }}
-    </style>
-</head>
-<body>
-{GTM_BODY}
-    <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-        <div class="nav-links">
-            <a href="/upload" class="nav-link">Optimize Feed</a>
-            {_admin_nav_links(active="feedback", user_role="admin")}
-            <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-            <a href="/logout" class="nav-link">Log out</a>
-        </div>
-    </nav>
-
-    <div class="container">
-        <h1 class="page-title">Customer Feedback</h1>
-        <p class="page-sub">{total} feedback entries collected</p>
-
-        <div class="stats">
-            <div class="stat"><div class="stat-val">{total}</div><div class="stat-label">Total responses</div></div>
-            <div class="stat"><div class="stat-val">{avg}</div><div class="stat-label">Average rating</div></div>
-            <div class="stat"><div class="stat-val">{"&#9733;" * round(avg) + "&#9734;" * (5 - round(avg)) if total else "—"}</div><div class="stat-label">Stars</div></div>
-        </div>
-
-        {"<table><thead><tr><th>#</th><th>Rating</th><th>Feedback</th><th>User</th><th>Batch</th><th>Date</th></tr></thead><tbody>" + rows_html + "</tbody></table>" if total else '<div class="empty">No feedback yet. Feedback will appear here as customers submit it.</div>'}
-    </div>
-
-    <script>
-    (function(){{
-        const t=document.getElementById("themeToggle");
-        if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\\u2600":"\\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
-    }})();
-    </script>
-    <script src="/static/page-transition.js"></script>
-</body>
-</html>"""
-    return HTMLResponse(content=html)
+    return RedirectResponse(url="/settings?tab=feedback", status_code=302)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Admin: Users page
+# Admin: Users page (redirect to settings tab)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/admin/users", response_class=HTMLResponse)
@@ -3352,135 +3361,7 @@ async def admin_users_page(request: Request):
     redir = require_admin_redirect(request, "/admin/users")
     if redir:
         return redir
-
-    import html as _html
-    from .db import get_db
-    from .services.db_repository import get_all_users
-    with get_db() as db:
-        users_list = get_all_users(db)
-    rows_html = ""
-    for i, u in enumerate(users_list):
-        name = _html.escape(u.get("name", "—"))
-        email = _html.escape(u.get("email", ""))
-        provider = _html.escape(u.get("provider", ""))
-        role = u.get("role", "customer")
-        role_badge = '<span class="badge badge-admin">admin</span>' if role == "admin" else '<span class="badge badge-customer">customer</span>'
-        last_login = u.get("last_login", "")[:19].replace("T", " ") if u.get("last_login") else "—"
-        first_seen = u.get("first_seen", "")[:19].replace("T", " ") if u.get("first_seen") else "—"
-        rows_html += f"""<tr>
-            <td>{i + 1}</td>
-            <td><strong>{name}</strong><br><span class="email">{email}</span></td>
-            <td>{provider}</td>
-            <td>{role_badge}</td>
-            <td class="ts">{first_seen}</td>
-            <td class="ts">{last_login}</td>
-        </tr>"""
-
-    total = len(users_list)
-    admins = sum(1 for u in users_list if u.get("role") == "admin")
-    customers = total - admins
-
-    html = f"""<!DOCTYPE html>
-<html lang="en" data-theme="dark">
-<head>
-{GTM_HEAD}
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Users &mdash; Cartozo.ai Admin</title>
-    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
-    <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
-    <style>
-    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
-    [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
-
-    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
-    [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
-    .nav-logo img {{ height: 32px; }}
-    .nav-logo .logo-light {{ display: block; filter: brightness(0) invert(1); }}
-    .nav-logo .logo-dark {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-light {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-dark {{ display: block; filter: none; }}
-    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
-    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
-    .nav-link:hover {{ color: #fff; }}
-    .nav-link.active {{ color: #fff; }}
-    [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .nav-link:hover, [data-theme="light"] .nav-link.active {{ color: #0f172a; }}
-    .theme-btn {{ display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
-    .theme-btn:hover {{ color: #fff; background: rgba(255,255,255,0.08); }}
-    [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .theme-btn:hover {{ color: #0f172a; background: rgba(15,23,42,0.06); }}
-
-    .container {{ max-width: 1000px; margin: 48px auto; padding: 0 24px; }}
-    .page-title {{ font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; }}
-    .page-sub {{ color: rgba(255,255,255,0.5); font-size: 0.95rem; margin-bottom: 32px; }}
-    [data-theme="light"] .page-sub {{ color: rgba(15,23,42,0.5); }}
-
-    .stats {{ display: flex; gap: 24px; margin-bottom: 32px; }}
-    .stat {{ padding: 20px 28px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); flex: 1; }}
-    [data-theme="light"] .stat {{ background: rgba(255,255,255,0.8); border-color: rgba(15,23,42,0.08); }}
-    .stat-val {{ font-size: 1.75rem; font-weight: 700; }}
-    .stat-label {{ font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 4px; }}
-    [data-theme="light"] .stat-label {{ color: rgba(15,23,42,0.5); }}
-
-    table {{ width: 100%; border-collapse: collapse; font-size: 0.88rem; }}
-    th {{ text-align: left; padding: 12px 16px; font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.1); }}
-    [data-theme="light"] th {{ color: rgba(15,23,42,0.5); border-bottom-color: rgba(15,23,42,0.1); }}
-    td {{ padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }}
-    [data-theme="light"] td {{ border-bottom-color: rgba(15,23,42,0.06); }}
-    tr:hover td {{ background: rgba(255,255,255,0.02); }}
-    [data-theme="light"] tr:hover td {{ background: rgba(15,23,42,0.02); }}
-    .email {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); }}
-    [data-theme="light"] .email {{ color: rgba(15,23,42,0.4); }}
-    .ts {{ font-size: 0.78rem; white-space: nowrap; color: rgba(255,255,255,0.5); }}
-    [data-theme="light"] .ts {{ color: rgba(15,23,42,0.5); }}
-    .badge {{ display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }}
-    .badge-admin {{ background: rgba(249,115,22,0.15); color: #f97316; }}
-    .badge-customer {{ background: rgba(99,102,241,0.15); color: #818cf8; }}
-    [data-theme="light"] .badge-admin {{ background: rgba(249,115,22,0.1); }}
-    [data-theme="light"] .badge-customer {{ background: rgba(99,102,241,0.1); }}
-    .empty {{ text-align: center; padding: 60px 24px; color: rgba(255,255,255,0.3); font-size: 1rem; }}
-    [data-theme="light"] .empty {{ color: rgba(15,23,42,0.3); }}
-
-    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 32px auto; }} .stats {{ flex-direction: column; gap: 12px; }} }}
-    </style>
-</head>
-<body>
-{GTM_BODY}
-    <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-        <div class="nav-links">
-            <a href="/upload" class="nav-link">Optimize Feed</a>
-            {_admin_nav_links(active="users", user_role="admin")}
-            <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-            <a href="/logout" class="nav-link">Log out</a>
-        </div>
-    </nav>
-
-    <div class="container">
-        <h1 class="page-title">Authenticated Users</h1>
-        <p class="page-sub">{total} users have signed in</p>
-
-        <div class="stats">
-            <div class="stat"><div class="stat-val">{total}</div><div class="stat-label">Total users</div></div>
-            <div class="stat"><div class="stat-val">{admins}</div><div class="stat-label">Admins</div></div>
-            <div class="stat"><div class="stat-val">{customers}</div><div class="stat-label">Customers</div></div>
-        </div>
-
-        {"<table><thead><tr><th>#</th><th>User</th><th>Provider</th><th>Role</th><th>First seen</th><th>Last login</th></tr></thead><tbody>" + rows_html + "</tbody></table>" if total else '<div class="empty">No users have signed in yet.</div>'}
-    </div>
-
-    <script>
-    (function(){{
-        const t=document.getElementById("themeToggle");
-        if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\\u2600":"\\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
-    }})();
-    </script>
-    <script src="/static/page-transition.js"></script>
-</body>
-</html>"""
-    return HTMLResponse(content=html)
+    return RedirectResponse(url="/settings?tab=users", status_code=302)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3528,147 +3409,5 @@ async def admin_seo_page(request: Request):
     redir = require_admin_redirect(request, "/admin/seo")
     if redir:
         return redir
-
-    s = _get_settings()
-
-    html = f"""<!DOCTYPE html>
-<html lang="en" data-theme="dark">
-<head>
-{GTM_HEAD}
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SEO &mdash; Cartozo.ai Admin</title>
-    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
-    <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
-    <style>
-    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
-    [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
-    [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
-    [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .nav-link:hover {{ color: #0f172a; }}
-    [data-theme="light"] .group-desc {{ color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] input, [data-theme="light"] textarea {{ border-color: rgba(15,23,42,0.15); background: rgba(255,255,255,0.9); color: #0f172a; }}
-    [data-theme="light"] input:focus, [data-theme="light"] textarea:focus {{ border-color: rgba(15,23,42,0.3); }}
-    [data-theme="light"] .btn-primary {{ background: #0f172a; color: #fff; }}
-    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
-    .nav-logo img {{ height: 32px; }}
-    .nav-logo .logo-light {{ display: block; filter: brightness(0) invert(1); }}
-    .nav-logo .logo-dark {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-light {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-dark {{ display: block; filter: none; }}
-    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
-    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
-    .nav-link:hover {{ color: #fff; }}
-    .nav-link.active {{ color: #fff; }}
-    .theme-btn {{ display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
-    .theme-btn:hover {{ color: #fff; background: rgba(255,255,255,0.08); }}
-    [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .theme-btn:hover {{ color: #0f172a; background: rgba(15,23,42,0.06); }}
-
-    .container {{ max-width: 700px; margin: 48px auto; padding: 0 24px; }}
-    .title {{ font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; }}
-    .sub {{ color: rgba(255,255,255,0.5); font-size: 0.95rem; margin-bottom: 32px; }}
-    [data-theme="light"] .sub {{ color: rgba(15,23,42,0.5); }}
-
-    .group {{ margin-bottom: 28px; }}
-    .group-title {{ font-weight: 600; font-size: 1rem; margin-bottom: 8px; }}
-    .group-desc {{ font-size: 0.85rem; color: rgba(255,255,255,0.5); margin-bottom: 14px; line-height: 1.5; }}
-    input, textarea {{ width: 100%; padding: 12px 16px; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; }}
-    input:focus, textarea:focus {{ outline: none; border-color: rgba(255,255,255,0.3); }}
-    textarea {{ min-height: 100px; resize: vertical; }}
-
-    .btn {{ padding: 12px 24px; font-size: 0.9rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s; }}
-    .btn-primary {{ background: #fff; color: #000; }}
-    .btn-primary:hover {{ opacity: 0.9; }}
-    .save-msg {{ display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; font-size: 0.85rem; color: #f97316; opacity: 0; transition: opacity 0.3s; }}
-    .save-msg.show {{ opacity: 1; }}
-
-    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 32px auto; }} }}
-    </style>
-</head>
-<body>
-{GTM_BODY}
-    <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-        <div class="nav-links">
-            <a href="/upload" class="nav-link">Optimize Feed</a>
-            {_admin_nav_links(active="seo", user_role="admin")}
-            <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-            <a href="/logout" class="nav-link">Log out</a>
-        </div>
-    </nav>
-
-    <div class="container">
-        <h1 class="title">SEO Settings</h1>
-        <p class="sub">Edit meta tags for search engines and social sharing. Applied to the homepage.</p>
-
-        <div class="group">
-            <div class="group-title">Meta Title</div>
-            <p class="group-desc">Page title for search results (recommended 50–60 chars).</p>
-            <input type="text" id="seo_meta_title" placeholder="Cartozo.ai — AI-Powered Product Feed Optimization" value="{s.get("seo_meta_title", "").replace(chr(34), "&quot;")}" maxlength="120" />
-        </div>
-
-        <div class="group">
-            <div class="group-title">Meta Description</div>
-            <p class="group-desc">Description for search results (recommended 150–160 chars).</p>
-            <textarea id="seo_meta_description" placeholder="AI-powered optimization for your product titles..." maxlength="320">{s.get("seo_meta_description", "").replace("<", "&lt;").replace(">", "&gt;")}</textarea>
-        </div>
-
-        <div class="group">
-            <div class="group-title">Open Graph Title</div>
-            <p class="group-desc">Title when shared on Facebook, LinkedIn, etc.</p>
-            <input type="text" id="seo_og_title" placeholder="Same as Meta Title" value="{s.get("seo_og_title", "").replace(chr(34), "&quot;")}" maxlength="120" />
-        </div>
-
-        <div class="group">
-            <div class="group-title">Open Graph Description</div>
-            <p class="group-desc">Description when shared on social.</p>
-            <textarea id="seo_og_description" placeholder="Same as Meta Description" maxlength="320">{s.get("seo_og_description", "").replace("<", "&lt;").replace(">", "&gt;")}</textarea>
-        </div>
-
-        <div class="group">
-            <div class="group-title">Open Graph Image URL</div>
-            <p class="group-desc">Full URL to image for social sharing (e.g. https://cartozo.ai/assets/og-image.png). Recommended 1200×630px.</p>
-            <input type="url" id="seo_og_image" placeholder="https://..." value="{s.get("seo_og_image", "").replace(chr(34), "&quot;")}" />
-        </div>
-
-        <div class="group">
-            <div class="group-title">Site Name</div>
-            <p class="group-desc">Brand/site name for Open Graph.</p>
-            <input type="text" id="seo_og_site_name" placeholder="Cartozo.ai" value="{s.get("seo_og_site_name", "").replace(chr(34), "&quot;")}" maxlength="64" />
-        </div>
-
-        <div style="display:flex;align-items:center;">
-            <button class="btn btn-primary" onclick="saveSeo()">Save SEO settings</button>
-            <span id="seo-status" class="save-msg">&#10003; Saved</span>
-        </div>
-    </div>
-
-    <script>
-    async function saveSeo(){{
-        const data = {{
-            seo_meta_title: document.getElementById('seo_meta_title').value,
-            seo_meta_description: document.getElementById('seo_meta_description').value,
-            seo_og_title: document.getElementById('seo_og_title').value,
-            seo_og_description: document.getElementById('seo_og_description').value,
-            seo_og_image: document.getElementById('seo_og_image').value,
-            seo_og_site_name: document.getElementById('seo_og_site_name').value
-        }};
-        const resp = await fetch('/api/admin/seo', {{ method: 'POST', headers: {{ 'Content-Type': 'application/json' }}, body: JSON.stringify(data) }});
-        if (resp.ok) {{
-            const el = document.getElementById('seo-status');
-            el.classList.add('show');
-            setTimeout(() => el.classList.remove('show'), 2500);
-        }}
-    }}
-    (function(){{
-        const t=document.getElementById("themeToggle");
-        if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\\u2600":"\\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
-    }})();
-    </script>
-    <script src="/static/page-transition.js"></script>
-</body>
-</html>"""
-    return HTMLResponse(content=html)
+    return RedirectResponse(url="/settings?tab=seo", status_code=302)
 
