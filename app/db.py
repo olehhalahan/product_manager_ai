@@ -49,7 +49,7 @@ def get_db():
 
 
 def init_db():
-    """Create all tables if they don't exist."""
+    """Create all tables if they don't exist. Migrate batches table if schema is outdated."""
     url = os.getenv("DATABASE_URL", _DATABASE_URL)
     if url.startswith("sqlite") and ":///" in url:
         db_path = url.split("///", 1)[-1]
@@ -58,4 +58,15 @@ def init_db():
             if parent:
                 os.makedirs(parent, exist_ok=True)
     from . import db_models  # noqa: F401 - register models
+    from sqlalchemy import inspect
+
+    # Migration: batches table may have old schema (missing batch_id)
+    inspector = inspect(engine)
+    if "batches" in inspector.get_table_names():
+        cols = [c["name"] for c in inspector.get_columns("batches")]
+        if "batch_id" not in cols:
+            from .db_models import Batch
+            Batch.__table__.drop(engine)
+            Batch.__table__.create(engine)
+
     Base.metadata.create_all(bind=engine)
