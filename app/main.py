@@ -3,7 +3,7 @@ from pathlib import Path
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Query, Request
-from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.docs import get_swagger_ui_html
 from starlette.middleware.sessions import SessionMiddleware
@@ -3087,32 +3087,36 @@ async def settings_page(request: Request):
 
 
 @app.post("/api/settings/prompts")
-async def save_prompts(request: Request, data: dict):
+async def save_prompts(request: Request):
     require_admin_http(request)
+
+    data = await request.json()
     from .db import get_db
     from .services.db_repository import set_setting
     with get_db() as db:
         if "prompt_title" in data:
-            set_setting(db, "prompt_title", data["prompt_title"])
+            set_setting(db, "prompt_title", str(data["prompt_title"]))
         if "prompt_description" in data:
-            set_setting(db, "prompt_description", data["prompt_description"])
+            set_setting(db, "prompt_description", str(data["prompt_description"]))
     s = _get_settings()
     storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
-    return {"status": "ok"}
+    return JSONResponse({"ok": True})
 
 
 @app.post("/api/settings/apikey")
-async def save_api_key(request: Request, data: dict):
+async def save_api_key(request: Request):
     require_admin_http(request)
+
+    data = await request.json()
     from .db import get_db
     from .services.db_repository import set_setting
     if "openai_api_key" in data:
         with get_db() as db:
-            set_setting(db, "openai_api_key", data["openai_api_key"])
+            set_setting(db, "openai_api_key", str(data["openai_api_key"]))
         storage._ai.set_api_key(data["openai_api_key"])
-        s = _get_settings()
-        storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
-    return {"status": "ok"}
+    s = _get_settings()
+    storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/settings")

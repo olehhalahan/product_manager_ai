@@ -5,7 +5,6 @@ python-multipart
 celery
 redis
 sqlalchemy
-psycopg2-binary
 python-dotenv
 httpx
 openai

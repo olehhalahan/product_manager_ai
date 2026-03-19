@@ -1,5 +1,6 @@
 """
-PostgreSQL-backed storage for batches. Reuses InMemoryStorage processing logic.
+Database-backed storage for batches. Reuses InMemoryStorage processing logic.
+Works with SQLite or PostgreSQL via db_repository.
 """
 from datetime import datetime, timezone
 from typing import Dict, Optional, List

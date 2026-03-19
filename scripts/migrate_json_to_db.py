@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Migrate existing users.json and feedback.json to PostgreSQL.
+Migrate existing users.json and feedback.json to database (SQLite/PostgreSQL).
 Run once if upgrading from file-based storage.
 Run: python -m scripts.migrate_json_to_db
 """

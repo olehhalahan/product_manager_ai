@@ -1,5 +1,5 @@
 """
-SQLAlchemy ORM models for PostgreSQL.
+SQLAlchemy ORM models. Compatible with SQLite and PostgreSQL.
 """
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, JSON
