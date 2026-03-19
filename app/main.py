@@ -36,17 +36,18 @@ from datetime import datetime, timezone
 
 app = FastAPI(title="Product Content Optimizer", docs_url=None)
 
-# Favicon + Google tag - inject in all page headers
+# Favicon + Google tag - inject in all page headers (scripts in hidden div to avoid visual display)
 GTM_HEAD = """    <link rel="icon" href="/assets/favicon.png" type="image/png" />
-    <!-- Google tag (gtag.js) -->
+    <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
+"""
+GTM_BODY = """    <div style="display:none!important" aria-hidden="true"><!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-D410FQ1NZB"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-
       gtag('config', 'G-D410FQ1NZB');
-    </script>
+    </script></div>
 """
 app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
 
@@ -135,6 +136,12 @@ def _track_user(user: dict):
     _save_users()
 app.mount("/static", StaticFiles(directory=_os.path.join(_PROJECT_ROOT, "static")), name="static")
 app.mount("/assets", StaticFiles(directory=_os.path.join(_PROJECT_ROOT, "assets")), name="assets")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon_redirect():
+    """Redirect to favicon for browsers that request /favicon.ico."""
+    return RedirectResponse(url="/assets/favicon.png", status_code=302)
 
 
 @app.get("/docs", include_in_schema=False)
@@ -286,15 +293,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
     <link rel="icon" href="/assets/favicon.png" type="image/png" />
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-D410FQ1NZB"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-
-      gtag('config', 'G-D410FQ1NZB');
-    </script>
+    <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cartozo.ai — AI-Powered Product Feed Optimization</title>
@@ -615,6 +614,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     </style>
 </head>
 <body class="hp-body">
+""" + GTM_BODY + """
     <div class="hp-stars">
         <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
         <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
@@ -999,6 +999,7 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
     </style>
 </head>
 <body>
+{GTM_BODY}
     <nav class="nav">
         <a href="/" class="nav-logo"><img src="/assets/logo-light.png" alt="Cartozo.ai" /></a>
         <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">&#9728;</button>
@@ -1142,6 +1143,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     </style>
 </head>
 <body>
+{GTM_BODY}
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
@@ -1329,7 +1331,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
 
 def _build_upload_page(user_role: str = "customer") -> str:
     admin_nav = _admin_nav_links(active="", user_role=user_role)
-    return _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", GTM_HEAD).replace("<!-- ADMIN_NAV -->", admin_nav)
+    return _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", GTM_HEAD).replace("{GTM_BODY}", GTM_BODY).replace("<!-- ADMIN_NAV -->", admin_nav)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -1526,6 +1528,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     </style>
 </head>
 <body>
+{GTM_BODY}
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
@@ -1738,6 +1741,7 @@ def _build_mapping_page(
     </style>
 </head>
 <body>
+{GTM_BODY}
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
@@ -2476,6 +2480,7 @@ async def review_batch(request: Request, batch_id: str):
     </style>
 </head>
 <body>
+{GTM_BODY}
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
@@ -3025,6 +3030,7 @@ async def settings_page(request: Request):
     </style>
 </head>
 <body>
+{GTM_BODY}
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
@@ -3280,6 +3286,7 @@ async def admin_feedback_page(request: Request):
     </style>
 </head>
 <body>
+{GTM_BODY}
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
@@ -3416,6 +3423,7 @@ async def admin_users_page(request: Request):
     </style>
 </head>
 <body>
+{GTM_BODY}
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
