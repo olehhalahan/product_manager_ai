@@ -10,7 +10,9 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 Base = declarative_base()
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DEFAULT_DB_PATH = os.path.join(_PROJECT_ROOT, "data", "app.db").replace("\\", "/")
+_DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
+_DEFAULT_DB_PATH = os.path.join(_DATA_DIR, "app.db").replace("\\", "/")
+os.makedirs(_DATA_DIR, exist_ok=True)
 
 _DATABASE_URL = os.getenv(
     "DATABASE_URL",

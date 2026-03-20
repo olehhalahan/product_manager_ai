@@ -99,8 +99,81 @@ def _track_user(user: dict):
     from .services.db_repository import upsert_user
     with get_db() as db:
         upsert_user(db, user)
+
+
+def _build_error_page(status_code: int = 404, message: str = "Page not found") -> str:
+    """Build 404/error page HTML for any bad result."""
+    title = "Page not found" if status_code == 404 else "Something went wrong"
+    return f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+{GTM_HEAD}
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} &mdash; Cartozo.ai</title>
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+    <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #050505; color: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; }}
+    [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
+    .err-nav {{ position: fixed; top: 0; left: 0; right: 0; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.9); backdrop-filter: blur(12px); }}
+    [data-theme="light"] .err-nav {{ background: rgba(248,250,252,0.95); border-color: rgba(15,23,42,0.08); }}
+    .err-nav-logo img {{ height: 32px; filter: brightness(0) invert(1); }}
+    [data-theme="light"] .err-nav-logo img {{ filter: none; }}
+    .err-nav-cta {{ background: #fff; color: #050505; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; }}
+    [data-theme="light"] .err-nav-cta {{ background: #0f172a; color: #fff; }}
+    .err-box {{ text-align: center; padding: 48px 24px; max-width: 480px; }}
+    .err-code {{ font-size: 4rem; font-weight: 800; color: #FF6B00; letter-spacing: -0.04em; margin-bottom: 16px; }}
+    .err-title {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 12px; }}
+    .err-msg {{ color: #A1A1AA; font-size: 1rem; line-height: 1.6; margin-bottom: 32px; }}
+    [data-theme="light"] .err-msg {{ color: rgba(15,23,42,0.6); }}
+    .err-btn {{ display: inline-block; padding: 14px 28px; background: #FF6B00; color: #fff; border-radius: 6px; font-size: 0.9rem; font-weight: 500; text-decoration: none; transition: opacity 0.2s; }}
+    .err-btn:hover {{ opacity: 0.9; }}
+    </style>
+</head>
+<body>
+{GTM_BODY}
+    <nav class="err-nav">
+        <a href="/" class="err-nav-logo"><img src="/assets/logo-light.png" alt="Cartozo.ai" /></a>
+        <a href="/" class="err-nav-cta">Go to homepage</a>
+    </nav>
+    <div class="err-box">
+        <div class="err-code">{status_code}</div>
+        <h1 class="err-title">{title}</h1>
+        <p class="err-msg">{message}</p>
+        <a href="/" class="err-btn">Back to homepage</a>
+    </div>
+</body>
+</html>"""
+
+
 app.mount("/static", StaticFiles(directory=_os.path.join(_PROJECT_ROOT, "static")), name="static")
 app.mount("/assets", StaticFiles(directory=_os.path.join(_PROJECT_ROOT, "assets")), name="assets")
+
+
+def _wants_html(request: Request) -> bool:
+    """True if client prefers HTML over JSON."""
+    accept = request.headers.get("accept", "")
+    return "text/html" in accept or ("*/*" in accept and "application/json" not in accept)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Show custom 404/error page for browser requests."""
+    if _wants_html(request):
+        msg = str(exc.detail) if isinstance(exc.detail, str) else "Something went wrong"
+        return HTMLResponse(content=_build_error_page(exc.status_code, msg), status_code=exc.status_code)
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """Show error page for unhandled exceptions (500)."""
+    if _wants_html(request):
+        return HTMLResponse(content=_build_error_page(500, "An unexpected error occurred. Please try again."), status_code=500)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -2879,6 +2952,7 @@ async def update_product_field(request: Request, batch_id: str, data: dict):
     for result in batch.products:
         if result.product.id == product_id:
             setattr(result, field, value)
+            storage._save_batch(batch)
             return {"status": "ok"}
 
     raise HTTPException(status_code=404, detail="Product not found.")
