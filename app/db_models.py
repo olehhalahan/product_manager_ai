@@ -70,3 +70,27 @@ class Batch(Base):
     client_id = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
+
+
+class ChatSession(Base):
+    """Chat sessions for AI agent on homepage."""
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String(64), unique=True, nullable=False, index=True)
+    messages = Column(JSON, nullable=False)  # list of {role, content} dicts
+    user_email = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class ContactSubmission(Base):
+    """Contact form submissions."""
+    __tablename__ = "contact_submissions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    surname = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+    phone = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

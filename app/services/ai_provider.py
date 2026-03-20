@@ -67,6 +67,30 @@ class AIProvider:
         except Exception:
             return ""
 
+    def chat(self, messages: list) -> str:
+        """Chat with AI agent about Cartozo.ai service. Uses same OpenAI API as titles/descriptions."""
+        if not self._client:
+            return "AI is not configured. Please ask an admin to add an OpenAI API key in Settings."
+        try:
+            system_prompt = """You are a helpful AI assistant for Cartozo.ai, an e-commerce product feed optimization platform.
+Cartozo.ai helps merchants optimize product titles and descriptions for search engines, generate compelling copy,
+translate content to multiple languages, and improve product feed quality for Google Merchant Center and other channels.
+Answer questions about the service, features, pricing, how it works, and product optimization best practices.
+Be concise, friendly, and professional."""
+            msgs = [{"role": "system", "content": system_prompt}] + [
+                {"role": m.get("role", "user"), "content": m.get("content", "")}
+                for m in messages
+            ]
+            response = self._client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=msgs,
+                max_tokens=800,
+                temperature=0.7,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            return f"Sorry, I couldn't process that. Please try again. ({str(e)[:80]})"
+
     # ------------------------------------------------------------------ #
     #  Title optimisation
     # ------------------------------------------------------------------ #

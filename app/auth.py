@@ -4,6 +4,7 @@ No registration — users sign in with existing accounts only.
 Role-based access: admin vs customer.
 """
 from typing import Optional
+from urllib.parse import quote
 from fastapi import Request, HTTPException
 from fastapi.responses import RedirectResponse
 
@@ -97,7 +98,7 @@ def is_admin(request: Request) -> bool:
 def require_login_redirect(request: Request, next_url: str = "/upload") -> Optional[RedirectResponse]:
     """If not logged in, return redirect to login. Else None."""
     if not request.session.get("user"):
-        return RedirectResponse(url=f"/login?next={next_url}", status_code=302)
+        return RedirectResponse(url=f"/login?next={quote(next_url, safe='')}", status_code=302)
     return None
 
 
@@ -110,7 +111,7 @@ def require_login_http(request: Request) -> None:
 def require_admin_redirect(request: Request, next_url: str = "/upload") -> Optional[RedirectResponse]:
     """If not logged in redirect to login; if not admin redirect to upload."""
     if not request.session.get("user"):
-        return RedirectResponse(url=f"/login?next={next_url}", status_code=302)
+        return RedirectResponse(url=f"/login?next={quote(next_url, safe='')}", status_code=302)
     if not is_admin(request):
         return RedirectResponse(url="/upload", status_code=302)
     return None

@@ -7,7 +7,7 @@ from typing import Optional, Dict, List, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
-from ..db_models import Setting, User, Feedback, PendingUpload
+from ..db_models import Setting, User, Feedback, PendingUpload, ChatSession, ContactSubmission
 
 
 # ─── Settings ────────────────────────────────────────────────────────────────
@@ -170,6 +170,34 @@ def get_all_feedback(db: Session) -> List[Dict]:
     ]
 
 
+# ─── Contact submissions ────────────────────────────────────────────────────
+
+def save_contact_submission(db: Session, name: str, surname: str, email: str, phone: str = "") -> None:
+    """Save contact form submission."""
+    db.add(ContactSubmission(
+        name=name.strip(),
+        surname=surname.strip(),
+        email=email.strip(),
+        phone=(phone or "").strip(),
+    ))
+
+
+def get_all_contact_submissions(db: Session) -> List[Dict]:
+    """Get all contact submissions (newest first)."""
+    rows = db.execute(select(ContactSubmission).order_by(ContactSubmission.id.desc())).scalars().all()
+    return [
+        {
+            "id": r.id,
+            "name": r.name or "",
+            "surname": r.surname or "",
+            "email": r.email or "",
+            "phone": r.phone or "",
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+        }
+        for r in rows
+    ]
+
+
 # ─── Pending uploads ─────────────────────────────────────────────────────────
 
 def save_pending_upload(db: Session, upload_id: str, records: List[Dict], mode: str, target_language: str, product_type: str) -> None:
@@ -248,3 +276,48 @@ def update_batch(db: Session, batch_id: str, status: str, products_json: list, c
     row.products_json = products_json
     if completed_at is not None:
         row.completed_at = datetime.now(timezone.utc) if completed_at else None
+
+
+# ─── Chat sessions ───────────────────────────────────────────────────────────
+
+def create_chat_session(db: Session, session_id: str, user_email: str = None) -> None:
+    """Create a new chat session."""
+    db.add(ChatSession(session_id=session_id, messages=[], user_email=user_email))
+
+
+def get_chat_session(db: Session, session_id: str) -> Optional[Dict]:
+    """Get chat session by id."""
+    row = db.execute(select(ChatSession).where(ChatSession.session_id == session_id)).scalars().one_or_none()
+    if not row:
+        return None
+    return {
+        "session_id": row.session_id,
+        "messages": row.messages or [],
+        "user_email": row.user_email or "",
+        "created_at": row.created_at.isoformat() if row.created_at else "",
+        "updated_at": row.updated_at.isoformat() if row.updated_at else "",
+    }
+
+
+def update_chat_session(db: Session, session_id: str, messages: list) -> None:
+    """Update chat session messages."""
+    row = db.execute(select(ChatSession).where(ChatSession.session_id == session_id)).scalars().one_or_none()
+    if not row:
+        return
+    row.messages = messages
+    row.updated_at = datetime.now(timezone.utc)
+
+
+def get_all_chat_sessions(db: Session) -> List[Dict]:
+    """Get all chat sessions (newest first) for admin."""
+    rows = db.execute(select(ChatSession).order_by(ChatSession.updated_at.desc())).scalars().all()
+    return [
+        {
+            "session_id": r.session_id,
+            "messages": r.messages or [],
+            "user_email": r.user_email or "",
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+            "updated_at": r.updated_at.isoformat() if r.updated_at else "",
+        }
+        for r in rows
+    ]

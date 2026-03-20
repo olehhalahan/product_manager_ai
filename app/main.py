@@ -239,10 +239,14 @@ async def logout(request: Request):
 
 
 def _admin_nav_links(active: str = "", user_role: str = "customer") -> str:
-    """Generate admin-only nav link (Settings) if user is admin."""
+    """Generate admin-only nav links if user is admin."""
     if user_role != "admin":
         return ""
-    return f'<a href="/settings" class="nav-link{" active" if active == "settings" else ""}">Settings</a>'
+    links = [
+        f'<a href="/admin/contact-results" class="nav-link{" active" if active == "contact-results" else ""}">Contact results</a>',
+        f'<a href="/settings" class="nav-link{" active" if active == "settings" else ""}">Settings</a>',
+    ]
+    return "".join(links)
 
 
 HOMEPAGE_HTML = """<!DOCTYPE html>
@@ -331,9 +335,13 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
 
     /* Hero */
     .hp-hero { text-align: center; padding: 160px 24px 120px; position: relative; min-height: 600px; }
-    .hp-badge { display: inline-block; color: var(--hp-muted); font-size: 0.85rem; margin-bottom: 28px; letter-spacing: 0.02em; }
-    .hp-title { font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 600; line-height: 1.1; margin-bottom: 24px; letter-spacing: -0.03em; position: relative; z-index: 2; }
-    .hp-sub { font-size: 1.1rem; color: var(--hp-muted); max-width: 540px; margin: 0 auto 40px; line-height: 1.6; position: relative; z-index: 2; }
+    .hp-badge { display: inline-block; color: var(--hp-muted); font-size: 0.85rem; margin-bottom: 28px; letter-spacing: 0.02em; transition: font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .hp-title { font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 600; line-height: 1.1; margin-bottom: 24px; letter-spacing: -0.03em; position: relative; z-index: 2; transition: font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .hp-sub { font-size: 1.1rem; color: var(--hp-muted); max-width: 540px; margin: 0 auto 40px; line-height: 1.6; position: relative; z-index: 2; transition: font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1), line-height 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    /* Hero compresses when chat is open (has conversation) */
+    .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-badge { font-size: 0.91rem; margin-bottom: 20px; }
+    .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-title { font-size: clamp(1.75rem, 4.2vw, 2.8rem); margin-bottom: 17px; }
+    .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-sub { font-size: 0.91rem; margin-bottom: 28px; line-height: 1.5; }
     .hp-buttons { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; position: relative; z-index: 2; }
     .hp-btn { padding: 14px 28px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; text-decoration: none; transition: all 0.3s ease; }
     .hp-btn-primary { background: var(--hp-text); color: var(--hp-bg); }
@@ -341,8 +349,117 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-btn-secondary { background: transparent; color: var(--hp-text); border: 1px solid var(--hp-border); }
     .hp-btn-secondary:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
 
-    /* Mars Planet - positioned left */
-    .hp-planet-container { position: absolute; width: 380px; height: 380px; z-index: 1; animation: orbit-hero 260s ease-in-out infinite; transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    /* Hero chat: anchor + spacer reserve layout when .hp-chat-wrap is fixed (avoids scroll flicker) */
+    .hp-chat-anchor { position: relative; z-index: 10; max-width: 560px; margin: 0 auto; width: 100%; }
+    .hp-chat-spacer { display: none; width: 100%; margin: 0; padding: 0; border: 0; box-sizing: border-box; }
+    .hp-chat-wrap { position: relative; z-index: 10; margin: 0; width: 100%; }
+    .hp-chat-panel { background: rgba(30,30,35,0.95); border-radius: 999px; border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; padding: 10px 16px 10px 20px; gap: 12px; transition: background 0.25s ease, box-shadow 0.25s ease; position: relative; z-index: 11; }
+    [data-theme="light"] .hp-chat-panel { background: rgba(241,245,249,0.98); border-color: rgba(15,23,42,0.12); }
+    .hp-chat-panel.transparent { opacity: 0.78; }
+    .hp-chat-panel.transparent:focus-within, .hp-chat-panel.transparent:hover { opacity: 1; }
+    .hp-chat-wrap.sticky { position: fixed; top: var(--hp-sticky-top, 76px); left: 50%; transform: translateX(-50%); width: calc(100% - 48px); max-width: 560px; z-index: 999; }
+    .hp-chat-wrap.sticky .hp-chat-panel { box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    [data-theme="light"] .hp-chat-wrap.sticky .hp-chat-panel { box-shadow: 0 8px 32px rgba(15,23,42,0.15); }
+    .hp-chat-plus { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; color: rgba(255,255,255,0.5); cursor: pointer; flex-shrink: 0; user-select: none; }
+    [data-theme="light"] .hp-chat-plus { color: rgba(15,23,42,0.5); }
+    .hp-chat-input { flex: 1; background: none; border: none; font-size: 0.95rem; color: var(--hp-text); outline: none; min-width: 0; }
+    .hp-chat-input::placeholder { color: rgba(255,255,255,0.4); }
+    [data-theme="light"] .hp-chat-input { color: #0f172a; }
+    [data-theme="light"] .hp-chat-input::placeholder { color: rgba(15,23,42,0.4); }
+    .hp-chat-mic { display: none; }
+    .hp-chat-send { width: 40px; height: 40px; border-radius: 50%; background: #fff; color: #0f172a; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: opacity 0.2s; }
+    .hp-chat-send:hover { opacity: 0.9; }
+    .hp-chat-send svg { width: 18px; height: 18px; }
+    /* Transcript block: only visible once there is conversation */
+    .hp-chat-log { display: none; margin-bottom: 16px; border-radius: 16px; padding: 16px 16px 12px; text-align: left;
+      background: rgba(15, 15, 18, 0.72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.35); }
+    [data-theme="light"] .hp-chat-log {
+      background: rgba(255, 255, 255, 0.82); border-color: rgba(15,23,42,0.12); box-shadow: 0 8px 28px rgba(15,23,42,0.12); }
+    .hp-chat-wrap.has-conversation .hp-chat-log { display: block; }
+    /* Hero in viewport: full chat. Hero out: smooth hide chat block, keep only sticky input bar. */
+    .hp-chat-wrap { display: flex; flex-direction: column; }
+    .hp-chat-wrap.has-conversation .hp-chat-log {
+      max-height: 380px; margin-bottom: 16px;
+      transition: opacity 0.28s ease, max-height 0.3s ease, margin 0.28s ease, visibility 0.28s;
+    }
+    .hp-chat-wrap.has-conversation.collapsed-log .hp-chat-log {
+      opacity: 0; visibility: hidden; max-height: 0; margin: 0; overflow: hidden; pointer-events: none;
+    }
+    .hp-chat-wrap.has-conversation.collapsed-log { margin-bottom: 0; }
+    .hp-chat-wrap.sticky .hp-chat-log { box-shadow: 0 12px 40px rgba(0,0,0,0.45); }
+    [data-theme="light"] .hp-chat-wrap.sticky .hp-chat-log { box-shadow: 0 12px 36px rgba(15,23,42,0.14); }
+    .hp-chat-messages {
+      max-height: 280px; overflow-y: auto; padding: 0 4px 4px; text-align: left;
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(249, 115, 22, 0.55) rgba(255, 255, 255, 0.05);
+    }
+    .hp-chat-messages::-webkit-scrollbar { width: 7px; }
+    .hp-chat-messages::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 100px;
+      margin: 6px 0;
+    }
+    .hp-chat-messages::-webkit-scrollbar-thumb {
+      border-radius: 100px;
+      background: linear-gradient(180deg, rgba(251, 146, 60, 0.75) 0%, rgba(234, 88, 12, 0.5) 50%, rgba(180, 60, 10, 0.45) 100%);
+      box-shadow: 0 0 10px rgba(249, 115, 22, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(249, 115, 22, 0.25);
+    }
+    .hp-chat-messages::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, rgba(253, 186, 116, 0.9) 0%, rgba(249, 115, 22, 0.75) 45%, rgba(220, 80, 15, 0.65) 100%);
+      box-shadow: 0 0 18px rgba(249, 115, 22, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    }
+    .hp-chat-messages::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+    .hp-chat-messages::-webkit-scrollbar-corner { background: transparent; }
+    [data-theme="light"] .hp-chat-messages {
+      scrollbar-color: rgba(234, 88, 12, 0.65) rgba(15, 23, 42, 0.07);
+    }
+    [data-theme="light"] .hp-chat-messages::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.06);
+    }
+    [data-theme="light"] .hp-chat-messages::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, rgba(249, 115, 22, 0.85) 0%, rgba(234, 88, 12, 0.65) 100%);
+      box-shadow: 0 0 8px rgba(249, 115, 22, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+      border-color: rgba(234, 88, 12, 0.35);
+    }
+    [data-theme="light"] .hp-chat-messages::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, rgba(251, 146, 60, 0.95) 0%, rgba(249, 115, 22, 0.8) 100%);
+      box-shadow: 0 0 14px rgba(249, 115, 22, 0.35);
+    }
+    .hp-chat-log-footer { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 10px; padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.08); }
+    [data-theme="light"] .hp-chat-log-footer { border-top-color: rgba(15,23,42,0.08); }
+    .hp-chat-hide { font-size: 0.8rem; font-weight: 500; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.08); color: var(--hp-text);
+      transition: background 0.2s, border-color 0.2s, opacity 0.2s; }
+    .hp-chat-hide:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.35); }
+    [data-theme="light"] .hp-chat-hide { border-color: rgba(15,23,42,0.2); background: rgba(15,23,42,0.06); }
+    [data-theme="light"] .hp-chat-hide:hover { background: rgba(15,23,42,0.1); border-color: rgba(15,23,42,0.28); }
+    .hp-chat-finish { font-size: 0.8rem; font-weight: 500; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.08); color: var(--hp-text);
+      transition: background 0.2s, border-color 0.2s, opacity 0.2s; }
+    .hp-chat-finish:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.35); }
+    [data-theme="light"] .hp-chat-finish { border-color: rgba(15,23,42,0.2); background: rgba(15,23,42,0.06); }
+    [data-theme="light"] .hp-chat-finish:hover { background: rgba(15,23,42,0.1); border-color: rgba(15,23,42,0.28); }
+    .hp-chat-msg { padding: 12px 16px; border-radius: 12px; margin-bottom: 10px; font-size: 0.9rem; line-height: 1.5; max-width: 90%; }
+    .hp-chat-msg.user { background: rgba(255,255,255,0.1); margin-left: auto; }
+    .hp-chat-msg.assistant { background: rgba(249,115,22,0.12); border: 1px solid rgba(249,115,22,0.2); }
+    .hp-chat-status { padding: 12px 16px; border-radius: 12px; margin-bottom: 10px; font-size: 0.9rem; max-width: 90%; background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.15); color: var(--hp-muted); display: flex; align-items: center; gap: 8px; }
+    .hp-chat-status-dots { display: inline-flex; gap: 4px; }
+    .hp-chat-status-dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(249,115,22,0.6); animation: hp-status-dot 1.4s ease-in-out infinite both; }
+    .hp-chat-status-dots span:nth-child(1) { animation-delay: 0s; }
+    .hp-chat-status-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .hp-chat-status-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes hp-status-dot { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+    [data-theme="light"] .hp-chat-status { background: rgba(249,115,22,0.06); border-color: rgba(249,115,22,0.12); color: rgba(15,23,42,0.6); }
+    .hp-chat-upload-btn { display: inline-block; margin-top: 10px; padding: 8px 16px; border-radius: 999px; background: #f97316; color: #fff; font-size: 0.85rem; font-weight: 500; text-decoration: none; border: none; cursor: pointer; transition: opacity 0.2s; }
+    .hp-chat-upload-btn:hover { opacity: 0.9; }
+    [data-theme="light"] .hp-chat-msg.user { background: rgba(15,23,42,0.08); }
+    [data-theme="light"] .hp-chat-msg.assistant { background: rgba(249,115,22,0.1); border-color: rgba(249,115,22,0.2); }
+    /* Mars Planet - only the planet is clickable, not the full 380px wrapper */
+    .hp-planet-container { position: absolute; width: 380px; height: 380px; z-index: 1; animation: orbit-hero 260s ease-in-out infinite; transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); pointer-events: none; }
     .hp-planet-container.scared { animation-play-state: paused; }
     .hp-mars { cursor: pointer; pointer-events: auto; }
     @keyframes orbit-hero {
@@ -352,7 +469,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         75% { left: 5%; top: 80%; }
         100% { left: -100px; top: 30%; }
     }
-    .hp-planet { position: relative; width: 100%; height: 100%; }
+    .hp-planet { position: relative; width: 100%; height: 100%; pointer-events: none; }
     .hp-mars { position: absolute; top: 50%; left: 50%; width: 180px; height: 180px; margin: -90px 0 0 -90px; border-radius: 50%; background: radial-gradient(circle at 30% 25%, #e8a87c, #c1440e 40%, #8b2500 70%, #4a1a0a 100%); box-shadow: 0 0 60px rgba(193,68,14,0.5), 0 0 120px rgba(193,68,14,0.3), inset -20px -20px 40px rgba(0,0,0,0.4), inset 10px 10px 30px rgba(255,200,150,0.15); animation: marsFloat 8s ease-in-out infinite; overflow: hidden; transition: background 0.5s, box-shadow 0.5s; }
     [data-theme="light"] .hp-mars { background: radial-gradient(circle at 30% 25%, #5a5a5a, #3d3d3d 40%, #252525 70%, #141414 100%); box-shadow: 0 0 60px rgba(60,60,60,0.35), 0 0 100px rgba(60,60,60,0.15), inset -20px -20px 40px rgba(0,0,0,0.3), inset 10px 10px 30px rgba(90,90,90,0.15); }
     .hp-crater { position: absolute; border-radius: 50%; background: rgba(74,26,10,0.4); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.3); }
@@ -363,28 +480,28 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     @keyframes marsFloat { 0%, 100% { transform: translate(-50%, -50%) translateY(0); } 50% { transform: translate(-50%, -50%) translateY(-15px); } }
     @keyframes marsSpin { from { background-position: 0 0; } to { background-position: 200px 0; } }
 
-    /* Mars glow */
-    .hp-mars-glow { position: absolute; top: 50%; left: 50%; width: 280px; height: 280px; margin: -140px 0 0 -140px; border-radius: 50%; background: radial-gradient(circle, rgba(193,68,14,0.2) 0%, rgba(193,68,14,0.1) 40%, transparent 70%); animation: glowPulse 4s ease-in-out infinite; transition: background 0.5s; }
+    /* Mars glow + orbits: no hit-testing (only .hp-mars is interactive) */
+    .hp-mars-glow { position: absolute; top: 50%; left: 50%; width: 280px; height: 280px; margin: -140px 0 0 -140px; border-radius: 50%; background: radial-gradient(circle, rgba(193,68,14,0.2) 0%, rgba(193,68,14,0.1) 40%, transparent 70%); animation: glowPulse 4s ease-in-out infinite; transition: background 0.5s; pointer-events: none; }
     [data-theme="light"] .hp-mars-glow { background: radial-gradient(circle, rgba(60,60,60,0.2) 0%, rgba(60,60,60,0.1) 40%, transparent 70%); }
     @keyframes glowPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: 0.7; } }
 
     /* Orbits around Mars */
-    .hp-orbit { position: absolute; top: 50%; left: 50%; border: 1px solid rgba(255,255,255,0.06); border-radius: 50%; }
+    .hp-orbit { position: absolute; top: 50%; left: 50%; border: 1px solid rgba(255,255,255,0.06); border-radius: 50%; pointer-events: none; }
     .hp-orbit-1 { width: 240px; height: 240px; margin: -120px 0 0 -120px; animation: orbitSpin 15s linear infinite; transform-origin: center; }
     .hp-orbit-2 { width: 320px; height: 320px; margin: -160px 0 0 -160px; animation: orbitSpin 25s linear infinite reverse; border-style: dashed; }
     .hp-orbit-3 { width: 380px; height: 380px; margin: -190px 0 0 -190px; animation: orbitSpin 35s linear infinite; border-color: rgba(255,255,255,0.03); }
     @keyframes orbitSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
     /* Moons/satellites */
-    .hp-moon { position: absolute; border-radius: 50%; box-shadow: 0 0 15px currentColor; animation: moonGlow 2s ease-in-out infinite; }
+    .hp-moon { position: absolute; border-radius: 50%; box-shadow: 0 0 15px currentColor; animation: moonGlow 2s ease-in-out infinite; pointer-events: none; }
     .hp-orbit-1 .hp-moon { width: 10px; height: 10px; top: -5px; left: 50%; margin-left: -5px; background: #f59e0b; color: rgba(245,158,11,0.6); }
     .hp-orbit-2 .hp-moon { width: 8px; height: 8px; top: 50%; right: -4px; margin-top: -4px; background: #ef4444; color: rgba(239,68,68,0.6); animation-delay: 0.5s; }
     .hp-orbit-3 .hp-moon { width: 6px; height: 6px; bottom: 20%; left: -3px; background: #a855f7; color: rgba(168,85,247,0.6); animation-delay: 1s; }
     @keyframes moonGlow { 0%, 100% { box-shadow: 0 0 10px currentColor; } 50% { box-shadow: 0 0 20px currentColor, 0 0 30px currentColor; } }
 
     /* Floating particles */
-    .hp-particles { position: absolute; width: 100%; height: 100%; top: 0; left: 0; }
-    .hp-particle { position: absolute; width: 3px; height: 3px; background: rgba(255,255,255,0.4); border-radius: 50%; animation: particleDrift 8s ease-in-out infinite; }
+    .hp-particles { position: absolute; width: 100%; height: 100%; top: 0; left: 0; pointer-events: none; }
+    .hp-particle { position: absolute; width: 3px; height: 3px; background: rgba(255,255,255,0.4); border-radius: 50%; animation: particleDrift 8s ease-in-out infinite; pointer-events: none; }
     .hp-particle:nth-child(1) { top: 20%; left: 30%; animation-delay: 0s; }
     .hp-particle:nth-child(2) { top: 60%; left: 70%; animation-delay: 2s; animation-duration: 10s; }
     .hp-particle:nth-child(3) { top: 40%; left: 85%; animation-delay: 4s; animation-duration: 12s; }
@@ -559,19 +676,36 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .back-to-top.visible { opacity: 1; visibility: visible; transform: translateY(0); }
 
     @media (max-width: 1024px) {
-        .hp-planet-container { width: 320px; height: 320px; animation-duration: 260s; }
-        .hp-mars { width: 140px; height: 140px; margin: -70px 0 0 -70px; }
+        .hp-planet-container { width: 320px; height: 320px; animation-duration: 260s; position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 0; pointer-events: none; }
+        .hp-mars { width: 140px; height: 140px; margin: -70px 0 0 -70px; pointer-events: none; }
         .hp-mars-glow { width: 220px; height: 220px; margin: -110px 0 0 -110px; }
+        .hp-hero { display: flex; flex-direction: column; }
+        .hp-badge { order: 1; }
+        .hp-title { order: 2; }
+        .hp-sub { order: 3; }
+        .hp-planet-container { order: 4; }
+        .hp-chat-anchor { order: 5; margin-top: 20px; }
+        .hp-particles { order: 0; }
     }
     @media (max-width: 768px) {
         .hp-nav { padding: 16px 24px; }
-        .hp-hero { padding: 120px 24px 100px; min-height: auto; }
-        .hp-planet-container { position: relative; width: 280px; height: 280px; margin: 40px auto 0; animation: none; left: auto !important; top: auto !important; }
-        .hp-mars { width: 100px; height: 100px; margin: -50px 0 0 -50px; }
-        .hp-mars-glow { width: 160px; height: 160px; margin: -80px 0 0 -80px; }
-        .hp-orbit-1 { width: 160px; height: 160px; margin: -80px 0 0 -80px; }
-        .hp-orbit-2 { width: 220px; height: 220px; margin: -110px 0 0 -110px; }
-        .hp-orbit-3 { width: 270px; height: 270px; margin: -135px 0 0 -135px; }
+        .hp-hero { padding: 120px 20px 60px; min-height: auto; display: flex; flex-direction: column; }
+        .hp-badge { order: 1; margin-bottom: 16px; }
+        .hp-title { order: 2; margin-bottom: 16px; font-size: clamp(1.75rem, 5vw, 2.25rem); }
+        .hp-sub { order: 3; margin-bottom: 24px; font-size: 0.95rem; margin-top: -24px; }
+        .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-badge { font-size: 0.84rem; margin-bottom: 11px; }
+        .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-title { font-size: clamp(1.26rem, 3.5vw, 1.68rem); margin-bottom: 11px; }
+        .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-sub { font-size: 0.77rem; margin-bottom: 17px; margin-top: -17px; }
+        .hp-planet-container { order: 4; position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); width: 240px; height: 240px; animation: none; z-index: 0; pointer-events: none; }
+        .hp-mars { width: 80px; height: 80px; margin: -40px 0 0 -40px; pointer-events: none; }
+        .hp-mars-glow { width: 140px; height: 140px; margin: -70px 0 0 -70px; }
+        .hp-orbit-1 { width: 120px; height: 120px; margin: -60px 0 0 -60px; }
+        .hp-orbit-2 { width: 180px; height: 180px; margin: -90px 0 0 -90px; }
+        .hp-orbit-3 { width: 220px; height: 220px; margin: -110px 0 0 -110px; }
+        .hp-chat-anchor { order: 5; margin-top: 12px; padding: 0 4px; }
+        .hp-chat-wrap.sticky { width: calc(100% - 24px); }
+        .hp-chat-panel { padding: 8px 12px 8px 16px; }
+        .hp-chat-messages { max-height: 200px; }
         .hp-features, .hp-steps, .hp-cta { padding: 60px 24px; }
     }
     </style>
@@ -591,6 +725,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             <a href="#features" class="hp-nav-link">Features</a>
             <a href="#feed-structure" class="hp-nav-link">Feed Structure</a>
             <a href="#how-it-works" class="hp-nav-link">How it works</a>
+            <a href="/contact" class="hp-nav-link">Contact us</a>
         </div>
         <div class="hp-nav-right">
             <button type="button" class="hp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
@@ -625,9 +760,24 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         <p class="hp-sub">
             AI-powered optimization for your product titles and descriptions. Boost search rankings, increase clicks, and drive more sales.
         </p>
-        <div class="hp-buttons">
-            <a href="/login" class="hp-btn hp-btn-primary">Get Started</a>
-            <a href="#how-it-works" class="hp-btn hp-btn-secondary">Learn More</a>
+        <div class="hp-chat-anchor" id="hpChatAnchor">
+        <div class="hp-chat-spacer" id="hpChatSpacer" aria-hidden="true"></div>
+        <div class="hp-chat-wrap" id="hpChatWrap">
+            <div class="hp-chat-log" id="hpChatLog" aria-live="polite">
+                <div class="hp-chat-messages" id="hpChatMessages"></div>
+                <div class="hp-chat-log-footer">
+                    <button type="button" class="hp-chat-hide" id="hpChatHide" title="Hide chat">Hide</button>
+                    <button type="button" class="hp-chat-finish" id="hpChatFinish" title="Clear conversation">Finish chat</button>
+                </div>
+            </div>
+            <div class="hp-chat-panel" id="hpChatPanel">
+                <input type="file" id="hpChatFileInput" accept=".csv,text/csv,application/vnd.ms-excel" style="display:none" />
+                <span class="hp-chat-plus" title="Upload file" id="hpChatPlus" role="button" tabindex="0">+</span>
+                <input type="text" class="hp-chat-input" id="hpChatInput" placeholder="Ask anything" autocomplete="off" />
+                <span class="hp-chat-mic" title="Voice (coming soon)" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
+                <button type="button" class="hp-chat-send" id="hpChatSend" title="Send" aria-label="Send message"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="14" width="3" height="6" rx="1"/><rect x="10" y="10" width="3" height="10" rx="1"/><rect x="16" y="6" width="3" height="14" rx="1"/></svg></button>
+            </div>
+        </div>
         </div>
     </section>
 
@@ -900,6 +1050,306 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             btn.classList.remove('visible');
         }
     });
+
+    // Hero chat (original): messages above bar; sticky under nav + semi-transparent until click/focus
+    (function() {
+        const chatWrap = document.getElementById('hpChatWrap');
+        const chatPanel = document.getElementById('hpChatPanel');
+        const chatInput = document.getElementById('hpChatInput');
+        const chatSend = document.getElementById('hpChatSend');
+        const chatMessages = document.getElementById('hpChatMessages');
+        const chatPlus = document.getElementById('hpChatPlus');
+        const chatFinish = document.getElementById('hpChatFinish');
+        const chatSpacer = document.getElementById('hpChatSpacer');
+        const chatAnchor = document.getElementById('hpChatAnchor');
+        const navEl = document.querySelector('.hp-nav');
+        if (!chatWrap || !chatPanel || !chatInput || !chatSend || !chatMessages || !chatSpacer || !chatAnchor) return;
+
+        let chatSessionId = localStorage.getItem('hp-chat-session') || '';
+        var STICK_HYST = 100;
+        var scrollStickyRaf = null;
+        var heroInViewport = true;
+        var HIDE_SCROLL_Y = 280;
+        var SHOW_SCROLL_Y = 200;
+
+        function measureNavHeight() {
+            return navEl ? Math.ceil(navEl.getBoundingClientRect().height) : 72;
+        }
+
+        function updateStickyTopVar() {
+            var nh = measureNavHeight();
+            document.documentElement.style.setProperty('--hp-sticky-top', (nh + 4) + 'px');
+            return nh;
+        }
+
+        function updatePanelTransparency() {
+            var sticky = chatWrap.classList.contains('sticky');
+            if (!sticky) {
+                chatPanel.classList.remove('transparent');
+                return;
+            }
+            if (chatPanel.matches(':focus-within')) {
+                chatPanel.classList.remove('transparent');
+            } else {
+                chatPanel.classList.add('transparent');
+            }
+        }
+
+        var forceShowForTyping = false;
+        function updateLogVisibility() {
+            var has = chatMessages.children.length > 0;
+            if (!has) {
+                chatWrap.classList.remove('collapsed-log');
+                return;
+            }
+            var sy = window.scrollY;
+            if (forceShowForTyping) {
+                chatWrap.classList.remove('collapsed-log');
+                return;
+            }
+            if (sy >= HIDE_SCROLL_Y) {
+                chatWrap.classList.add('collapsed-log');
+                return;
+            }
+            if (sy < SHOW_SCROLL_Y) {
+                chatWrap.classList.remove('collapsed-log');
+                return;
+            }
+            if (heroInViewport) {
+                chatWrap.classList.remove('collapsed-log');
+            } else {
+                chatWrap.classList.add('collapsed-log');
+            }
+        }
+
+        function syncSpacerHeight() {
+            if (chatWrap.classList.contains('sticky')) {
+                chatSpacer.style.height = Math.ceil(chatWrap.getBoundingClientRect().height) + 'px';
+            }
+        }
+
+        function syncChrome() {
+            updateLogVisibility();
+            updatePanelTransparency();
+            syncSpacerHeight();
+        }
+
+        function scheduleSyncChrome() {
+            requestAnimationFrame(syncChrome);
+        }
+
+        function syncConversationUI() {
+            var has = chatMessages.children.length > 0;
+            chatWrap.classList.toggle('has-conversation', has);
+            scheduleSyncChrome();
+        }
+
+        function clearConversation() {
+            chatSessionId = '';
+            localStorage.removeItem('hp-chat-session');
+            chatMessages.innerHTML = '';
+            syncConversationUI();
+        }
+
+        function addMsg(role, content) {
+            const div = document.createElement('div');
+            div.className = 'hp-chat-msg ' + role;
+            div.textContent = content;
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            syncConversationUI();
+        }
+
+        function addMsgWithButton(role, content, buttonText, buttonHref) {
+            const div = document.createElement('div');
+            div.className = 'hp-chat-msg ' + role;
+            div.innerHTML = content + ' <a href="' + buttonHref + '" class="hp-chat-upload-btn">' + buttonText + '</a>';
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            syncConversationUI();
+        }
+
+        function addStatusIndicator() {
+            const div = document.createElement('div');
+            div.className = 'hp-chat-status';
+            div.id = 'hpChatStatus';
+            div.innerHTML = '<span class="hp-chat-status-text">Thinking</span><span class="hp-chat-status-dots"><span></span><span></span><span></span></span>';
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            syncConversationUI();
+            return div;
+        }
+
+        function removeStatusIndicator() {
+            const el = document.getElementById('hpChatStatus');
+            if (el) el.remove();
+            syncConversationUI();
+        }
+
+        async function sendMessage() {
+            const text = (chatInput.value || '').trim();
+            if (!text) return;
+            chatInput.value = '';
+            addMsg('user', text);
+            chatSend.disabled = true;
+            addStatusIndicator();
+            var statusInterval = setInterval(function() {
+                var t = document.querySelector('#hpChatStatus .hp-chat-status-text');
+                if (!t) return;
+                if (t.textContent === 'Thinking') t.textContent = 'Answering';
+                else if (t.textContent === 'Answering') t.textContent = 'Almost there';
+            }, 2200);
+            try {
+                const body = { message: text };
+                if (chatSessionId) body.session_id = chatSessionId;
+                const r = await fetch('/api/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+                const data = await r.json();
+                clearInterval(statusInterval);
+                removeStatusIndicator();
+                if (data.session_id) {
+                    chatSessionId = data.session_id;
+                    localStorage.setItem('hp-chat-session', chatSessionId);
+                }
+                addMsg('assistant', data.reply || 'Sorry, something went wrong.');
+            } catch (e) {
+                clearInterval(statusInterval);
+                removeStatusIndicator();
+                addMsg('assistant', 'Sorry, I could not connect. Please try again.');
+            }
+            chatSend.disabled = false;
+            try { chatInput.focus({ preventScroll: true }); } catch (err) { chatInput.focus(); }
+            scheduleSyncChrome();
+        }
+
+        chatSend.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+        });
+        const chatFileInput = document.getElementById('hpChatFileInput');
+        if (chatPlus && chatFileInput) {
+            chatPlus.addEventListener('click', function(e) {
+                e.stopPropagation();
+                chatFileInput.click();
+            });
+            chatPlus.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); chatPlus.click(); }
+            });
+            chatFileInput.addEventListener('change', async function() {
+                const file = this.files && this.files[0];
+                this.value = '';
+                if (!file) return;
+                addMsg('user', 'Uploaded: ' + file.name);
+                chatSend.disabled = true;
+                try {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    const r = await fetch('/api/chat/upload-csv', { method: 'POST', body: fd });
+                    const data = await r.json();
+                    if (r.ok && data.upload_id) {
+                        addMsgWithButton('assistant', 'Thank you for your product feed, let me move you into our service.', 'Move to service', '/upload/continue?upload_id=' + encodeURIComponent(data.upload_id));
+                    } else {
+                        addMsg('assistant', data.detail || 'Sorry, the upload failed. Please try again.');
+                    }
+                } catch (e) {
+                    addMsg('assistant', 'Sorry, I could not upload your file. Please try again.');
+                }
+                chatSend.disabled = false;
+                scheduleSyncChrome();
+            });
+        }
+        if (chatFinish) {
+            chatFinish.addEventListener('click', function(e) {
+                e.stopPropagation();
+                clearConversation();
+            });
+        }
+        var chatHide = document.getElementById('hpChatHide');
+        if (chatHide) {
+            chatHide.addEventListener('click', function(e) {
+                e.stopPropagation();
+                chatWrap.classList.add('collapsed-log');
+                forceShowForTyping = false;
+                scheduleSyncChrome();
+            });
+        }
+
+        chatPanel.addEventListener('focusin', function() {
+            forceShowForTyping = true;
+            chatWrap.classList.remove('collapsed-log');
+            scheduleSyncChrome();
+        });
+        chatPanel.addEventListener('focusout', function() {
+            var el = this;
+            setTimeout(function() {
+                if (!el.contains(document.activeElement)) {
+                    forceShowForTyping = false;
+                    scheduleSyncChrome();
+                }
+            }, 50);
+        });
+        chatPanel.addEventListener('click', function() {
+            if (document.activeElement !== chatInput) {
+                try { chatInput.focus({ preventScroll: true }); } catch (err) { chatInput.focus(); }
+            }
+        });
+
+        function applyStickyBar() {
+            chatSpacer.style.height = Math.ceil(chatWrap.getBoundingClientRect().height) + 'px';
+            chatSpacer.style.display = 'block';
+            chatWrap.classList.add('sticky');
+        }
+
+        function removeStickyBar() {
+            chatWrap.classList.remove('sticky');
+            chatSpacer.style.height = '0px';
+            chatSpacer.style.display = 'none';
+        }
+
+        function tickStickyFromScroll() {
+            var nh = updateStickyTopVar();
+            var anchorTop = chatAnchor.getBoundingClientRect().top;
+            var sticky = chatWrap.classList.contains('sticky');
+            if (!sticky) {
+                if (window.scrollY > 12 && anchorTop <= nh + 16) {
+                    applyStickyBar();
+                }
+            } else {
+                if (window.scrollY < 8 || anchorTop >= nh + STICK_HYST) {
+                    removeStickyBar();
+                }
+            }
+            scheduleSyncChrome();
+        }
+
+        function onScrollOrResizeSticky() {
+            if (scrollStickyRaf) return;
+            scrollStickyRaf = requestAnimationFrame(function() {
+                scrollStickyRaf = null;
+                tickStickyFromScroll();
+            });
+        }
+
+        window.addEventListener('scroll', onScrollOrResizeSticky, { passive: true });
+        window.addEventListener('resize', function() {
+            updateStickyTopVar();
+            onScrollOrResizeSticky();
+            syncSpacerHeight();
+            scheduleSyncChrome();
+        }, { passive: true });
+
+        var heroEl = document.querySelector('.hp-hero');
+        if (heroEl) {
+            var heroIO = new IntersectionObserver(function(entries) {
+                heroInViewport = entries[0].isIntersecting;
+                scheduleSyncChrome();
+            }, { root: null, rootMargin: '-100px 0px 0px 0px', threshold: 0.1 });
+            heroIO.observe(heroEl);
+        }
+
+        updateStickyTopVar();
+        tickStickyFromScroll();
+        syncConversationUI();
+    })();
     </script>
     <script src="/static/page-transition.js"></script>
 </body>
@@ -1297,6 +1747,209 @@ def _build_upload_page(user_role: str = "customer") -> str:
     return _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", GTM_HEAD).replace("{GTM_BODY}", GTM_BODY).replace("<!-- ADMIN_NAV -->", admin_nav)
 
 
+def _build_contact_page() -> str:
+    return """<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+""" + GTM_HEAD + """
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Contact us &mdash; Cartozo.ai</title>
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+    <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
+    <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; overflow-x: hidden; position: relative; }
+    [data-theme="light"] body { background: #f8fafc; color: #0f172a; }
+    [data-theme="light"] .subtitle, [data-theme="light"] .label { color: rgba(15,23,42,0.7); }
+    [data-theme="light"] input { border-color: rgba(15,23,42,0.15); background: rgba(255,255,255,0.9); color: #0f172a; }
+    [data-theme="light"] input:focus { border-color: rgba(15,23,42,0.3); }
+    [data-theme="light"] .contact-email { color: #f97316; }
+    .cp-stars { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
+    .cp-star { position: absolute; width: 2px; height: 2px; background: rgba(255,255,255,0.5); border-radius: 50%; animation: cp-starDrift 30s ease-in-out infinite; }
+    [data-theme="light"] .cp-star { background: rgba(15,23,42,0.25); }
+    .cp-star::after { content: ''; position: absolute; top: -1px; left: -1px; width: 4px; height: 4px; background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 70%); border-radius: 50%; }
+    @keyframes cp-starDrift { 0% { transform: translate(0, 0); } 25% { transform: translate(15px, -10px); } 50% { transform: translate(5px, -20px); } 75% { transform: translate(-10px, -8px); } 100% { transform: translate(0, 0); } }
+    .cp-star:nth-child(1) { top: 8%; left: 15%; animation-delay: 0s; animation-duration: 30s; }
+    .cp-star:nth-child(2) { top: 12%; left: 85%; animation-delay: 5s; animation-duration: 35s; }
+    .cp-star:nth-child(3) { top: 25%; left: 92%; animation-delay: 3s; animation-duration: 28s; }
+    .cp-star:nth-child(4) { top: 35%; left: 5%; animation-delay: 8s; animation-duration: 32s; }
+    .cp-star:nth-child(5) { top: 45%; left: 78%; animation-delay: 2s; animation-duration: 38s; }
+    .cp-star:nth-child(6) { top: 55%; left: 25%; animation-delay: 10s; animation-duration: 25s; }
+    .cp-star:nth-child(7) { top: 65%; left: 95%; animation-delay: 6s; animation-duration: 33s; }
+    .cp-star:nth-child(8) { top: 72%; left: 12%; animation-delay: 4s; animation-duration: 29s; }
+    .cp-star:nth-child(9) { top: 82%; left: 68%; animation-delay: 12s; animation-duration: 36s; }
+    .cp-star:nth-child(10) { top: 88%; left: 42%; animation-delay: 7s; animation-duration: 31s; }
+    .cp-star:nth-child(11) { top: 18%; left: 55%; animation-delay: 9s; animation-duration: 27s; }
+    .cp-star:nth-child(12) { top: 38%; left: 35%; animation-delay: 1s; animation-duration: 34s; }
+    .cp-star:nth-child(13) { top: 58%; left: 8%; animation-delay: 11s; animation-duration: 26s; }
+    .cp-star:nth-child(14) { top: 78%; left: 88%; animation-delay: 13s; animation-duration: 37s; }
+    .cp-star:nth-child(15) { top: 92%; left: 22%; animation-delay: 0s; animation-duration: 30s; }
+    .cp-particles { position: absolute; width: 100%; height: 100%; top: 0; left: 0; pointer-events: none; z-index: 0; }
+    .cp-particle { position: absolute; width: 3px; height: 3px; background: rgba(255,255,255,0.4); border-radius: 50%; animation: cp-particleDrift 8s ease-in-out infinite; pointer-events: none; }
+    .cp-particle:nth-child(1) { top: 20%; left: 30%; animation-delay: 0s; }
+    .cp-particle:nth-child(2) { top: 60%; left: 70%; animation-delay: 2s; animation-duration: 10s; }
+    .cp-particle:nth-child(3) { top: 40%; left: 85%; animation-delay: 4s; animation-duration: 12s; }
+    .cp-particle:nth-child(4) { top: 80%; left: 20%; animation-delay: 1s; animation-duration: 9s; }
+    @keyframes cp-particleDrift { 0%, 100% { transform: translate(0, 0); opacity: 0.4; } 25% { transform: translate(10px, -15px); opacity: 0.8; } 50% { transform: translate(-5px, -25px); opacity: 0.4; } 75% { transform: translate(-15px, -10px); opacity: 0.7; } }
+    .cp-moon-container { position: absolute; width: 320px; height: 320px; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; pointer-events: none; animation: cp-moonTravel 90s ease-in-out infinite; }
+    @keyframes cp-moonTravel { 0% { transform: translate(-50%, -50%) translateX(-55vw); } 50% { transform: translate(-50%, -50%) translateX(55vw); } 100% { transform: translate(-50%, -50%) translateX(-55vw); } }
+    .cp-moon-planet { position: relative; width: 100%; height: 100%; }
+    .cp-moon-glow { position: absolute; top: 50%; left: 50%; width: 220px; height: 220px; margin: -110px 0 0 -110px; border-radius: 50%; background: radial-gradient(circle, rgba(200,210,230,0.15) 0%, rgba(150,160,180,0.08) 40%, transparent 70%); animation: cp-moonGlow 4s ease-in-out infinite; pointer-events: none; }
+    [data-theme="light"] .cp-moon-glow { background: radial-gradient(circle, rgba(100,120,150,0.12) 0%, rgba(80,90,110,0.06) 40%, transparent 70%); }
+    @keyframes cp-moonGlow { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.8; } }
+    .cp-moon-body { position: absolute; top: 50%; left: 50%; width: 140px; height: 140px; margin: -70px 0 0 -70px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #c8d0dc, #8b95a5 35%, #5a6474 60%, #3d4552 85%, #2a3040 100%); box-shadow: 0 0 50px rgba(180,190,210,0.2), 0 0 100px rgba(120,130,150,0.15), inset -15px -15px 35px rgba(0,0,0,0.4), inset 8px 8px 25px rgba(255,255,255,0.08); animation: cp-moonFloat 8s ease-in-out infinite; overflow: hidden; }
+    [data-theme="light"] .cp-moon-body { background: radial-gradient(circle at 35% 30%, #d8e0e8, #a8b0bc 35%, #78808c 60%, #58606c 85%, #404850 100%); box-shadow: 0 0 40px rgba(100,110,130,0.2), inset -12px -12px 30px rgba(0,0,0,0.2), inset 6px 6px 20px rgba(255,255,255,0.15); }
+    @keyframes cp-moonFloat { 0%, 100% { transform: translate(-50%, -50%) translateY(0); } 50% { transform: translate(-50%, -50%) translateY(-12px); } }
+    .cp-crater { position: absolute; border-radius: 50%; background: rgba(50,55,65,0.5); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.4); }
+    [data-theme="light"] .cp-crater { background: rgba(80,85,95,0.4); }
+    .cp-crater-1 { width: 18px; height: 18px; top: 32%; left: 38%; }
+    .cp-crater-2 { width: 10px; height: 10px; top: 62%; left: 22%; }
+    .cp-crater-3 { width: 14px; height: 14px; top: 22%; left: 62%; }
+    .cp-crater-4 { width: 8px; height: 8px; top: 55%; left: 55%; }
+    .cp-crater-5 { width: 6px; height: 6px; top: 42%; left: 72%; }
+    :root, [data-theme="dark"] { --hp-bg: #000; --hp-text: #fff; --hp-muted: rgba(255,255,255,0.6); --hp-border: rgba(255,255,255,0.1); }
+    [data-theme="light"] { --hp-bg: #f8fafc; --hp-text: #0f172a; --hp-muted: rgba(15,23,42,0.6); --hp-border: rgba(15,23,42,0.12); }
+    .cp-nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
+    [data-theme="light"] .cp-nav { background: rgba(248,250,252,0.95); border-bottom-color: rgba(15,23,42,0.08); }
+    .cp-nav-logo { flex-shrink: 0; }
+    .cp-nav-logo img { height: 32px; }
+    .cp-nav-logo .logo-light { display: block; filter: brightness(0) invert(1); }
+    .cp-nav-logo .logo-dark { display: none; }
+    [data-theme="light"] .cp-nav-logo .logo-light { display: none; }
+    [data-theme="light"] .cp-nav-logo .logo-dark { display: block; filter: none; }
+    .cp-nav-links { display: flex; align-items: center; justify-content: center; gap: 28px; flex: 1; }
+    .cp-nav-right { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+    .cp-nav-link { color: var(--hp-muted); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }
+    .cp-nav-link:hover { color: var(--hp-text); }
+    .cp-theme-btn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--hp-border); background: transparent; color: var(--hp-muted); cursor: pointer; font-size: 1rem; transition: all 0.2s; }
+    .cp-theme-btn:hover { color: var(--hp-text); background: rgba(255,255,255,0.08); }
+    [data-theme="light"] .cp-theme-btn:hover { background: rgba(15,23,42,0.06); }
+    .cp-nav-cta { background: var(--hp-text); color: var(--hp-bg); padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; transition: opacity 0.2s; }
+    .cp-nav-cta:hover { opacity: 0.9; }
+    @media (max-width: 1024px) { .cp-nav-links { display: none; } .cp-nav-right { gap: 12px; } }
+    .cp-container { max-width: 480px; margin: 80px auto; padding: 0 24px; position: relative; z-index: 2; padding-top: 100px; }
+    .title { font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; }
+    .subtitle { color: rgba(255,255,255,0.6); font-size: 0.95rem; margin-bottom: 32px; line-height: 1.5; }
+    .contact-email { font-size: 0.9rem; margin-bottom: 32px; }
+    .contact-email a { color: #f97316; text-decoration: none; }
+    .contact-email a:hover { text-decoration: underline; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-group { margin-bottom: 20px; }
+    .label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 8px; color: rgba(255,255,255,0.8); }
+    input { width: 100%; padding: 12px 16px; font-size: 0.95rem; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; }
+    input:focus { outline: none; border-color: rgba(255,255,255,0.4); }
+    .btn { padding: 14px 28px; font-size: 0.95rem; font-weight: 600; background: #f97316; color: #fff; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .success-msg { margin-top: 20px; padding: 16px; background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3); border-radius: 8px; color: #22c55e; font-size: 0.9rem; display: none; }
+    .success-msg.show { display: block; }
+    .error-msg { margin-top: 20px; padding: 16px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; color: #ef4444; font-size: 0.9rem; display: none; }
+    .error-msg.show { display: block; }
+    @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } .cp-moon-container { width: 220px; height: 220px; } .cp-moon-body { width: 90px; height: 90px; margin: -45px 0 0 -45px; } .cp-moon-glow { width: 150px; height: 150px; margin: -75px 0 0 -75px; } }
+    </style>
+</head>
+<body>
+""" + GTM_BODY + """
+    <div class="cp-stars">
+        <div class="cp-star"></div><div class="cp-star"></div><div class="cp-star"></div>
+        <div class="cp-star"></div><div class="cp-star"></div><div class="cp-star"></div>
+        <div class="cp-star"></div><div class="cp-star"></div><div class="cp-star"></div>
+        <div class="cp-star"></div><div class="cp-star"></div><div class="cp-star"></div>
+        <div class="cp-star"></div><div class="cp-star"></div><div class="cp-star"></div>
+    </div>
+    <div class="cp-particles">
+        <div class="cp-particle"></div>
+        <div class="cp-particle"></div>
+        <div class="cp-particle"></div>
+        <div class="cp-particle"></div>
+    </div>
+    <div class="cp-moon-container">
+        <div class="cp-moon-planet">
+            <div class="cp-moon-glow"></div>
+            <div class="cp-moon-body">
+                <div class="cp-crater cp-crater-1"></div>
+                <div class="cp-crater cp-crater-2"></div>
+                <div class="cp-crater cp-crater-3"></div>
+                <div class="cp-crater cp-crater-4"></div>
+                <div class="cp-crater cp-crater-5"></div>
+            </div>
+        </div>
+    </div>
+    <nav class="cp-nav">
+        <a href="/" class="cp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
+        <div class="cp-nav-links">
+            <a href="/#features" class="cp-nav-link">Features</a>
+            <a href="/#feed-structure" class="cp-nav-link">Feed Structure</a>
+            <a href="/#how-it-works" class="cp-nav-link">How it works</a>
+            <a href="/contact" class="cp-nav-link">Contact us</a>
+        </div>
+        <div class="cp-nav-right">
+            <button type="button" class="cp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
+            <a href="/login" class="cp-nav-cta">Get Started</a>
+        </div>
+    </nav>
+    <div class="cp-container">
+        <h1 class="title">Contact us</h1>
+        <p class="subtitle">Have a question? Fill out the form below and we'll get back to you.</p>
+        <p class="contact-email">Or email us directly: <a href="mailto:oleh.halahan@zanzarra.com">oleh.halahan@zanzarra.com</a></p>
+        <form id="contactForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="label" for="name">Name</label>
+                    <input type="text" id="name" name="name" required placeholder="John" maxlength="255" />
+                </div>
+                <div class="form-group">
+                    <label class="label" for="surname">Surname</label>
+                    <input type="text" id="surname" name="surname" required placeholder="Doe" maxlength="255" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="label" for="email">Your email</label>
+                <input type="email" id="email" name="email" required placeholder="john@example.com" maxlength="255" />
+            </div>
+            <div class="form-group">
+                <label class="label" for="phone">Phone number</label>
+                <input type="tel" id="phone" name="phone" placeholder="+1 234 567 8900" maxlength="64" />
+            </div>
+            <button type="submit" class="btn" id="submitBtn">Send</button>
+        </form>
+        <div id="successMsg" class="success-msg">Thank you! We'll be in touch soon.</div>
+        <div id="errorMsg" class="error-msg"></div>
+    </div>
+    <script>
+    (function(){
+        const form=document.getElementById('contactForm');
+        const submitBtn=document.getElementById('submitBtn');
+        const successMsg=document.getElementById('successMsg');
+        const errorMsg=document.getElementById('errorMsg');
+        form.onsubmit=async function(e){
+            e.preventDefault();
+            submitBtn.disabled=true;
+            errorMsg.classList.remove('show');
+            successMsg.classList.remove('show');
+            try{
+                const r=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+                    name:document.getElementById('name').value.trim(),
+                    surname:document.getElementById('surname').value.trim(),
+                    email:document.getElementById('email').value.trim(),
+                    phone:document.getElementById('phone').value.trim()
+                })});
+                const d=await r.json().catch(()=>({}));
+                if(r.ok){successMsg.classList.add('show');form.reset();}
+                else{errorMsg.textContent=d.detail||'Something went wrong. Please try again.';errorMsg.classList.add('show');}
+            }catch(err){errorMsg.textContent='Could not send. Please try again.';errorMsg.classList.add('show');}
+            submitBtn.disabled=false;
+        };
+        const t=document.getElementById('themeToggle');
+        if(t){const k='hp-theme';function g(){return localStorage.getItem(k)||'dark';}function s(v){document.documentElement.setAttribute('data-theme',v);localStorage.setItem(k,v);t.textContent=v==='dark'?'\u2600':'\u263E';}t.onclick=()=>s(g()==='dark'?'light':'dark');s(g());}
+    })();
+    </script>
+    <script src="/static/page-transition.js"></script>
+</body>
+</html>"""
+
+
 def _build_homepage_html() -> str:
     """Build homepage HTML with SEO meta from settings."""
     import html as html_module
@@ -1321,6 +1974,31 @@ def homepage():
     return HTMLResponse(content=_build_homepage_html())
 
 
+@app.get("/contact", response_class=HTMLResponse)
+def contact_page():
+    return HTMLResponse(content=_build_contact_page())
+
+
+@app.post("/api/contact")
+async def api_contact(request: Request):
+    """Save contact form submission."""
+    import re
+    data = await request.json()
+    name = (data.get("name") or "").strip()[:255]
+    surname = (data.get("surname") or "").strip()[:255]
+    email = (data.get("email") or "").strip()[:255]
+    phone = (data.get("phone") or "").strip()[:64]
+    if not name or not surname or not email:
+        raise HTTPException(status_code=400, detail="Name, surname and email are required.")
+    if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+    from .db import get_db
+    from .services.db_repository import save_contact_submission
+    with get_db() as db:
+        save_contact_submission(db, name, surname, email, phone)
+    return JSONResponse({"status": "ok"})
+
+
 @app.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request):
     redir = require_login_redirect(request, "/upload")
@@ -1329,6 +2007,42 @@ async def upload_page(request: Request):
     user = get_current_user(request)
     role = user.get("role", "customer") if user else "customer"
     return HTMLResponse(content=_build_upload_page(user_role=role))
+
+
+@app.get("/upload/continue", response_class=HTMLResponse)
+async def upload_continue(request: Request, upload_id: str = Query(...)):
+    """Show mapping page for a pending upload (e.g. from hero chat). Requires login."""
+    redir = require_login_redirect(request, f"/upload/continue?upload_id={upload_id}")
+    if redir:
+        return redir
+    from .db import get_db
+    from .services.db_repository import get_pending_upload
+    with get_db() as db:
+        pending = get_pending_upload(db, upload_id)
+    if not pending:
+        raise HTTPException(status_code=400, detail="Upload session expired. Please re-upload your CSV.")
+
+    records = pending["records"]
+    csv_columns = list(records[0].keys())
+    guessed = guess_mapping(csv_columns)
+    sample_rows = records[:5]
+    mode = pending.get("mode", "optimize")
+    target_language = pending.get("target_language", "") or ""
+    product_type = pending.get("product_type", "standard") or "standard"
+
+    user = get_current_user(request)
+    role = user.get("role", "customer") if user else "customer"
+    return HTMLResponse(content=_build_mapping_page(
+        upload_id=upload_id,
+        csv_columns=csv_columns,
+        guessed=guessed,
+        sample_rows=sample_rows,
+        mode=mode,
+        target_language=target_language,
+        total_rows=len(records),
+        product_type=product_type,
+        user_role=role,
+    ))
 
 
 @app.post("/batches/preview", response_class=HTMLResponse)
@@ -2933,11 +3647,12 @@ async def settings_page(request: Request):
 
     import html as _html
     from .db import get_db
-    from .services.db_repository import get_all_feedback, get_all_users
+    from .services.db_repository import get_all_feedback, get_all_users, get_all_chat_sessions
 
     with get_db() as db:
         feedback_list = get_all_feedback(db)
         users_list = get_all_users(db)
+        chat_sessions_list = get_all_chat_sessions(db)
 
     feedback_rows = ""
     for i, fb in enumerate(feedback_list):
@@ -2966,8 +3681,21 @@ async def settings_page(request: Request):
     admins = sum(1 for u in users_list if u.get("role") == "admin")
     customers = users_total - admins
 
+    import base64
+    chat_sessions_rows = ""
+    for i, cs in enumerate(chat_sessions_list):
+        sid_raw = cs.get("session_id", "")
+        sid_display = _html.escape(sid_raw[:12] + "..." if len(sid_raw) > 12 else sid_raw)
+        email = _html.escape(cs.get("user_email", "—") or "—")
+        msgs = cs.get("messages", [])
+        msg_count = len(msgs)
+        first_msg = _html.escape((msgs[0].get("content", "")[:60] + "…") if msgs else "—")
+        updated = cs.get("updated_at", "")[:19].replace("T", " ") if cs.get("updated_at") else "—"
+        msgs_b64 = base64.b64encode(json.dumps(msgs).encode()).decode()
+        chat_sessions_rows += f'<tr><td>{i + 1}</td><td class="mono">{sid_display}</td><td class="email">{email}</td><td>{msg_count}</td><td class="text-cell">{first_msg}</td><td class="ts">{updated}</td><td><button type="button" class="btn btn-small" onclick="viewChatSession(this)" data-msgs="{msgs_b64}">View</button></td></tr>'
+
     tab_param = request.query_params.get("tab", "prompts")
-    if tab_param not in ("prompts", "api", "seo", "users", "feedback"):
+    if tab_param not in ("prompts", "api", "seo", "users", "feedback", "chats"):
         tab_param = "prompts"
 
     html = f"""<!DOCTYPE html>
@@ -3086,6 +3814,13 @@ async def settings_page(request: Request):
     input[type="text"]:focus, input[type="url"]:focus {{ outline: none; border-color: rgba(255,255,255,0.3); }}
     [data-theme="light"] input[type="text"], [data-theme="light"] input[type="url"] {{ border-color: rgba(15,23,42,0.15); background: rgba(255,255,255,0.9); color: #0f172a; }}
     [data-theme="light"] input[type="text"]:focus, [data-theme="light"] input[type="url"]:focus {{ border-color: rgba(15,23,42,0.3); }}
+    .btn-small {{ padding: 6px 14px; font-size: 0.82rem; }}
+    .modal {{ position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 24px; }}
+    .modal-content {{ background: #1a1a1e; border-radius: 12px; padding: 24px; max-height: 90vh; overflow: auto; border: 1px solid rgba(255,255,255,0.1); }}
+    [data-theme="light"] .modal-content {{ background: #fff; border-color: rgba(15,23,42,0.1); }}
+    .chat-msg {{ padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; font-size: 0.88rem; }}
+    .chat-msg.user {{ background: rgba(255,255,255,0.08); margin-left: 20px; }}
+    .chat-msg.assistant {{ background: rgba(249,115,22,0.12); margin-right: 20px; }}
     @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 32px auto; }} .stats {{ flex-direction: column; gap: 12px; }} }}
     </style>
 </head>
@@ -3110,6 +3845,7 @@ async def settings_page(request: Request):
             <button class="tab{' active' if tab_param == 'seo' else ''}" data-tab="tab-seo" onclick="switchTab('tab-seo','seo')">SEO</button>
             <button class="tab{' active' if tab_param == 'users' else ''}" data-tab="tab-users" onclick="switchTab('tab-users','users')">Users</button>
             <button class="tab{' active' if tab_param == 'feedback' else ''}" data-tab="tab-feedback" onclick="switchTab('tab-feedback','feedback')">Feedback</button>
+            <button class="tab{' active' if tab_param == 'chats' else ''}" data-tab="tab-chats" onclick="switchTab('tab-chats','chats')">Chat Sessions</button>
         </div>
 
         <div id="tab-prompts" class="tab-content{' active' if tab_param == 'prompts' else ''}">
@@ -3218,6 +3954,21 @@ async def settings_page(request: Request):
             </div>
             {"<table><thead><tr><th>#</th><th>Rating</th><th>Feedback</th><th>User</th><th>Batch</th><th>Date</th></tr></thead><tbody>" + feedback_rows + "</tbody></table>" if feedback_total else '<div class="empty">No feedback yet. Feedback will appear here as customers submit it.</div>'}
         </div>
+
+        <div id="tab-chats" class="tab-content{' active' if tab_param == 'chats' else ''}">
+            <p class="group-desc" style="margin-bottom:24px;">{len(chat_sessions_list)} chat sessions with AI agent</p>
+            <div class="stats">
+                <div class="stat"><div class="stat-val">{len(chat_sessions_list)}</div><div class="stat-label">Total sessions</div></div>
+            </div>
+            {"<table><thead><tr><th>#</th><th>Session ID</th><th>User</th><th>Messages</th><th>Preview</th><th>Updated</th><th></th></tr></thead><tbody>" + chat_sessions_rows + "</tbody></table>" if chat_sessions_list else '<div class="empty">No chat sessions yet. Sessions will appear here as visitors use the homepage AI chat.</div>'}
+            <div id="chatModal" class="modal" style="display:none;">
+                <div class="modal-content" style="max-width:600px;">
+                    <h3 style="margin-bottom:16px;">Chat Session</h3>
+                    <div id="chatModalBody" style="max-height:400px;overflow-y:auto;font-size:0.9rem;"></div>
+                    <button class="btn btn-primary" style="margin-top:16px;" onclick="document.getElementById('chatModal').style.display='none'">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -3247,6 +3998,16 @@ async def settings_page(request: Request):
         }}
     }}
     function showSaved(id){{const el=document.getElementById(id);el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2500);}}
+    function viewChatSession(btn){{
+        const b64=btn.getAttribute('data-msgs');
+        if(!b64)return;
+        try{{
+            const msgs=JSON.parse(atob(b64));
+            const body=document.getElementById('chatModalBody');
+            body.innerHTML=msgs.map(m=>'<div class="chat-msg '+m.role+'">'+(m.content||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>').join('');
+            document.getElementById('chatModal').style.display='flex';
+        }}catch(e){{}}
+    }}
     (function(){{
         const t=document.getElementById("themeToggle");
         if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\u2600":"\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
@@ -3256,6 +4017,80 @@ async def settings_page(request: Request):
 </body>
 </html>"""
     return HTMLResponse(content=html)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Chat API (AI agent for homepage)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/chat")
+async def api_chat(request: Request):
+    """Chat with AI agent about Cartozo.ai. Uses same OpenAI API as titles/descriptions."""
+    data = await request.json()
+    session_id = data.get("session_id") or str(uuid.uuid4())
+    user_message = (data.get("message") or "").strip()
+    if not user_message:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    s = _get_settings()
+    storage._ai.set_api_key(s.get("openai_api_key", "") or "")
+    storage._ai.set_prompts(s.get("prompt_title", ""), s.get("prompt_description", ""))
+
+    from .db import get_db
+    from .services.db_repository import (
+        get_chat_session,
+        create_chat_session,
+        update_chat_session,
+    )
+
+    user = get_current_user(request)
+    user_email = user.get("email", "") if user else ""
+
+    with get_db() as db:
+        sess = get_chat_session(db, session_id)
+        if not sess:
+            create_chat_session(db, session_id, user_email)
+            messages = []
+        else:
+            messages = list(sess["messages"])
+
+    messages.append({"role": "user", "content": user_message})
+    reply = storage._ai.chat(messages)
+    messages.append({"role": "assistant", "content": reply})
+
+    with get_db() as db:
+        update_chat_session(db, session_id, messages)
+
+    return JSONResponse({"reply": reply, "session_id": session_id})
+
+
+@app.post("/api/chat/upload-csv")
+async def api_chat_upload_csv(file: UploadFile = File(...)):
+    """Accept CSV from hero chat, parse, validate, save to pending_uploads. No login required."""
+    if file.content_type not in {"text/csv", "application/vnd.ms-excel"}:
+        raise HTTPException(status_code=400, detail="Only CSV upload is supported.")
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="CSV must be UTF-8 encoded.")
+
+    is_safe, security_error = validate_csv_content(text, len(content))
+    if not is_safe:
+        raise HTTPException(status_code=400, detail=security_error)
+
+    records = parse_csv_file(io.StringIO(text))
+    if not records:
+        raise HTTPException(status_code=400, detail="CSV appears empty or has no rows.")
+
+    upload_id = str(uuid.uuid4())
+    from .db import get_db
+    from .services.db_repository import save_pending_upload
+    with get_db() as db:
+        save_pending_upload(db, upload_id, records, "optimize", "", "standard")
+
+    return JSONResponse({"upload_id": upload_id})
 
 
 @app.post("/api/settings/prompts")
@@ -3340,6 +4175,94 @@ async def api_admin_users(request: Request):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Admin: Contact results page
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/contact-results", response_class=HTMLResponse)
+async def admin_contact_results_page(request: Request):
+    redir = require_admin_redirect(request, "/admin/contact-results")
+    if redir:
+        return redir
+    import html as _html
+    from .db import get_db
+    from .services.db_repository import get_all_contact_submissions
+    with get_db() as db:
+        submissions = get_all_contact_submissions(db)
+    rows = ""
+    for i, s in enumerate(submissions):
+        name = _html.escape(s.get("name", ""))
+        surname = _html.escape(s.get("surname", ""))
+        email = _html.escape(s.get("email", ""))
+        phone = _html.escape(s.get("phone", "") or "—")
+        ts = s.get("created_at", "")[:19].replace("T", " ") if s.get("created_at") else "—"
+        rows += f"<tr><td>{i + 1}</td><td><strong>{name} {surname}</strong></td><td class=\"email\">{email}</td><td>{phone}</td><td class=\"ts\">{ts}</td></tr>"
+    html = f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+{GTM_HEAD}
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Contact results &mdash; Cartozo.ai</title>
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+    <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
+    <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
+    [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
+    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
+    [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
+    .nav-logo img {{ height: 32px; }}
+    .nav-logo .logo-light {{ display: block; filter: brightness(0) invert(1); }}
+    .nav-logo .logo-dark {{ display: none; }}
+    [data-theme="light"] .nav-logo .logo-light {{ display: none; }}
+    [data-theme="light"] .nav-logo .logo-dark {{ display: block; filter: none; }}
+    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
+    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
+    .nav-link:hover, .nav-link.active {{ color: #fff; }}
+    [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
+    [data-theme="light"] .nav-link:hover, [data-theme="light"] .nav-link.active {{ color: #0f172a; }}
+    .theme-btn {{ width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; }}
+    .container {{ max-width: 900px; margin: 48px auto; padding: 0 24px; }}
+    .title {{ font-size: 1.75rem; font-weight: 600; margin-bottom: 32px; }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 0.88rem; }}
+    th {{ text-align: left; padding: 12px 16px; font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(255,255,255,0.4); border-bottom: 1px solid rgba(255,255,255,0.1); }}
+    [data-theme="light"] th {{ color: rgba(15,23,42,0.5); }}
+    td {{ padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); }}
+    [data-theme="light"] td {{ border-bottom-color: rgba(15,23,42,0.06); }}
+    .email {{ font-size: 0.85rem; }}
+    .ts {{ font-size: 0.78rem; white-space: nowrap; color: rgba(255,255,255,0.5); }}
+    [data-theme="light"] .ts {{ color: rgba(15,23,42,0.5); }}
+    .empty {{ text-align: center; padding: 60px 24px; color: rgba(255,255,255,0.3); }}
+    </style>
+</head>
+<body>
+{GTM_BODY}
+    <nav class="nav">
+        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
+        <div class="nav-links">
+            <a href="/upload" class="nav-link">Optimize Feed</a>
+            <a href="/admin/contact-results" class="nav-link active">Contact results</a>
+            <a href="/settings" class="nav-link">Settings</a>
+            <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">&#9728;</button>
+            <a href="/logout" class="nav-link">Log out</a>
+        </div>
+    </nav>
+    <div class="container">
+        <h1 class="title">Contact results</h1>
+        <table>
+            <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>Date</th></tr></thead>
+            <tbody>{rows if rows else '<tr><td colspan="5" class="empty">No submissions yet.</td></tr>'}</tbody>
+        </table>
+    </div>
+    <script>
+    (function(){{const t=document.getElementById('themeToggle');if(t){{const k='hp-theme';function g(){{return localStorage.getItem(k)||'dark';}}function s(v){{document.documentElement.setAttribute('data-theme',v);localStorage.setItem(k,v);t.textContent=v==='dark'?'\u2600':'\u263E';}}t.onclick=()=>s(g()==='dark'?'light':'dark');s(g());}}}})();
+    </script>
+    <script src="/static/page-transition.js"></script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
 # Admin: Feedback page
 # ─────────────────────────────────────────────────────────────────────────────
 
