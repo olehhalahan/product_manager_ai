@@ -689,9 +689,9 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .hp-mars { width: 140px; height: 140px; margin: -70px 0 0 -70px; pointer-events: none; }
         .hp-mars-glow { width: 220px; height: 220px; margin: -110px 0 0 -110px; }
         .hp-hero { display: flex; flex-direction: column; }
-        .hp-badge { order: 1; }
-        .hp-title { order: 2; }
-        .hp-sub { order: 3; }
+        .hp-badge { order: 1; margin-bottom: 22px; }
+        .hp-title { order: 2; line-height: 1.15; margin-bottom: 22px; }
+        .hp-sub { order: 3; line-height: 1.65; }
         .hp-planet-container { order: 4; }
         .hp-chat-anchor { order: 5; margin-top: 20px; }
         .hp-particles { order: 0; }
@@ -699,12 +699,12 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     @media (max-width: 768px) {
         .hp-nav { padding: 16px 24px; }
         .hp-hero { padding: 120px 20px 60px; min-height: auto; display: flex; flex-direction: column; }
-        .hp-badge { order: 1; margin-bottom: 16px; }
-        .hp-title { order: 2; margin-bottom: 16px; font-size: clamp(1.75rem, 5vw, 2.25rem); }
-        .hp-sub { order: 3; margin-bottom: 24px; font-size: 0.95rem; margin-top: -24px; }
-        .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-badge { font-size: 0.84rem; margin-bottom: 11px; }
-        .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-title { font-size: clamp(1.26rem, 3.5vw, 1.68rem); margin-bottom: 11px; }
-        .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-sub { font-size: 0.77rem; margin-bottom: 17px; margin-top: -17px; }
+        .hp-badge { order: 1; margin-bottom: 20px; }
+        .hp-title { order: 2; margin-bottom: 20px; font-size: clamp(1.75rem, 5vw, 2.25rem); line-height: 1.2; }
+        .hp-sub { order: 3; margin-bottom: 28px; font-size: 0.95rem; margin-top: 0; line-height: 1.65; }
+        .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-badge { font-size: 0.84rem; margin-bottom: 14px; }
+        .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-title { font-size: clamp(1.26rem, 3.5vw, 1.68rem); margin-bottom: 14px; line-height: 1.2; }
+        .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-sub { font-size: 0.77rem; margin-bottom: 20px; margin-top: 0; line-height: 1.55; }
         .hp-planet-container { order: 4; position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); width: 240px; height: 240px; animation: none; z-index: 0; pointer-events: none; }
         .hp-mars { width: 80px; height: 80px; margin: -40px 0 0 -40px; pointer-events: none; }
         .hp-mars-glow { width: 140px; height: 140px; margin: -70px 0 0 -70px; }
@@ -3446,7 +3446,7 @@ async def review_batch(request: Request, batch_id: str):
             <div class="header-actions">
                 <a href="/upload" class="btn btn-outline">&larr; New batch</a>
                 <button onclick="downloadSelected()" class="btn btn-primary">&#8681; Download selected</button>
-                <a href="/batches/{batch_id}/export" class="btn btn-outline">&#8681; Download all</a>
+                <button type="button" onclick="downloadAll()" class="btn btn-outline">&#8681; Download all</button>
             </div>
         </div>
 
@@ -3686,6 +3686,23 @@ async def review_batch(request: Request, batch_id: str):
         }});
     }});
     
+    // Download all products (fetch + blob to stay on page, no navigation)
+    async function downloadAll() {{
+        try {{
+            const resp = await fetch('/batches/{batch_id}/export');
+            if (!resp.ok) {{ alert('Failed to download'); return; }}
+            const blob = await resp.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'batch_{batch_id}.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }} catch (e) {{ alert('Download failed'); }}
+    }}
+
     // Download selected products
     async function downloadSelected() {{
         const ids = Array.from(document.querySelectorAll("input[name='product_id']:checked")).map(c => c.value);
