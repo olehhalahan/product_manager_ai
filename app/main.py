@@ -41,9 +41,16 @@ app = FastAPI(title="Product Content Optimizer", docs_url=None)
 # Favicon + GTM container (GA4 via GTM: Google Tag / GA4 Config, Trigger: All Pages)
 import os as _os
 _GTM_ID = _os.getenv("GTM_CONTAINER_ID", "GTM-W25B668S")
+# Google Search Console — HTML tag verification (homepage <head>); override via GOOGLE_SITE_VERIFICATION in .env
+_GOOGLE_SITE_VERIFICATION = _os.getenv("GOOGLE_SITE_VERIFICATION", "PBIv7Juyd9qX3pFJ-8NbZXkVKhMy0jdQZd3YvG1WiB8").strip()
+_GSC_META_LINE = (
+    f'    <meta name="google-site-verification" content="{_GOOGLE_SITE_VERIFICATION}" />\n'
+    if _GOOGLE_SITE_VERIFICATION
+    else ""
+)
 _GTM_HEAD = f"""    <link rel="icon" href="/assets/favicon.png" type="image/png" />
     <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
+{_GSC_META_LINE}    <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <!-- Google Tag Manager -->
