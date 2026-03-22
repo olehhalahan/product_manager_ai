@@ -29,6 +29,7 @@ class InMemoryStorage:
         products: List[NormalizedProduct],
         actions: Dict[str, ProductAction],
         product_type: str = "standard",
+        user_email: Optional[str] = None,
     ) -> None:
         results: List[ProductResult] = []
         for p in products:

@@ -52,6 +52,8 @@ class NormalizedProduct(BaseModel):
     gender: Optional[str] = None
     age_group: Optional[str] = None
     url: Optional[str] = None
+    # ISO 3166-1 alpha-2 (e.g. UA, US) — from CSV country / target_country column for Merchant push
+    target_country: Optional[str] = None
 
     original_row: Dict[str, str] = Field(default_factory=dict)
 
@@ -90,6 +92,9 @@ class Batch(BaseModel):
     total_cost_usd: float = 0.0
     created_at: Optional[str] = None
     completed_at: Optional[str] = None
+    user_email: Optional[str] = None
+    merchant_pushed_at: Optional[str] = None
+    closed_at: Optional[str] = None
 
 
 class BatchSummary(BaseModel):

@@ -2,26 +2,42 @@
 OAuth authentication (Google + Apple Sign-In).
 No registration — users sign in with existing accounts only.
 Role-based access: admin vs customer.
+
+Google sign-in and Merchant Center use the same OAuth 2.0 Web Client created in
+Google Cloud Console. Set GOOGLE_CLOUD_PROJECT_ID to that project’s ID; see app/google_cloud.py.
 """
 from typing import Optional
 from urllib.parse import quote
 from fastapi import Request, HTTPException
 from fastapi.responses import RedirectResponse
 
+from .google_cloud import get_normalized_google_oauth_credentials
+
 ADMIN_EMAILS = {"oleh.halahan@zanzarra.com"}
 
 _oauth = None
+# Rebuild OAuth clients if env changes (avoids stale client_id after .env edit + hot reload edge cases)
+_google_oauth_fingerprint: Optional[str] = None
+
+
+def _google_credentials_fingerprint() -> str:
+    gid, gsec = get_normalized_google_oauth_credentials()
+    return f"{gid}\n{gsec}" if gid and gsec else ""
 
 
 def get_oauth():
-    global _oauth
+    global _oauth, _google_oauth_fingerprint
+    import os
+
+    fp = _google_credentials_fingerprint()
+    if _oauth is not None and _google_oauth_fingerprint != fp:
+        _oauth = None
+
     if _oauth is None:
         from authlib.integrations.starlette_client import OAuth
-        import os
         oauth = OAuth()
-        # Google
-        gid = os.getenv("GOOGLE_CLIENT_ID")
-        gsec = os.getenv("GOOGLE_CLIENT_SECRET")
+        # Google (normalized: strip + quotes — see google_cloud.py)
+        gid, gsec = get_normalized_google_oauth_credentials()
         if gid and gsec:
             oauth.register(
                 name="google",
@@ -29,6 +45,14 @@ def get_oauth():
                 client_secret=gsec,
                 server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
                 client_kwargs={"scope": "openid email profile"},
+            )
+            # Same OAuth client; separate redirect URI for Merchant Center (Merchant API) + refresh token
+            oauth.register(
+                name="google_merchant",
+                client_id=gid,
+                client_secret=gsec,
+                server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+                client_kwargs={"scope": "https://www.googleapis.com/auth/content"},
             )
         # Apple Sign-In (optional — requires Apple Developer setup)
         aid = os.getenv("APPLE_CLIENT_ID")
@@ -69,6 +93,7 @@ def get_oauth():
                 )
             except Exception:
                 pass  # Skip Apple if config invalid
+        _google_oauth_fingerprint = fp
         _oauth = oauth
     return _oauth
 

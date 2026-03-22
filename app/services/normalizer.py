@@ -7,7 +7,7 @@ INTERNAL_FIELDS = [
     "id", "title", "description", "category", "brand", "language",
     "image_url", "status_raw", "price", "sale_price", "currency",
     "color", "size", "material", "weight", "gtin", "mpn",
-    "condition", "gender", "age_group", "url",
+    "condition", "gender", "age_group", "url", "target_country",
 ]
 
 AUTO_FIELD_MAP = {
@@ -108,6 +108,14 @@ AUTO_FIELD_MAP = {
     "product_url": "url",
     "canonical_url": "url",
     "handle": "url",
+    # Target country (ISO or name) for Merchant / shipping region
+    "country": "target_country",
+    "target_country": "target_country",
+    "shipping_country": "target_country",
+    "ship_to_country": "target_country",
+    "country_of_sale": "target_country",
+    "sale_country": "target_country",
+    "country_code": "target_country",
 }
 
 
@@ -169,6 +177,7 @@ def normalize_records(
             gender=mapped.get("gender"),
             age_group=mapped.get("age_group"),
             url=mapped.get("url"),
+            target_country=mapped.get("target_country"),
             attributes=attributes,
             original_row=row,
         )

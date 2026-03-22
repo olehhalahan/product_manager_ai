@@ -15,7 +15,12 @@ from ..models import (
     BatchSummary,
 )
 from ..db import get_db
-from ..services.db_repository import create_batch as db_create_batch, get_batch as db_get_batch, update_batch as db_update_batch
+from ..services.db_repository import (
+    create_batch as db_create_batch,
+    get_batch as db_get_batch,
+    update_batch as db_update_batch,
+    mark_batch_merchant_pushed as db_mark_batch_merchant_pushed,
+)
 from .ai_provider import AIProvider
 from .validator import validate_gmc
 
@@ -46,6 +51,7 @@ class PostgresStorage:
         products: List[NormalizedProduct],
         actions: Dict[str, ProductAction],
         product_type: str = "standard",
+        user_email: Optional[str] = None,
     ) -> None:
         results: List[ProductResult] = []
         for p in products:
@@ -59,7 +65,14 @@ class PostgresStorage:
             )
         products_json = _products_to_json(results)
         with get_db() as db:
-            db_create_batch(db, batch_id, products_json, BatchStatus.NORMALIZED.value, product_type)
+            db_create_batch(
+                db,
+                batch_id,
+                products_json,
+                BatchStatus.NORMALIZED.value,
+                product_type,
+                user_email=user_email,
+            )
 
     def get_batch(self, batch_id: str) -> Optional[Batch]:
         with get_db() as db:
@@ -76,6 +89,9 @@ class PostgresStorage:
             total_cost_usd=row.get("total_cost_usd", 0.0),
             created_at=row.get("created_at"),
             completed_at=row.get("completed_at"),
+            user_email=row.get("user_email") or None,
+            merchant_pushed_at=row.get("merchant_pushed_at"),
+            closed_at=row.get("closed_at"),
         )
 
     def _save_batch(self, batch: Batch) -> None:
@@ -161,6 +177,10 @@ class PostgresStorage:
 
         batch.status = BatchStatus.READY_FOR_REVIEW
         self._save_batch(batch)
+
+    def mark_batch_merchant_pushed(self, batch_id: str) -> None:
+        with get_db() as db:
+            db_mark_batch_merchant_pushed(db, batch_id)
 
     def regenerate_products(self, batch_id: str, product_ids: List[str]) -> None:
         batch = self.get_batch(batch_id)

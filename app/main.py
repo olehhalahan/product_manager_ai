@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 _root = Path(__file__).resolve().parent.parent
 load_dotenv(_root / ".env")
-load_dotenv(_root / ".env.local")  # local overrides (gitignored)
+load_dotenv(_root / ".env.local", override=True)  # local overrides (gitignored); must override .env
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Query, Request
 from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse
@@ -74,11 +74,42 @@ app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
 @app.on_event("startup")
 def startup():
     """Create database tables on startup."""
+    import logging
+
+    logging.getLogger("uvicorn.error").info("app.main loaded from: %s", __file__)
     from .db import init_db
     init_db()
+    from .google_cloud import log_google_cloud_startup
+
+    log_google_cloud_startup()
 
 
 storage = PostgresStorage()
+
+
+def _batch_history_label(status: str, merchant_pushed_at: Optional[str], closed_at: Optional[str]) -> str:
+    """English label for batch history (review page)."""
+    if closed_at:
+        return "Closed"
+    if merchant_pushed_at:
+        return "Sent"
+    if status in ("normalized", "processing", "partially_done"):
+        return "Pending processing"
+    return "New"
+
+
+def _ensure_batch_owner_from_batch(request: Request, batch) -> None:
+    """403 if the batch belongs to another user. Batches with no owner (legacy) stay accessible."""
+    user = get_current_user(request)
+    email = (user.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Batch not found.")
+    owner = (getattr(batch, "user_email", None) or "").strip().lower()
+    if owner and owner != email:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
 
 _PROJECT_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
 _DATA_DIR = _os.path.join(_PROJECT_ROOT, "data")
@@ -100,12 +131,260 @@ def _get_settings():
         return db_get_settings(db)
 
 
+def _build_batch_history_html(current_batch_id: str, user_email: str) -> str:
+    """HTML block: table of the user's batches (newest first)."""
+    import html as html_module
+
+    from .db import get_db
+    from .services.db_repository import list_batches_for_user
+
+    email = (user_email or "").strip().lower()
+    if not email:
+        return (
+            '<section class="batch-history batch-history--empty" aria-label="Your batches">'
+            '<h2 class="batch-history-title">Your batches</h2>'
+            '<p class="batch-history-empty">Sign in to see your batch history.</p>'
+            "</section>"
+        )
+    with get_db() as db:
+        rows = list_batches_for_user(db, email, limit=50)
+    if not rows:
+        return (
+            '<section class="batch-history batch-history--empty" aria-label="Your batches">'
+            '<h2 class="batch-history-title">Your batches</h2>'
+            '<p class="batch-history-empty">No batches yet. <a class="batch-history-empty-link" href="/upload">Upload a feed</a> to get started.</p>'
+            "</section>"
+        )
+    status_class = {
+        "Closed": "closed",
+        "Sent": "sent",
+        "Pending processing": "pending",
+        "New": "new",
+    }
+    tr_parts: List[str] = []
+    for row in rows:
+        bid = row["batch_id"]
+        lbl = _batch_history_label(
+            row["status"],
+            row.get("merchant_pushed_at"),
+            row.get("closed_at"),
+        )
+        sc = status_class.get(lbl, "new")
+        short = bid[:8] + "…" if len(bid) > 8 else bid
+        created = row.get("created_at") or ""
+        if len(created) > 16:
+            created = created[:16].replace("T", " ")
+        cur_cls = " batch-history-row--current" if bid == current_batch_id else ""
+        esc_bid = html_module.escape(bid)
+        esc_short = html_module.escape(short)
+        esc_lbl = html_module.escape(lbl)
+        esc_created = html_module.escape(created)
+        n = int(row.get("product_count") or 0)
+        close_btn = ""
+        if not row.get("closed_at"):
+            close_btn = (
+                f'<button type="button" class="btn btn-outline btn-sm batch-history-close" '
+                f'data-batch-id="{esc_bid}">Close</button>'
+            )
+        tr_parts.append(
+            f'<tr class="batch-history-row{cur_cls}">'
+            f'<td><a class="batch-history-link" href="/batches/{esc_bid}/review">{esc_short}</a></td>'
+            f'<td class="batch-history-meta">{esc_created}</td>'
+            f'<td class="batch-history-meta">{n}</td>'
+            f'<td><span class="batch-history-pill batch-history-pill--{sc}">{esc_lbl}</span></td>'
+            f'<td class="batch-history-actions">'
+            f'<a class="btn btn-outline btn-sm" href="/batches/{esc_bid}/review">Open</a> {close_btn}'
+            f"</td></tr>"
+        )
+    return (
+        '<section class="batch-history" aria-label="Your batches">'
+        "<h2 class=\"batch-history-title\">Your batches</h2>"
+        '<div class="batch-history-scroll">'
+        "<table class=\"batch-history-table\">"
+        "<thead><tr>"
+        "<th>Batch</th><th>Created</th><th>Products</th><th>Status</th><th></th>"
+        "</tr></thead><tbody>"
+        + "".join(tr_parts)
+        + "</tbody></table></div>"
+        "<p class=\"batch-history-hint\">Open any batch to review, edit, or push products to Merchant again.</p>"
+        "</section>"
+    )
+
+
+def _wrap_batches_history_shell(*, page_title: str, body_inner: str, user_role: str) -> str:
+    """Full HTML document for /batches/history (shared nav + batch-history styles)."""
+    admin_nav = _admin_nav_links(active="", user_role=user_role)
+    return f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+{GTM_HEAD}
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{page_title} &mdash; Cartozo.ai</title>
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+    <style>body{{opacity:0;transition:opacity .28s ease}}body.loaded{{opacity:1}}</style>
+    <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; }}
+    [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
+    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; background: rgba(10,10,10,0.95); backdrop-filter: blur(10px); z-index: 100; }}
+    [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); background: rgba(248,250,252,0.95); }}
+    .nav-logo img {{ height: 32px; }}
+    .nav-logo .logo-light {{ display: block; filter: brightness(0) invert(1); }}
+    .nav-logo .logo-dark {{ display: none; }}
+    [data-theme="light"] .nav-logo .logo-light {{ display: none; }}
+    [data-theme="light"] .nav-logo .logo-dark {{ display: block; filter: none; }}
+    .nav-links {{ display: flex; align-items: center; gap: 28px; }}
+    .nav-link {{ color: rgba(255,255,255,0.65); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
+    .nav-link:hover {{ color: #fff; }}
+    [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
+    [data-theme="light"] .nav-link:hover {{ color: #0f172a; }}
+    .theme-btn {{ display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
+    .theme-btn:hover {{ color: #fff; background: rgba(255,255,255,0.08); }}
+    [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
+    .container {{ max-width: 1100px; margin: 0 auto; padding: 32px 48px 48px; }}
+    .page-h1 {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; }}
+    .page-sub {{ font-size: 0.85rem; color: rgba(255,255,255,0.45); margin-bottom: 20px; }}
+    .page-sub a {{ color: #22D3EE; text-decoration: none; }}
+    .page-sub a:hover {{ text-decoration: underline; }}
+    [data-theme="light"] .page-sub {{ color: rgba(15,23,42,0.5); }}
+    .btn {{ display: inline-block; padding: 8px 14px; font-size: 0.8rem; font-weight: 600; border-radius: 8px; text-decoration: none; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: #e5e5e5; }}
+    .btn-outline {{ border-color: rgba(255,255,255,0.25); }}
+    .btn-outline:hover {{ background: rgba(255,255,255,0.08); }}
+    [data-theme="light"] .btn {{ border-color: rgba(15,23,42,0.2); color: #0f172a; }}
+    .btn-sm {{ padding: 6px 12px; font-size: 0.75rem; }}
+    .batch-history {{ margin-bottom: 0; padding: 20px 22px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); }}
+    .batch-history--empty {{ min-height: 120px; }}
+    .batch-history-title {{ font-size: 1rem; font-weight: 600; margin-bottom: 14px; color: rgba(255,255,255,0.95); }}
+    .batch-history-empty {{ font-size: 0.88rem; color: rgba(255,255,255,0.55); line-height: 1.5; }}
+    .batch-history-empty-link {{ color: #22D3EE; }}
+    .batch-history-scroll {{ overflow-x: auto; }}
+    .batch-history-table {{ width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 520px; }}
+    .batch-history-table th {{ text-align: left; padding: 10px 12px; color: rgba(255,255,255,0.45); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.68rem; border-bottom: 1px solid rgba(255,255,255,0.08); }}
+    .batch-history-table td {{ padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }}
+    .batch-history-row--current {{ background: rgba(34,211,238,0.06); }}
+    .batch-history-link {{ color: #22D3EE; font-weight: 600; text-decoration: none; }}
+    .batch-history-link:hover {{ text-decoration: underline; }}
+    .batch-history-meta {{ color: rgba(255,255,255,0.5); white-space: nowrap; }}
+    .batch-history-pill {{ display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }}
+    .batch-history-pill--closed {{ background: rgba(148,163,184,0.2); color: #e2e8f0; }}
+    .batch-history-pill--sent {{ background: rgba(34,211,238,0.15); color: #67e8f9; }}
+    .batch-history-pill--pending {{ background: rgba(245,158,11,0.2); color: #fde68a; }}
+    .batch-history-pill--new {{ background: rgba(99,102,241,0.2); color: #c7d2fe; }}
+    .batch-history-actions {{ white-space: nowrap; }}
+    .batch-history-actions .btn {{ margin-left: 6px; }}
+    .batch-history-hint {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); margin-top: 12px; margin-bottom: 0; line-height: 1.45; }}
+    [data-theme="light"] .batch-history {{ background: rgba(255,255,255,0.9); border-color: rgba(15,23,42,0.1); }}
+    [data-theme="light"] .batch-history-title {{ color: #0f172a; }}
+    [data-theme="light"] .batch-history-table th {{ color: rgba(15,23,42,0.45); border-bottom-color: rgba(15,23,42,0.08); }}
+    [data-theme="light"] .batch-history-table td {{ border-bottom-color: rgba(15,23,42,0.06); }}
+    [data-theme="light"] .batch-history-row--current {{ background: rgba(34,211,238,0.1); }}
+    [data-theme="light"] .batch-history-meta {{ color: rgba(15,23,42,0.55); }}
+    [data-theme="light"] .batch-history-hint {{ color: rgba(15,23,42,0.5); }}
+    [data-theme="light"] .batch-history-empty {{ color: rgba(15,23,42,0.55); }}
+    </style>
+</head>
+<body class="loaded">
+{GTM_BODY}
+    <nav class="nav">
+        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
+        <div class="nav-links">
+            <a href="/batches/history" class="nav-link" style="color:#22D3EE;font-weight:600">Batch history</a>
+            {admin_nav}
+            <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
+        </div>
+    </nav>
+    <div class="container">
+        <h1 class="page-h1">{page_title}</h1>
+        <p class="page-sub"><a href="/upload">Upload</a> &middot; <a href="/">Home</a></p>
+        {body_inner}
+    </div>
+    <script>
+    (function(){{
+        const themeToggle=document.getElementById("themeToggle");
+        if(themeToggle){{const THEME_KEY="hp-theme";function getT(){{return localStorage.getItem(THEME_KEY)||"dark";}}function setT(t){{document.documentElement.setAttribute("data-theme",t);localStorage.setItem(THEME_KEY,t);themeToggle.textContent=t==="dark"?"\\u2600":"\\u263E";}}themeToggle.onclick=()=>setT(getT()==="dark"?"light":"dark");setT(getT());}}
+    }})();
+    document.querySelectorAll(".batch-history-close").forEach(function(btn){{
+        btn.addEventListener("click", async function(){{
+            var bid = btn.getAttribute("data-batch-id");
+            if (!bid || !confirm("Close this batch? It will be marked Closed in your history.")) return;
+            try {{
+                var r = await fetch("/batches/" + encodeURIComponent(bid) + "/close", {{ method: "POST", credentials: "same-origin", headers: {{ "Accept": "application/json" }} }});
+                if (!r.ok) {{ alert("Could not close batch."); return; }}
+                window.location.reload();
+            }} catch (e) {{ alert("Could not close batch."); }}
+        }});
+    }});
+    </script>
+    <script src="/static/page-transition.js"></script>
+</body>
+</html>"""
+
+
 def _track_user(user: dict):
     """Record user in DB on login."""
     from .db import get_db
     from .services.db_repository import upsert_user
     with get_db() as db:
         upsert_user(db, user)
+
+
+# Onboarding funnel (7 steps) — cookie-bound, server-side; see /admin/onboarding-analytics
+_OB_COOKIE = "cartozo_ob_sid"
+_OB_MAX_AGE = 90 * 24 * 60 * 60
+
+
+def _onboarding_track(
+    request: Request,
+    response: Optional[HTMLResponse],
+    step: int,
+    source: Optional[str] = None,
+) -> None:
+    """
+    Record funnel step (1–7). Creates session + cookie on first HTML response if missing.
+    For JSON-only endpoints pass response=None (requires existing cookie from /upload flow).
+    """
+    user = get_current_user(request)
+    if not user:
+        return
+    sid = request.cookies.get(_OB_COOKIE)
+    if not sid:
+        if response is None:
+            return
+        utm = (request.query_params.get("utm_source") or request.query_params.get("source") or "").strip()[:128]
+        from .db import get_db
+        from .services.db_repository import create_onboarding_session
+        with get_db() as db:
+            sid = create_onboarding_session(
+                db,
+                email=user.get("email"),
+                name=user.get("name"),
+                source=utm or None,
+            )
+        response.set_cookie(
+            _OB_COOKIE,
+            sid,
+            max_age=_OB_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+            path="/",
+        )
+    from .db import get_db
+    from .services.db_repository import update_onboarding_progress
+    with get_db() as db:
+        update_onboarding_progress(db, sid, step, source=source)
+
+
+def _onboarding_export_done(request: Request) -> None:
+    """Step 6 + mark completed when user exports CSV."""
+    sid = request.cookies.get(_OB_COOKIE)
+    if not sid:
+        return
+    from .db import get_db
+    from .services.db_repository import update_onboarding_progress, complete_onboarding
+    with get_db() as db:
+        update_onboarding_progress(db, sid, 6)
+        complete_onboarding(db, sid)
 
 
 def _build_error_page(status_code: int = 404, message: str = "Page not found") -> str:
@@ -121,20 +400,20 @@ def _build_error_page(status_code: int = 404, message: str = "Page not found") -
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #050505; color: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; }}
+    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     .err-nav {{ position: fixed; top: 0; left: 0; right: 0; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.9); backdrop-filter: blur(12px); }}
     [data-theme="light"] .err-nav {{ background: rgba(248,250,252,0.95); border-color: rgba(15,23,42,0.08); }}
     .err-nav-logo img {{ height: 32px; filter: brightness(0) invert(1); }}
     [data-theme="light"] .err-nav-logo img {{ filter: none; }}
-    .err-nav-cta {{ background: #fff; color: #050505; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; }}
+    .err-nav-cta {{ background: #fff; color: #0B0F19; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; }}
     [data-theme="light"] .err-nav-cta {{ background: #0f172a; color: #fff; }}
     .err-box {{ text-align: center; padding: 48px 24px; max-width: 480px; }}
-    .err-code {{ font-size: 4rem; font-weight: 800; color: #FF6B00; letter-spacing: -0.04em; margin-bottom: 16px; }}
+    .err-code {{ font-size: 4rem; font-weight: 800; color: #22D3EE; letter-spacing: -0.04em; margin-bottom: 16px; }}
     .err-title {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 12px; }}
-    .err-msg {{ color: #A1A1AA; font-size: 1rem; line-height: 1.6; margin-bottom: 32px; }}
+    .err-msg {{ color: #9ca3af; font-size: 1rem; line-height: 1.6; margin-bottom: 32px; }}
     [data-theme="light"] .err-msg {{ color: rgba(15,23,42,0.6); }}
-    .err-btn {{ display: inline-block; padding: 14px 28px; background: #FF6B00; color: #fff; border-radius: 6px; font-size: 0.9rem; font-weight: 500; text-decoration: none; transition: opacity 0.2s; }}
+    .err-btn {{ display: inline-block; padding: 14px 28px; background: #4F46E5; color: #fff; border-radius: 6px; font-size: 0.9rem; font-weight: 500; text-decoration: none; transition: opacity 0.2s; }}
     .err-btn:hover {{ opacity: 0.9; }}
     </style>
 </head>
@@ -159,8 +438,13 @@ app.mount("/assets", StaticFiles(directory=_os.path.join(_PROJECT_ROOT, "assets"
 
 
 def _wants_html(request: Request) -> bool:
-    """True if client prefers HTML over JSON."""
-    accept = request.headers.get("accept", "")
+    """True if client prefers HTML over JSON (for error pages)."""
+    accept = (request.headers.get("accept") or "").lower()
+    if "application/json" in accept:
+        return False
+    # fetch() often sends Accept: */* — must not return HTML for JSON APIs
+    if (request.url.path or "").startswith("/api/"):
+        return False
     return "text/html" in accept or ("*/*" in accept and "application/json" not in accept)
 
 
@@ -209,10 +493,22 @@ async def login_page(request: Request):
     if request.session.get("user"):
         next_url = request.query_params.get("next", "/upload")
         return RedirectResponse(url=next_url, status_code=302)
-    has_google = bool(_os.getenv("GOOGLE_CLIENT_ID") and _os.getenv("GOOGLE_CLIENT_SECRET"))
+    from .google_cloud import get_normalized_google_oauth_credentials
+
+    _gid, _gsec = get_normalized_google_oauth_credentials()
+    has_google = bool(_gid and _gsec)
     has_apple = bool(_os.getenv("APPLE_CLIENT_ID") and _os.getenv("APPLE_KEY_ID") and _os.getenv("APPLE_TEAM_ID") and _os.getenv("APPLE_PRIVATE_KEY"))
     next_url = request.query_params.get("next", "/upload")
-    return HTMLResponse(content=_build_login_page(next_url=next_url, has_google=has_google, has_apple=has_apple, request_host=request.headers.get("host", "")))
+    oauth_err = request.query_params.get("oauth_err", "").strip()
+    return HTMLResponse(
+        content=_build_login_page(
+            next_url=next_url,
+            has_google=has_google,
+            has_apple=has_apple,
+            request_host=request.headers.get("host", ""),
+            oauth_err=oauth_err,
+        )
+    )
 
 
 @app.get("/auth/google")
@@ -237,6 +533,13 @@ async def auth_google(request: Request):
 @app.get("/auth/google/callback", name="auth_google_callback")
 async def auth_google_callback(request: Request):
     """Handle Google OAuth callback."""
+    err = request.query_params.get("error")
+    if err:
+        from urllib.parse import quote as _quote
+
+        if err == "deleted_client" or "deleted" in err.lower():
+            return RedirectResponse(url="/login?oauth_err=deleted_client", status_code=302)
+        return RedirectResponse(url=f"/login?oauth_err={_quote(err)}", status_code=302)
     oauth = get_oauth()
     try:
         token = await oauth.google.authorize_access_token(request)
@@ -321,12 +624,330 @@ async def logout(request: Request):
     return RedirectResponse(url="/", status_code=302)
 
 
+MERCHANT_PUSH_RESOLVE_HINT = ""
+
+# Exposed in X-Cartozo-Upload-UI header and /health — bump when /upload HTML changes.
+UPLOAD_UI_REVISION = "3"
+
+
+def _gmc_merchant_id_env_configured() -> bool:
+    from .services import google_merchant as gmc
+
+    return bool(gmc.effective_gmc_merchant_id_override())
+
+
+def _oauth_debug_json(request: Request) -> JSONResponse:
+    """Which GOOGLE_CLIENT_ID this process reads (no secrets). Aliases: /api/auth/oauth-debug, /oauth-debug."""
+    from .google_cloud import get_normalized_google_oauth_credentials
+
+    cid, _sec = get_normalized_google_oauth_credentials()
+    has_sec = bool(_sec)
+    deploy = (_os.getenv("DEPLOY_URL") or "").strip().rstrip("/")
+    if deploy:
+        login_redirect_uri = f"{deploy}/auth/google/callback"
+        merchant_redirect_uri = f"{deploy}/auth/google/merchant/callback"
+    else:
+        login_redirect_uri = str(request.url_for("auth_google_callback"))
+        merchant_redirect_uri = str(request.url_for("auth_google_merchant_callback"))
+    return JSONResponse(
+        content={
+            "google_client_id": cid,
+            "client_configured": bool(cid and has_sec),
+            "deploy_url": deploy or None,
+            "effective_redirect_uri_for_login": login_redirect_uri,
+            "effective_redirect_uri_for_merchant": merchant_redirect_uri,
+            "redirect_uri_mismatch_hint": "Error 400 redirect_uri_mismatch: add this exact URI (scheme + host + port + path) to Authorized redirect URIs. If you open the app as http://127.0.0.1:8000 but only registered localhost (or vice versa), add both.",
+            "deleted_client_meaning": "Google says this client_id does not exist. Create a NEW OAuth 2.0 Client ID (Web) in Google Cloud → Credentials and put the new GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET in .env (and hosting env for production), then restart.",
+            "hint": "Compare google_client_id with Credentials list. If testing cartozo.ai, call this URL on that host — local .env does not change production.",
+            "merchant_push_resolve_hint": MERCHANT_PUSH_RESOLVE_HINT,
+            "gmc_merchant_id_env_set": _gmc_merchant_id_env_configured(),
+            "routes": ["/api/auth/oauth-debug", "/oauth-debug"],
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/api/auth/oauth-debug")
+def oauth_debug(request: Request):
+    """Debug: env client id + effective redirect URI (see also GET /oauth-debug)."""
+    return _oauth_debug_json(request)
+
+
+@app.get("/oauth-debug")
+def oauth_debug_short(request: Request):
+    """Same JSON as /api/auth/oauth-debug (shorter URL for quick checks)."""
+    return _oauth_debug_json(request)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Google Merchant Center (Merchant API) — OAuth + stored refresh token
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@app.get("/merchant/google/connect")
+async def merchant_google_connect(request: Request):
+    """Start OAuth for https://www.googleapis.com/auth/content (all logged-in users)."""
+    redir = require_login_redirect(request, "/merchant/google/connect")
+    if redir:
+        return redir
+    oauth = get_oauth()
+    try:
+        client = oauth.create_client("google_merchant")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Google Merchant OAuth not configured")
+    deploy_url = (_os.getenv("DEPLOY_URL") or "").rstrip("/")
+    if deploy_url:
+        redirect_uri = f"{deploy_url}/auth/google/merchant/callback"
+    else:
+        redirect_uri = str(request.url_for("auth_google_merchant_callback"))
+    request.session["merchant_oauth_next"] = request.query_params.get("next", "/upload")
+    return await client.authorize_redirect(
+        request,
+        redirect_uri,
+        scope="https://www.googleapis.com/auth/content",
+        access_type="offline",
+        prompt="consent",
+    )
+
+
+@app.get("/auth/google/merchant/callback", name="auth_google_merchant_callback")
+async def auth_google_merchant_callback(request: Request):
+    """Store refresh token + merchant id for Merchant API."""
+    user = get_current_user(request)
+    if not user or not user.get("email"):
+        return RedirectResponse(url="/login?next=/upload", status_code=302)
+    email = user.get("email", "").strip()
+    oauth_err = request.query_params.get("error")
+    if oauth_err:
+        desc = request.query_params.get("error_description") or oauth_err
+        raise HTTPException(status_code=400, detail=f"Merchant OAuth failed: {desc}")
+    oauth = get_oauth()
+    try:
+        client = oauth.create_client("google_merchant")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Google Merchant OAuth not configured")
+    # Do not pass redirect_uri= here: authorize_redirect already stored it in session;
+    # Authlib merges it into params and fetch_access_token(redirect_uri=...) would duplicate.
+    try:
+        token = await client.authorize_access_token(request)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Merchant OAuth failed: {e}")
+    refresh_token = token.get("refresh_token")
+    access_token = token.get("access_token")
+    merchant_id = None
+    if access_token:
+        from .services.google_merchant import fetch_primary_merchant_id
+
+        merchant_id = await fetch_primary_merchant_id(access_token)
+
+    from .db import get_db
+    from .services.db_repository import get_user_by_email, save_google_merchant_oauth
+
+    with get_db() as db:
+        row = get_user_by_email(db, email)
+        effective_rt = refresh_token or (row.merchant_refresh_token if row else None)
+        save_google_merchant_oauth(db, email, effective_rt, merchant_id)
+
+    next_url = request.session.pop("merchant_oauth_next", "/upload")
+    sep = "&" if "?" in next_url else "?"
+    return RedirectResponse(url=f"{next_url}{sep}merchant=connected", status_code=302)
+
+
+@app.get("/api/merchant/status")
+async def api_merchant_status(request: Request):
+    require_login_http(request)
+    user = get_current_user(request)
+    from .db import get_db
+    from .services.db_repository import get_merchant_connection_status
+
+    with get_db() as db:
+        data = get_merchant_connection_status(db, user.get("email", ""))
+    data["merchant_push_resolve_hint"] = MERCHANT_PUSH_RESOLVE_HINT
+    data["gmc_merchant_id_env_set"] = _gmc_merchant_id_env_configured()
+    return data
+
+
+@app.post("/api/merchant/disconnect")
+async def api_merchant_disconnect(request: Request):
+    require_login_http(request)
+    user = get_current_user(request)
+    from .db import get_db
+    from .services.db_repository import clear_google_merchant_oauth
+
+    with get_db() as db:
+        clear_google_merchant_oauth(db, user.get("email", ""))
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/merchant/accounts")
+async def api_merchant_accounts(request: Request):
+    """Numeric Merchant Center account ids this Google login can use (for multi-account setups)."""
+    require_login_http(request)
+    user = get_current_user(request)
+    email = (user.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    from .db import get_db
+    from .services.db_repository import get_user_by_email
+    from .services import google_merchant as gmc
+
+    with get_db() as db:
+        row = get_user_by_email(db, email)
+        if not row or not row.merchant_refresh_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Merchant Center not connected. Open Upload and connect Google Merchant Center first.",
+            )
+        refresh_token = row.merchant_refresh_token
+
+    access_token = await gmc.get_access_token_from_refresh(refresh_token)
+    if not access_token:
+        raise HTTPException(status_code=502, detail="Could not refresh Google access token. Reconnect Merchant Center.")
+
+    ids, err = await gmc.all_accessible_numeric_merchant_ids(access_token)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    return {"merchant_ids": sorted(ids, key=int)}
+
+
+@app.post("/api/merchant/select-account")
+async def api_merchant_select_account(request: Request):
+    """Save which Merchant Center account to use when multiple are linked (no server .env needed)."""
+    require_login_http(request)
+    user = get_current_user(request)
+    email = (user.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    raw = (body.get("merchant_id") or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail='Missing "merchant_id" in JSON body.')
+
+    from .db import get_db
+    from .services.db_repository import get_user_by_email, save_google_merchant_oauth
+    from .services import google_merchant as gmc
+
+    with get_db() as db:
+        row = get_user_by_email(db, email)
+        if not row or not row.merchant_refresh_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Merchant Center not connected. Open Upload and connect Google Merchant Center first.",
+            )
+        refresh_token = row.merchant_refresh_token
+
+    access_token = await gmc.get_access_token_from_refresh(refresh_token)
+    if not access_token:
+        raise HTTPException(status_code=502, detail="Could not refresh Google access token. Reconnect Merchant Center.")
+
+    ok, err = await gmc.merchant_id_is_accessible(access_token, raw)
+    if not ok:
+        raise HTTPException(status_code=400, detail=err or "Invalid merchant id.")
+    mid = gmc.normalize_merchant_id(raw)
+    if not mid:
+        raise HTTPException(status_code=400, detail="merchant_id must be a numeric Merchant Center account id.")
+
+    with get_db() as db:
+        save_google_merchant_oauth(db, email, None, mid)
+    return JSONResponse({"ok": True, "merchant_id": mid})
+
+
+@app.post("/api/batches/{batch_id}/merchant-push")
+async def api_batch_merchant_push(request: Request, batch_id: str):
+    """Push optimized batch rows to the user's linked Google Merchant Center (Merchant API productInputs.insert)."""
+    require_login_http(request)
+    user = get_current_user(request)
+    email = (user.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    product_ids = payload.get("product_ids")
+    if product_ids is not None:
+        if not isinstance(product_ids, list):
+            raise HTTPException(status_code=400, detail="product_ids must be a JSON array of strings.")
+        if len(product_ids) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="product_ids is empty. Select rows or omit product_ids to push the full batch.",
+            )
+
+    batch = storage.get_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found.")
+    _ensure_batch_owner_from_batch(request, batch)
+
+    from .db import get_db
+    from .services.db_repository import get_user_by_email, save_google_merchant_oauth
+    from .services import google_merchant as gmc
+
+    with get_db() as db:
+        row = get_user_by_email(db, email)
+        if not row or not row.merchant_refresh_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Merchant Center not connected. Open Upload and connect Google Merchant Center first.",
+            )
+        refresh_token = row.merchant_refresh_token
+        merchant_id = row.merchant_id
+
+    access_token = await gmc.get_access_token_from_refresh(refresh_token)
+    if not access_token:
+        raise HTTPException(status_code=502, detail="Could not refresh Google access token. Reconnect Merchant Center.")
+
+    # Built-in default or GMC_MERCHANT_ID in .env always wins over DB (fixes wrong id saved earlier).
+    env_mid = gmc.effective_gmc_merchant_id_override()
+    if env_mid.isdigit():
+        merchant_id = env_mid
+
+    if not merchant_id:
+        merchant_id, resolve_hint = await gmc.resolve_merchant_account_id(
+            access_token, preferred_merchant_id=row.merchant_id
+        )
+        if merchant_id:
+            with get_db() as db:
+                save_google_merchant_oauth(db, email, None, merchant_id)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=resolve_hint
+                or "Could not resolve Merchant Center account ID. Set GMC_MERCHANT_ID in .env to your numeric Merchant Center ID, or reconnect after creating a subaccount.",
+            )
+    elif env_mid.isdigit():
+        with get_db() as db:
+            save_google_merchant_oauth(db, email, None, merchant_id)
+
+    if product_ids is not None:
+        wanted = {str(x).strip() for x in product_ids if str(x).strip()}
+        products = [r for r in batch.products if str(r.product.id).strip() in wanted]
+    else:
+        products = list(batch.products)
+
+    if not products:
+        raise HTTPException(
+            status_code=400,
+            detail="No matching products to push. Selected IDs do not match this batch, or the batch is empty.",
+        )
+
+    summary = await gmc.push_batch_products(access_token, merchant_id, products)
+    summary["ok"] = summary["failed"] == 0
+    if int(summary.get("inserted") or 0) > 0:
+        storage.mark_batch_merchant_pushed(batch_id)
+    return JSONResponse(summary)
+
+
 def _admin_nav_links(active: str = "", user_role: str = "customer") -> str:
     """Generate admin-only nav links if user is admin."""
     if user_role != "admin":
         return ""
     links = [
-        f'<a href="/admin/contact-results" class="nav-link{" active" if active == "contact-results" else ""}">Contact results</a>',
+        f'<a href="/admin/onboarding-analytics" class="nav-link{" active" if active == "onboarding-analytics" else ""}">Dashboard</a>',
         f'<a href="/settings" class="nav-link{" active" if active == "settings" else ""}">Settings</a>',
     ]
     return "".join(links)
@@ -352,11 +973,11 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     <link rel="stylesheet" href="/static/styles.css" />
     <style>
     html { scroll-behavior: smooth; }
-    :root, [data-theme="dark"] { --hp-bg: #050505; --hp-text: #fff; --hp-muted: #A1A1AA; --hp-accent: #FF6B00; --hp-border: rgba(255,255,255,0.1); --hp-font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
-    [data-theme="light"] { --hp-bg: #f8fafc; --hp-text: #0f172a; --hp-muted: rgba(15,23,42,0.6); --hp-accent: #FF6B00; --hp-border: rgba(15,23,42,0.12); }
+    :root, [data-theme="dark"] { --hp-bg: #0B0F19; --hp-text: #E5E7EB; --hp-muted: #9ca3af; --hp-accent: #4F46E5; --hp-border: rgba(255,255,255,0.1); --hp-font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    [data-theme="light"] { --hp-bg: #f8fafc; --hp-text: #0f172a; --hp-muted: rgba(15,23,42,0.6); --hp-accent: #4F46E5; --hp-border: rgba(15,23,42,0.12); }
 
     .hp-body { font-family: var(--hp-font); background: var(--hp-bg); color: var(--hp-text); min-height: 100vh; overflow-x: hidden; position: relative; -webkit-font-smoothing: antialiased; }
-    .hp-container { max-width: 1440px; margin: 0 auto; }
+    .hp-container { max-width: 1200px; width: 100%; margin: 0 auto; padding: 0 40px; box-sizing: border-box; }
     
     /* Grid overlay (hero-style blueprint feel) */
     .hp-grid-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(ellipse 100% 80% at 50% 20%, black 30%, transparent 70%); }
@@ -393,11 +1014,12 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-bg-line { background: linear-gradient(180deg, transparent, rgba(255,255,255,0.04), transparent); }
     .hp-bg-line-v { width: 1px; height: 300px; }
     .hp-bg-line-h { width: 300px; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent); }
-    .hp-bg-glow { border-radius: 50%; background: radial-gradient(circle, rgba(193,68,14,0.08) 0%, transparent 70%); }
+    .hp-bg-glow { border-radius: 50%; background: radial-gradient(circle, rgba(79,70,229,0.12) 0%, transparent 70%); }
 
-    /* Navigation */
-    .hp-nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
+    /* Navigation — full-width bar, content capped at 1200px (not ultra-wide stretch) */
+    .hp-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; padding: 16px 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
     [data-theme="light"] .hp-nav { background: rgba(248,250,252,0.95); border-bottom-color: rgba(15,23,42,0.08); }
+    .hp-nav-inner { max-width: 1200px; width: 100%; margin: 0 auto; padding: 0 40px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
     .hp-nav-logo { flex-shrink: 0; position: relative; }
     .hp-nav-logo img { height: 32px; }
     .hp-nav-logo .logo-dark { display: none; filter: brightness(0) invert(1); }
@@ -419,11 +1041,11 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .hp-nav-right { gap: 12px; }
     }
 
-    /* Hero */
-    .hp-hero { text-align: center; padding: 160px 24px 120px; position: relative; min-height: 600px; }
+    /* Hero — same max width as page content */
+    .hp-hero { text-align: center; padding: 160px 40px 120px; position: relative; min-height: 600px; max-width: 1200px; margin-left: auto; margin-right: auto; box-sizing: border-box; overflow: hidden; background: var(--hp-bg); }
     .hp-badge { display: inline-block; color: var(--hp-accent); font-size: 0.75rem; font-weight: 600; margin-bottom: 28px; letter-spacing: 0.18em; text-transform: uppercase; transition: font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
     .hp-title { font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 800; line-height: 1.05; margin-bottom: 24px; letter-spacing: -0.04em; position: relative; z-index: 2; transition: font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-    .hp-sub { font-size: 1.05rem; color: var(--hp-muted); max-width: 540px; margin: 0 auto 40px; line-height: 1.6; font-weight: 400; position: relative; z-index: 2; transition: font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1), line-height 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .hp-sub { font-size: 1.05rem; color: var(--hp-muted); max-width: 52ch; margin: 0 auto 40px; line-height: 1.6; font-weight: 400; position: relative; z-index: 2; transition: font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1), line-height 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
     /* Hero compresses when chat is open (has conversation) */
     .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-badge { font-size: 0.91rem; margin-bottom: 20px; }
     .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-title { font-size: clamp(1.75rem, 4.2vw, 2.8rem); margin-bottom: 17px; }
@@ -436,16 +1058,21 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-btn-secondary:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
 
     /* Hero chat: anchor + spacer reserve layout when .hp-chat-wrap is fixed (avoids scroll flicker) */
-    .hp-chat-anchor { position: relative; z-index: 10; max-width: 560px; margin: 0 auto; width: 100%; }
+    .hp-chat-anchor { position: relative; z-index: 10; max-width: min(680px, 100%); margin: 0 auto; width: 100%; }
     .hp-chat-spacer { display: none; width: 100%; margin: 0; padding: 0; border: 0; box-sizing: border-box; }
     .hp-chat-wrap { position: relative; z-index: 10; margin: 0; width: 100%; }
-    .hp-chat-panel { background: rgba(30,30,35,0.95); border-radius: 999px; border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; padding: 10px 16px 10px 20px; gap: 12px; transition: background 0.25s ease, box-shadow 0.25s ease; position: relative; z-index: 11; }
+    .hp-chat-panel {
+      background: rgba(30,30,35,0.95); border-radius: 999px; border: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center; padding: 10px 16px 10px 20px; gap: 12px;
+      transition: background 0.25s ease;
+      position: relative; z-index: 11; width: 100%; min-width: 0; box-sizing: border-box;
+    }
+    .hp-chat-wrap.sticky .hp-chat-panel { box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    [data-theme="light"] .hp-chat-wrap.sticky .hp-chat-panel { box-shadow: 0 8px 32px rgba(15,23,42,0.15); }
     [data-theme="light"] .hp-chat-panel { background: rgba(241,245,249,0.98); border-color: rgba(15,23,42,0.12); }
     .hp-chat-panel.transparent { opacity: 0.78; }
     .hp-chat-panel.transparent:focus-within, .hp-chat-panel.transparent:hover { opacity: 1; }
-    .hp-chat-wrap.sticky { position: fixed; top: var(--hp-sticky-top, 76px); left: 50%; transform: translateX(-50%); width: calc(100% - 48px); max-width: 560px; z-index: 999; }
-    .hp-chat-wrap.sticky .hp-chat-panel { box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
-    [data-theme="light"] .hp-chat-wrap.sticky .hp-chat-panel { box-shadow: 0 8px 32px rgba(15,23,42,0.15); }
+    .hp-chat-wrap.sticky { position: fixed; top: var(--hp-sticky-top, 76px); left: 50%; transform: translateX(-50%); width: calc(100% - 48px); max-width: min(680px, calc(100% - 48px)); z-index: 999; }
     .hp-chat-plus { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; color: rgba(255,255,255,0.5); cursor: pointer; flex-shrink: 0; user-select: none; }
     [data-theme="light"] .hp-chat-plus { color: rgba(15,23,42,0.5); }
     .hp-chat-input-wrap { flex: 1; position: relative; min-width: 0; display: flex; align-items: center; }
@@ -534,101 +1161,99 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     [data-theme="light"] .hp-chat-finish:hover { background: rgba(15,23,42,0.1); border-color: rgba(15,23,42,0.28); }
     .hp-chat-msg { padding: 12px 16px; border-radius: 12px; margin-bottom: 10px; font-size: 0.9rem; line-height: 1.5; max-width: 90%; }
     .hp-chat-msg.user { background: rgba(255,255,255,0.1); margin-left: auto; }
-    .hp-chat-msg.assistant { background: rgba(255,107,0,0.12); border: 1px solid rgba(255,107,0,0.2); }
-    .hp-chat-status { padding: 12px 16px; border-radius: 12px; margin-bottom: 10px; font-size: 0.9rem; max-width: 90%; background: rgba(255,107,0,0.08); border: 1px solid rgba(255,107,0,0.15); color: var(--hp-muted); display: flex; align-items: center; gap: 8px; }
+    .hp-chat-msg.assistant { background: rgba(79,70,229,0.12); border: 1px solid rgba(79,70,229,0.2); }
+    .hp-chat-status { padding: 12px 16px; border-radius: 12px; margin-bottom: 10px; font-size: 0.9rem; max-width: 90%; background: rgba(79,70,229,0.08); border: 1px solid rgba(79,70,229,0.15); color: var(--hp-muted); display: flex; align-items: center; gap: 8px; }
     .hp-chat-status-dots { display: inline-flex; gap: 4px; }
-    .hp-chat-status-dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,107,0,0.6); animation: hp-status-dot 1.4s ease-in-out infinite both; }
+    .hp-chat-status-dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(79,70,229,0.6); animation: hp-status-dot 1.4s ease-in-out infinite both; }
     .hp-chat-status-dots span:nth-child(1) { animation-delay: 0s; }
     .hp-chat-status-dots span:nth-child(2) { animation-delay: 0.2s; }
     .hp-chat-status-dots span:nth-child(3) { animation-delay: 0.4s; }
     @keyframes hp-status-dot { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
-    [data-theme="light"] .hp-chat-status { background: rgba(255,107,0,0.06); border-color: rgba(255,107,0,0.12); color: rgba(15,23,42,0.6); }
-    .hp-chat-upload-btn { display: inline-block; margin-top: 10px; padding: 8px 16px; border-radius: 999px; background: #FF6B00; color: #fff; font-size: 0.85rem; font-weight: 500; text-decoration: none; border: none; cursor: pointer; transition: opacity 0.2s; }
+    [data-theme="light"] .hp-chat-status { background: rgba(79,70,229,0.06); border-color: rgba(79,70,229,0.12); color: rgba(15,23,42,0.6); }
+    .hp-chat-upload-btn { display: inline-block; margin-top: 10px; padding: 8px 16px; border-radius: 999px; background: #4F46E5; color: #fff; font-size: 0.85rem; font-weight: 500; text-decoration: none; border: none; cursor: pointer; transition: opacity 0.2s; }
     .hp-chat-upload-btn:hover { opacity: 0.9; }
     [data-theme="light"] .hp-chat-msg.user { background: rgba(15,23,42,0.08); }
-    [data-theme="light"] .hp-chat-msg.assistant { background: rgba(255,107,0,0.1); border-color: rgba(255,107,0,0.2); }
-    /* Mars Planet - only the planet is clickable, not the full 380px wrapper */
-    .hp-planet-container { position: absolute; width: 380px; height: 380px; z-index: 1; animation: orbit-hero 260s ease-in-out infinite; transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); pointer-events: none; }
-    .hp-planet-container.scared { animation-play-state: paused; }
-    .hp-mars { cursor: pointer; pointer-events: auto; }
-    @keyframes orbit-hero {
-        0% { left: -100px; top: 30%; }
-        25% { left: 85%; top: 10%; }
-        50% { left: 90%; top: 70%; }
-        75% { left: 5%; top: 80%; }
-        100% { left: -100px; top: 30%; }
+    [data-theme="light"] .hp-chat-msg.assistant { background: rgba(79,70,229,0.1); border-color: rgba(79,70,229,0.2); }
+
+    /* Hero: abstract AI — neural lines, data nodes, animated grid (no space/planets) */
+    .hp-hero-ai { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+    .hp-hero-ai-grid {
+      position: absolute; inset: -20%; width: 140%; height: 140%;
+      background-image:
+        linear-gradient(rgba(79,70,229,0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79,70,229,0.07) 1px, transparent 1px),
+        linear-gradient(rgba(167,139,250,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(167,139,250,0.04) 1px, transparent 1px);
+      background-size: 56px 56px, 56px 56px, 14px 14px, 14px 14px;
+      animation: hpHeroAiGridDrift 28s linear infinite;
+      opacity: 0.85;
     }
-    .hp-planet { position: relative; width: 100%; height: 100%; pointer-events: none; }
-    .hp-mars { position: absolute; top: 50%; left: 50%; width: 180px; height: 180px; margin: -90px 0 0 -90px; border-radius: 50%; background: radial-gradient(circle at 30% 25%, #e8a87c, #c1440e 40%, #8b2500 70%, #4a1a0a 100%); box-shadow: 0 0 60px rgba(193,68,14,0.5), 0 0 120px rgba(193,68,14,0.3), inset -20px -20px 40px rgba(0,0,0,0.4), inset 10px 10px 30px rgba(255,200,150,0.15); animation: marsFloat 8s ease-in-out infinite; overflow: hidden; transition: background 0.5s, box-shadow 0.5s; }
-    [data-theme="light"] .hp-mars { background: radial-gradient(circle at 30% 25%, #5a5a5a, #3d3d3d 40%, #252525 70%, #141414 100%); box-shadow: 0 0 60px rgba(60,60,60,0.35), 0 0 100px rgba(60,60,60,0.15), inset -20px -20px 40px rgba(0,0,0,0.3), inset 10px 10px 30px rgba(90,90,90,0.15); }
-    .hp-crater { position: absolute; border-radius: 50%; background: rgba(74,26,10,0.4); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.3); }
-    [data-theme="light"] .hp-crater { background: rgba(20,20,20,0.5); }
-    .hp-crater-1 { width: 20px; height: 20px; top: 35%; left: 40%; }
-    .hp-crater-2 { width: 12px; height: 12px; top: 65%; left: 25%; }
-    .hp-crater-3 { width: 15px; height: 15px; top: 25%; left: 65%; }
-    @keyframes marsFloat { 0%, 100% { transform: translate(-50%, -50%) translateY(0); } 50% { transform: translate(-50%, -50%) translateY(-15px); } }
-    @keyframes marsSpin { from { background-position: 0 0; } to { background-position: 200px 0; } }
-
-    /* Mars glow + orbits: no hit-testing (only .hp-mars is interactive) */
-    .hp-mars-glow { position: absolute; top: 50%; left: 50%; width: 280px; height: 280px; margin: -140px 0 0 -140px; border-radius: 50%; background: radial-gradient(circle, rgba(193,68,14,0.2) 0%, rgba(193,68,14,0.1) 40%, transparent 70%); animation: glowPulse 4s ease-in-out infinite; transition: background 0.5s; pointer-events: none; }
-    [data-theme="light"] .hp-mars-glow { background: radial-gradient(circle, rgba(60,60,60,0.2) 0%, rgba(60,60,60,0.1) 40%, transparent 70%); }
-    @keyframes glowPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: 0.7; } }
-
-    /* Orbits around Mars */
-    .hp-orbit { position: absolute; top: 50%; left: 50%; border: 1px solid rgba(255,255,255,0.06); border-radius: 50%; pointer-events: none; }
-    .hp-orbit-1 { width: 240px; height: 240px; margin: -120px 0 0 -120px; animation: orbitSpin 15s linear infinite; transform-origin: center; }
-    .hp-orbit-2 { width: 320px; height: 320px; margin: -160px 0 0 -160px; animation: orbitSpin 25s linear infinite reverse; border-style: dashed; }
-    .hp-orbit-3 { width: 380px; height: 380px; margin: -190px 0 0 -190px; animation: orbitSpin 35s linear infinite; border-color: rgba(255,255,255,0.03); }
-    @keyframes orbitSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-
-    /* Moons/satellites */
-    .hp-moon { position: absolute; border-radius: 50%; box-shadow: 0 0 15px currentColor; animation: moonGlow 2s ease-in-out infinite; pointer-events: none; }
-    .hp-orbit-1 .hp-moon { width: 10px; height: 10px; top: -5px; left: 50%; margin-left: -5px; background: #f59e0b; color: rgba(245,158,11,0.6); }
-    .hp-orbit-2 .hp-moon { width: 8px; height: 8px; top: 50%; right: -4px; margin-top: -4px; background: #ef4444; color: rgba(239,68,68,0.6); animation-delay: 0.5s; }
-    .hp-orbit-3 .hp-moon { width: 6px; height: 6px; bottom: 20%; left: -3px; background: #a855f7; color: rgba(168,85,247,0.6); animation-delay: 1s; }
-    @keyframes moonGlow { 0%, 100% { box-shadow: 0 0 10px currentColor; } 50% { box-shadow: 0 0 20px currentColor, 0 0 30px currentColor; } }
-
-    /* Floating particles */
-    .hp-particles { position: absolute; width: 100%; height: 100%; top: 0; left: 0; pointer-events: none; }
-    .hp-particle { position: absolute; width: 3px; height: 3px; background: rgba(255,255,255,0.4); border-radius: 50%; animation: particleDrift 8s ease-in-out infinite; pointer-events: none; }
-    .hp-particle:nth-child(1) { top: 20%; left: 30%; animation-delay: 0s; }
-    .hp-particle:nth-child(2) { top: 60%; left: 70%; animation-delay: 2s; animation-duration: 10s; }
-    .hp-particle:nth-child(3) { top: 40%; left: 85%; animation-delay: 4s; animation-duration: 12s; }
-    .hp-particle:nth-child(4) { top: 80%; left: 20%; animation-delay: 1s; animation-duration: 9s; }
-    @keyframes particleDrift { 0%, 100% { transform: translate(0, 0); opacity: 0.4; } 25% { transform: translate(10px, -15px); opacity: 0.8; } 50% { transform: translate(-5px, -25px); opacity: 0.4; } 75% { transform: translate(-15px, -10px); opacity: 0.7; } }
+    [data-theme="light"] .hp-hero-ai-grid {
+      background-image:
+        linear-gradient(rgba(15,23,42,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(15,23,42,0.06) 1px, transparent 1px),
+        linear-gradient(rgba(79,70,229,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79,70,229,0.05) 1px, transparent 1px);
+      opacity: 0.9;
+    }
+    @keyframes hpHeroAiGridDrift { 0% { transform: translate(0, 0); } 100% { transform: translate(-56px, -56px); } }
+    .hp-hero-ai-fade {
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 85% 70% at 50% 35%, transparent 0%, var(--hp-bg) 72%);
+      z-index: 1;
+    }
+    [data-theme="light"] .hp-hero-ai-fade { background: radial-gradient(ellipse 85% 70% at 50% 35%, transparent 0%, var(--hp-bg) 75%); }
+    .hp-hero-ai-svg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.55; }
+    [data-theme="light"] .hp-hero-ai-svg { opacity: 0.4; }
+    .hp-ai-line { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 0.32; vector-effect: non-scaling-stroke; }
+    .hp-ai-line-a { stroke: rgba(79,70,229,0.45); stroke-dasharray: 8 14; animation: hpAiDash 4s linear infinite; }
+    .hp-ai-line-b { stroke: rgba(167,139,250,0.35); stroke-dasharray: 6 12; animation: hpAiDash 5.5s linear infinite reverse; }
+    .hp-ai-line-c { stroke: rgba(255,255,255,0.12); stroke-width: 0.25; stroke-dasharray: 4 10; animation: hpAiDash 7s linear infinite; }
+    [data-theme="light"] .hp-ai-line-c { stroke: rgba(15,23,42,0.12); }
+    @keyframes hpAiDash { to { stroke-dashoffset: -120; } }
+    .hp-ai-node { animation: hpAiNodePulse 2.8s ease-in-out infinite; }
+    .hp-ai-node:nth-child(odd) { animation-delay: 0.4s; }
+    .hp-ai-node:nth-child(3n) { animation-delay: 0.9s; }
+    @keyframes hpAiNodePulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+    [data-theme="light"] .hp-ai-node-muted { fill: rgba(15,23,42,0.4) !important; }
+    @media (prefers-reduced-motion: reduce) {
+      .hp-hero-ai-grid { animation: none; }
+      .hp-ai-line-a, .hp-ai-line-b, .hp-ai-line-c { animation: none; }
+      .hp-ai-node { animation: none; opacity: 0.7; }
+    }
 
     /* Features — premium glassmorphism design */
-    .hp-features { padding: 140px 48px 160px; position: relative; overflow: hidden; background: linear-gradient(180deg, transparent 0%, rgba(255,107,0,0.02) 30%, rgba(168,85,247,0.02) 70%, transparent 100%); }
-    .hp-features .hp-container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; }
+    .hp-features { padding: 120px 0 140px; position: relative; overflow: hidden; background: linear-gradient(180deg, transparent 0%, rgba(79,70,229,0.02) 30%, rgba(167,139,250,0.02) 70%, transparent 100%); }
+    .hp-features .hp-container { position: relative; z-index: 1; }
     .hp-features-bg { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-    .hp-features-bg .circle-1 { position: absolute; width: 600px; height: 600px; top: -200px; right: -200px; background: radial-gradient(circle, rgba(255,107,0,0.08) 0%, rgba(168,85,247,0.04) 40%, transparent 70%); border-radius: 50%; filter: blur(60px); }
+    .hp-features-bg .circle-1 { position: absolute; width: 600px; height: 600px; top: -200px; right: -200px; background: radial-gradient(circle, rgba(79,70,229,0.08) 0%, rgba(167,139,250,0.04) 40%, transparent 70%); border-radius: 50%; filter: blur(60px); }
     .hp-features-bg .circle-2 { position: absolute; width: 500px; height: 500px; bottom: -150px; left: -150px; background: radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 60%); border-radius: 50%; filter: blur(80px); }
-    .hp-features-bg .glow-1 { position: absolute; width: 400px; height: 400px; top: 30%; left: 50%; transform: translateX(-50%); background: radial-gradient(circle, rgba(255,107,0,0.04) 0%, transparent 70%); border-radius: 50%; filter: blur(100px); }
-    .hp-features-header { text-align: center; margin-bottom: 80px; opacity: 0; transform: translateY(40px); transition: all 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+    .hp-features-bg .glow-1 { position: absolute; width: 400px; height: 400px; top: 30%; left: 50%; transform: translateX(-50%); background: radial-gradient(circle, rgba(79,70,229,0.04) 0%, transparent 70%); border-radius: 50%; filter: blur(100px); }
+    .hp-features-header { text-align: center; margin-bottom: 56px; opacity: 0; transform: translateY(40px); transition: all 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
     .hp-features-header.visible { opacity: 1; transform: translateY(0); }
     .hp-features-title { font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; margin-bottom: 20px; letter-spacing: -0.04em; line-height: 1.15; background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.85) 50%, rgba(255,255,255,0.7) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     [data-theme="light"] .hp-features-title { background: linear-gradient(135deg, #0f172a 0%, #334155 50%, #475569 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .hp-features-sub { color: var(--hp-muted); font-size: 1.15rem; font-weight: 400; letter-spacing: 0.01em; max-width: 480px; margin: 0 auto; line-height: 1.7; }
-    .hp-features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; max-width: 1160px; margin: 0 auto; }
+    .hp-features-sub { color: var(--hp-muted); font-size: 1.08rem; font-weight: 400; letter-spacing: 0.01em; max-width: 42ch; margin: 0 auto; line-height: 1.65; }
+    .hp-features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; width: 100%; margin: 0 auto; }
     @media (max-width: 1024px) { .hp-features-grid { grid-template-columns: repeat(2, 1fr); gap: 24px; } }
-    @media (max-width: 640px) { .hp-features-grid { grid-template-columns: 1fr; gap: 20px; } .hp-features { padding: 80px 24px 100px; } }
+    @media (max-width: 640px) { .hp-features-grid { grid-template-columns: 1fr; gap: 20px; } .hp-features { padding: 72px 0 88px; } }
     
-    .hp-feature { position: relative; padding: 36px 32px; border-radius: 20px; overflow: hidden; opacity: 0; transform: translateY(36px); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); 
+    .hp-feature { position: relative; padding: 28px 22px; border-radius: 18px; overflow: hidden; opacity: 0; transform: translateY(36px); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1); 
       background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%); 
       border: 1px solid rgba(255,255,255,0.08); 
       backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
       box-shadow: 0 4px 24px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.06); }
     .hp-feature.visible { opacity: 1; transform: translateY(0); }
     .hp-feature:hover { transform: translateY(-6px) scale(1.01); 
-      border-color: rgba(255,107,0,0.25); 
-      box-shadow: 0 24px 48px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,107,0,0.15), inset 0 1px 0 rgba(255,255,255,0.08); 
-      background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,107,0,0.04) 100%); }
-    .hp-feature::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent 50%, rgba(255,107,0,0.08)); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
+      border-color: rgba(79,70,229,0.25); 
+      box-shadow: 0 24px 48px rgba(0,0,0,0.3), 0 0 0 1px rgba(79,70,229,0.15), inset 0 1px 0 rgba(255,255,255,0.08); 
+      background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(79,70,229,0.04) 100%); }
+    .hp-feature::before { content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px; background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent 50%, rgba(79,70,229,0.08)); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; opacity: 0; transition: opacity 0.4s; }
     .hp-feature:hover::before { opacity: 1; }
     [data-theme="light"] .hp-feature { background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.9) 100%); border-color: rgba(15,23,42,0.08); box-shadow: 0 4px 24px rgba(15,23,42,0.06); }
-    [data-theme="light"] .hp-feature:hover { border-color: rgba(255,107,0,0.3); box-shadow: 0 24px 48px rgba(15,23,42,0.1); }
+    [data-theme="light"] .hp-feature:hover { border-color: rgba(79,70,229,0.3); box-shadow: 0 24px 48px rgba(15,23,42,0.1); }
     
-    .hp-feature-visual { position: relative; height: 100px; margin-bottom: 24px; display: flex; align-items: center; justify-content: center; }
+    .hp-feature-visual { position: relative; height: 92px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; }
     .hp-feature-icon-wrap { position: relative; width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; border-radius: 16px; z-index: 2; transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
       background: linear-gradient(145deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.04) 100%);
       border: 1px solid rgba(255,255,255,0.12);
@@ -636,9 +1261,9 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
       color: rgba(255,255,255,0.95); }
     .hp-feature-icon-wrap svg { flex-shrink: 0; }
     .hp-feature:hover .hp-feature-icon-wrap { transform: scale(1.08); 
-      box-shadow: 0 8px 24px rgba(255,107,0,0.2), inset 0 1px 0 rgba(255,255,255,0.15);
-      background: linear-gradient(145deg, rgba(255,107,0,0.2) 0%, rgba(255,107,0,0.05) 100%);
-      border-color: rgba(255,107,0,0.3);
+      box-shadow: 0 8px 24px rgba(79,70,229,0.2), inset 0 1px 0 rgba(255,255,255,0.15);
+      background: linear-gradient(145deg, rgba(79,70,229,0.2) 0%, rgba(79,70,229,0.05) 100%);
+      border-color: rgba(79,70,229,0.3);
       color: #fff; }
     [data-theme="light"] .hp-feature-icon-wrap { background: linear-gradient(145deg, #fff 0%, rgba(248,250,252,0.9) 100%); border-color: rgba(15,23,42,0.1); color: #0f172a; }
     [data-theme="light"] .hp-feature:hover .hp-feature-icon-wrap { color: #0f172a; }
@@ -653,7 +1278,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-feature:nth-child(2) .hp-feature-dot:nth-child(2) { top: 60%; left: 12%; animation: float-dot 3.8s ease-in-out infinite 0.8s; }
     .hp-feature:nth-child(2) .hp-feature-dot:nth-child(3) { top: 38%; right: 22%; animation: float-dot 4.6s ease-in-out infinite 0.4s; }
     .hp-feature:nth-child(2) .hp-feature-dot:nth-child(4) { top: 72%; right: 18%; animation: float-dot 5s ease-in-out infinite 1.2s; }
-    .hp-feature:nth-child(odd) .hp-feature-dot { background: rgba(255,107,0,0.4); }
+    .hp-feature:nth-child(odd) .hp-feature-dot { background: rgba(79,70,229,0.4); }
     @keyframes float-dot { 0%, 100% { transform: translateY(0) scale(1); opacity: 0.35; } 50% { transform: translateY(-10px) scale(1.3); opacity: 0.85; } }
     
     .hp-feature-ring { position: absolute; border: 1px solid rgba(255,255,255,0.06); border-radius: 50%; }
@@ -665,17 +1290,17 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-feature-desc { font-size: 0.9rem; color: var(--hp-muted); line-height: 1.65; letter-spacing: 0.01em; }
 
     /* Feed structure showcase - Google Merchant (premium design) */
-    .hp-feed-section { padding: 120px 48px; border-top: 1px solid var(--hp-border); position: relative; overflow: hidden; }
-    .hp-feed-section::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(255,107,0,0.06) 0%, transparent 60%); pointer-events: none; }
-    .hp-feed-section .hp-container { position: relative; z-index: 1; max-width: 1280px; }
-    .hp-feed-header { text-align: center; margin-bottom: 56px; }
-    .hp-feed-label { display: block; font-size: 0.8rem; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: #FF6B00; margin-bottom: 16px; text-align: center; }
+    .hp-feed-section { padding: 100px 0; border-top: 1px solid var(--hp-border); position: relative; overflow: hidden; }
+    .hp-feed-section::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(79,70,229,0.06) 0%, transparent 60%); pointer-events: none; }
+    .hp-feed-section .hp-container { position: relative; z-index: 1; }
+    .hp-feed-header { text-align: center; margin-bottom: 44px; }
+    .hp-feed-label { display: block; font-size: 0.8rem; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: #22D3EE; margin-bottom: 16px; text-align: center; }
     .hp-feed-title { font-size: clamp(2rem, 4vw, 2.75rem); font-weight: 700; margin-bottom: 16px; letter-spacing: -0.04em; line-height: 1.2; padding: 0.08em 0; display: inline-block; background: linear-gradient(135deg, var(--hp-text) 0%, var(--hp-muted) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     [data-theme="light"] .hp-feed-title { background: linear-gradient(135deg, #0f172a 0%, #475569 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .hp-feed-sub { color: var(--hp-muted); font-size: 1.05rem; max-width: 520px; margin: 0 auto; line-height: 1.6; }
+    .hp-feed-sub { color: var(--hp-muted); font-size: 1.02rem; max-width: 46ch; margin: 0 auto; line-height: 1.6; }
     .hp-feed-block { position: relative; border-radius: 20px; overflow: hidden; opacity: 0; transform: translateY(32px) perspective(1000px) rotateX(2deg); transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
     .hp-feed-section.visible .hp-feed-block { opacity: 1; transform: translateY(0) perspective(1000px) rotateX(0); }
-    .hp-feed-block::before { content: ''; position: absolute; inset: -2px; border-radius: 22px; padding: 2px; background: linear-gradient(135deg, rgba(255,107,0,0.6), rgba(168,85,247,0.4), rgba(255,107,0,0.5)); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; z-index: 2; animation: feedBorderGlow 4s ease-in-out infinite; }
+    .hp-feed-block::before { content: ''; position: absolute; inset: -2px; border-radius: 22px; padding: 2px; background: linear-gradient(135deg, rgba(79,70,229,0.6), rgba(167,139,250,0.4), rgba(79,70,229,0.5)); -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; z-index: 2; animation: feedBorderGlow 4s ease-in-out infinite; }
     @keyframes feedBorderGlow { 0%, 100% { opacity: 0.85; } 50% { opacity: 1; } }
     .hp-feed-block-inner { position: relative; background: linear-gradient(165deg, rgba(15,15,18,0.95) 0%, rgba(8,8,10,0.98) 100%); backdrop-filter: blur(24px); border-radius: 18px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 25px 50px -12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04); }
     [data-theme="light"] .hp-feed-block-inner { background: linear-gradient(165deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.95) 100%); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 25px 50px -12px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8); }
@@ -687,30 +1312,30 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-feed-dot:nth-child(2) { background: #febc2e; }
     .hp-feed-dot:nth-child(3) { background: #28c840; }
     .hp-feed-filename { flex: 1; text-align: center; font-size: 0.8rem; font-weight: 500; color: var(--hp-muted); font-family: 'SF Mono', monospace; }
-    .hp-feed-window-badge { padding: 4px 12px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; border-radius: 6px; background: linear-gradient(135deg, rgba(255,107,0,0.2), rgba(255,107,0,0.1)); color: #FF6B00; border: 1px solid rgba(255,107,0,0.3); }
-    .hp-feed-scan { position: absolute; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, transparent, rgba(255,107,0,0.6), rgba(168,85,247,0.4), transparent); animation: feedScan 5s ease-in-out infinite; pointer-events: none; z-index: 1; filter: blur(1px); }
+    .hp-feed-window-badge { padding: 4px 12px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; border-radius: 6px; background: linear-gradient(135deg, rgba(79,70,229,0.2), rgba(79,70,229,0.1)); color: #4F46E5; border: 1px solid rgba(79,70,229,0.3); }
+    .hp-feed-scan { position: absolute; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, transparent, rgba(79,70,229,0.6), rgba(167,139,250,0.4), transparent); animation: feedScan 5s ease-in-out infinite; pointer-events: none; z-index: 1; filter: blur(1px); }
     @keyframes feedScan { 0% { top: 52px; opacity: 0; } 5% { opacity: 1; } 95% { opacity: 1; } 100% { top: calc(100% - 80px); opacity: 0; } }
     .hp-feed-table-wrap { overflow-x: auto; padding: 0; margin: 0; }
     .hp-feed-table-wrap::-webkit-scrollbar { height: 8px; }
     .hp-feed-table-wrap::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); border-radius: 4px; }
-    .hp-feed-table-wrap::-webkit-scrollbar-thumb { background: rgba(255,107,0,0.3); border-radius: 4px; }
-    .hp-feed-table-wrap::-webkit-scrollbar-thumb:hover { background: rgba(255,107,0,0.5); }
+    .hp-feed-table-wrap::-webkit-scrollbar-thumb { background: rgba(79,70,229,0.3); border-radius: 4px; }
+    .hp-feed-table-wrap::-webkit-scrollbar-thumb:hover { background: rgba(79,70,229,0.5); }
     .hp-feed-table { width: 100%; min-width: 950px; border-collapse: separate; border-spacing: 0; font-size: 0.76rem; font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; }
     .hp-feed-table th, .hp-feed-table td { padding: 12px 16px; text-align: left; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
-    .hp-feed-table th { background: linear-gradient(180deg, rgba(255,107,0,0.12) 0%, rgba(255,107,0,0.06) 100%); color: #fbbf24; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.68rem; border-bottom: 1px solid rgba(255,107,0,0.2); }
-    [data-theme="light"] .hp-feed-table th { background: linear-gradient(180deg, rgba(255,107,0,0.15) 0%, rgba(255,107,0,0.08) 100%); color: #b45309; border-bottom-color: rgba(255,107,0,0.25); }
+    .hp-feed-table th { background: linear-gradient(180deg, rgba(79,70,229,0.12) 0%, rgba(79,70,229,0.06) 100%); color: #22D3EE; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.68rem; border-bottom: 1px solid rgba(79,70,229,0.2); }
+    [data-theme="light"] .hp-feed-table th { background: linear-gradient(180deg, rgba(79,70,229,0.15) 0%, rgba(79,70,229,0.08) 100%); color: #4338ca; border-bottom-color: rgba(79,70,229,0.25); }
     .hp-feed-table td { color: rgba(255,255,255,0.7); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-bottom: 1px solid rgba(255,255,255,0.04); }
     [data-theme="light"] .hp-feed-table td { color: rgba(15,23,42,0.8); border-bottom-color: rgba(15,23,42,0.06); }
-    .hp-feed-table tbody tr:hover td { background: rgba(255,107,0,0.06); color: var(--hp-text); }
-    [data-theme="light"] .hp-feed-table tbody tr:hover td { background: rgba(255,107,0,0.08); color: #0f172a; }
-    .hp-feed-table th:hover { background: rgba(255,107,0,0.18); color: #fcd34d; }
-    .hp-feed-table td:hover { background: rgba(255,107,0,0.1) !important; }
+    .hp-feed-table tbody tr:hover td { background: rgba(79,70,229,0.06); color: var(--hp-text); }
+    [data-theme="light"] .hp-feed-table tbody tr:hover td { background: rgba(79,70,229,0.08); color: #0f172a; }
+    .hp-feed-table th:hover { background: rgba(79,70,229,0.18); color: #67e8f9; }
+    .hp-feed-table td:hover { background: rgba(79,70,229,0.1) !important; }
     .hp-feed-table .hp-feed-cell-id { color: #a78bfa; }
-    .hp-feed-table .hp-feed-cell-title { color: #fbbf24; font-weight: 500; }
+    .hp-feed-table .hp-feed-cell-title { color: #A78BFA; font-weight: 500; }
     .hp-feed-table .hp-feed-cell-price { color: #34d399; font-weight: 600; }
     .hp-feed-table .hp-feed-cell-brand { color: #60a5fa; }
     [data-theme="light"] .hp-feed-table .hp-feed-cell-id { color: #7c3aed; }
-    [data-theme="light"] .hp-feed-table .hp-feed-cell-title { color: #b45309; }
+    [data-theme="light"] .hp-feed-table .hp-feed-cell-title { color: #6d28d9; }
     [data-theme="light"] .hp-feed-table .hp-feed-cell-price { color: #059669; }
     [data-theme="light"] .hp-feed-table .hp-feed-cell-brand { color: #2563eb; }
     .hp-feed-table tr { animation: feedRowReveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
@@ -719,41 +1344,41 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     @keyframes feedRowReveal { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
     .hp-feed-footer { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; padding: 20px 24px; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.06); }
     [data-theme="light"] .hp-feed-footer { background: rgba(15,23,42,0.03); border-top-color: rgba(15,23,42,0.08); }
-    .hp-feed-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; font-size: 0.85rem; font-weight: 600; border-radius: 10px; background: linear-gradient(135deg, rgba(255,107,0,0.2), rgba(255,107,0,0.1)); color: #FF6B00; border: 1px solid rgba(255,107,0,0.3); }
+    .hp-feed-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; font-size: 0.85rem; font-weight: 600; border-radius: 10px; background: linear-gradient(135deg, rgba(79,70,229,0.2), rgba(79,70,229,0.1)); color: #4F46E5; border: 1px solid rgba(79,70,229,0.3); }
     .hp-feed-badge::before { content: '✓'; font-weight: 700; color: #34d399; }
-    [data-theme="light"] .hp-feed-badge { background: linear-gradient(135deg, rgba(255,107,0,0.15), rgba(255,107,0,0.08)); color: #c2410c; border-color: rgba(255,107,0,0.25); }
+    [data-theme="light"] .hp-feed-badge { background: linear-gradient(135deg, rgba(79,70,229,0.15), rgba(79,70,229,0.08)); color: #4338ca; border-color: rgba(79,70,229,0.25); }
     .hp-feed-meta { font-size: 0.78rem; color: var(--hp-muted); }
-    @media (max-width: 768px) { .hp-feed-section { padding: 80px 24px; } .hp-feed-table { font-size: 0.7rem; min-width: 750px; } .hp-feed-block::before { animation: none; } }
+    @media (max-width: 768px) { .hp-feed-section { padding: 72px 0; } .hp-feed-table { font-size: 0.7rem; min-width: 750px; } .hp-feed-block::before { animation: none; } }
 
     /* How it works */
-    .hp-steps { padding: 100px 48px; text-align: center; position: relative; overflow: hidden; }
+    .hp-steps { padding: 88px 0; text-align: center; position: relative; overflow: hidden; }
     .hp-steps-bg { position: absolute; inset: 0; pointer-events: none; }
     .hp-steps-bg .line-1 { position: absolute; width: 1px; height: 200px; left: 20%; top: 0; background: linear-gradient(180deg, transparent, rgba(255,255,255,0.05), transparent); }
     .hp-steps-bg .line-2 { position: absolute; width: 1px; height: 250px; right: 15%; bottom: 0; background: linear-gradient(180deg, transparent, rgba(255,255,255,0.04), transparent); }
     .hp-steps-bg .circle-1 { position: absolute; width: 200px; height: 200px; border: 1px solid rgba(255,255,255,0.03); border-radius: 50%; left: 5%; top: 30%; }
     .hp-steps .hp-container { position: relative; z-index: 1; }
     .hp-steps-title { font-size: 2.2rem; font-weight: 600; margin-bottom: 12px; letter-spacing: -0.02em; }
-    .hp-steps-sub { color: var(--hp-muted); font-size: 1rem; margin-bottom: 64px; }
-    .hp-steps-grid { display: flex; justify-content: center; gap: 64px; flex-wrap: wrap; max-width: 900px; margin: 0 auto; }
+    .hp-steps-sub { color: var(--hp-muted); font-size: 0.98rem; margin-bottom: 48px; }
+    .hp-steps-grid { display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; width: 100%; margin: 0 auto; }
     .hp-step { text-align: center; max-width: 240px; }
     .hp-step-num { width: 48px; height: 48px; border: 2px solid var(--hp-border); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 600; margin: 0 auto 20px; transition: border-color 0.3s, background 0.3s; }
-    .hp-step:hover .hp-step-num { border-color: rgba(193,68,14,0.6); background: rgba(193,68,14,0.1); }
+    .hp-step:hover .hp-step-num { border-color: rgba(79,70,229,0.5); background: rgba(79,70,229,0.12); }
     [data-theme="light"] .hp-step:hover .hp-step-num { border-color: rgba(15,23,42,0.4); background: rgba(15,23,42,0.06); }
     .hp-step-title { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
     .hp-step-desc { font-size: 0.85rem; color: var(--hp-muted); line-height: 1.5; }
 
     /* CTA */
-    .hp-cta { padding: 100px 48px; text-align: center; border-top: 1px solid var(--hp-border); position: relative; overflow: hidden; }
+    .hp-cta { padding: 88px 0; text-align: center; border-top: 1px solid var(--hp-border); position: relative; overflow: hidden; }
     .hp-cta-bg { position: absolute; inset: 0; pointer-events: none; }
     .hp-cta-bg .circle-1 { position: absolute; width: 600px; height: 600px; border: 1px dashed rgba(255,255,255,0.03); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
     .hp-cta-bg .circle-2 { position: absolute; width: 400px; height: 400px; border: 1px solid rgba(255,255,255,0.04); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
-    .hp-cta-bg .glow { position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, rgba(193,68,14,0.08) 0%, transparent 70%); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .hp-cta-bg .glow { position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, rgba(34,211,238,0.1) 0%, transparent 70%); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
     .hp-cta .hp-container { position: relative; z-index: 1; }
     .hp-cta-title { font-size: 2rem; font-weight: 600; margin-bottom: 16px; letter-spacing: -0.02em; }
     .hp-cta-sub { color: var(--hp-muted); font-size: 1rem; margin-bottom: 32px; }
 
     /* Footer */
-    .hp-footer { padding: 32px 48px; text-align: center; font-size: 0.82rem; color: var(--hp-muted); border-top: 1px solid var(--hp-border); }
+    .hp-footer { max-width: 1200px; margin: 0 auto; padding: 28px 40px; text-align: center; font-size: 0.82rem; color: var(--hp-muted); border-top: 1px solid var(--hp-border); box-sizing: border-box; }
     .hp-footer a { color: var(--hp-muted); text-decoration: none; }
     .hp-footer a:hover { color: var(--hp-fg); text-decoration: underline; }
 
@@ -765,19 +1390,15 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .back-to-top.visible { opacity: 1; visibility: visible; transform: translateY(0); }
 
     @media (max-width: 1024px) {
-        .hp-planet-container { width: 320px; height: 320px; animation-duration: 260s; position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); z-index: 0; pointer-events: none; }
-        .hp-mars { width: 140px; height: 140px; margin: -70px 0 0 -70px; pointer-events: none; }
-        .hp-mars-glow { width: 220px; height: 220px; margin: -110px 0 0 -110px; }
         .hp-hero { display: flex; flex-direction: column; }
         .hp-badge { order: 1; margin-bottom: 22px; }
         .hp-title { order: 2; line-height: 1.15; margin-bottom: 22px; }
         .hp-sub { order: 3; line-height: 1.65; }
-        .hp-planet-container { order: 4; }
         .hp-chat-anchor { order: 5; margin-top: 20px; }
-        .hp-particles { order: 0; }
     }
     @media (max-width: 768px) {
-        .hp-nav { padding: 16px 24px; }
+        .hp-nav { padding: 16px 0; }
+        .hp-nav-inner { padding: 0 24px; }
         .hp-hero { padding: 120px 20px 60px; min-height: auto; display: flex; flex-direction: column; }
         .hp-badge { order: 1; margin-bottom: 20px; }
         .hp-title { order: 2; margin-bottom: 20px; font-size: clamp(1.75rem, 5vw, 2.25rem); line-height: 1.2; }
@@ -785,17 +1406,14 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-badge { font-size: 0.84rem; margin-bottom: 14px; }
         .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-title { font-size: clamp(1.26rem, 3.5vw, 1.68rem); margin-bottom: 14px; line-height: 1.2; }
         .hp-hero:has(.hp-chat-wrap.has-conversation) .hp-sub { font-size: 0.77rem; margin-bottom: 20px; margin-top: 0; line-height: 1.55; }
-        .hp-planet-container { order: 4; position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%); width: 240px; height: 240px; animation: none; z-index: 0; pointer-events: none; }
-        .hp-mars { width: 80px; height: 80px; margin: -40px 0 0 -40px; pointer-events: none; }
-        .hp-mars-glow { width: 140px; height: 140px; margin: -70px 0 0 -70px; }
-        .hp-orbit-1 { width: 120px; height: 120px; margin: -60px 0 0 -60px; }
-        .hp-orbit-2 { width: 180px; height: 180px; margin: -90px 0 0 -90px; }
-        .hp-orbit-3 { width: 220px; height: 220px; margin: -110px 0 0 -110px; }
+        .hp-hero-ai-svg { opacity: 0.42; }
         .hp-chat-anchor { order: 5; margin-top: 12px; padding: 0 4px; }
         .hp-chat-wrap.sticky { width: calc(100% - 24px); }
         .hp-chat-panel { padding: 8px 12px 8px 16px; }
         .hp-chat-messages { max-height: 200px; }
-        .hp-features, .hp-steps, .hp-cta { padding: 60px 24px; }
+        .hp-container { padding: 0 24px; }
+        .hp-features, .hp-steps, .hp-cta { padding: 56px 0; }
+        .hp-footer { padding: 24px 24px; }
     }
     </style>
 </head>
@@ -810,6 +1428,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
     </div>
     <nav class="hp-nav">
+        <div class="hp-nav-inner">
         <a href="/" class="hp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="hp-nav-links">
             <a href="/presentation" class="hp-nav-link">Features</a>
@@ -821,28 +1440,35 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             <button type="button" class="hp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
             <a href="/login" class="hp-nav-cta">Get Started</a>
         </div>
+        </div>
     </nav>
 
     <section class="hp-hero">
-        <div class="hp-planet-container">
-            <div class="hp-planet">
-                <div class="hp-mars-glow"></div>
-                <div class="hp-mars">
-                    <div class="hp-crater hp-crater-1"></div>
-                    <div class="hp-crater hp-crater-2"></div>
-                    <div class="hp-crater hp-crater-3"></div>
-                </div>
-                <div class="hp-orbit hp-orbit-1"><div class="hp-moon"></div></div>
-                <div class="hp-orbit hp-orbit-2"><div class="hp-moon"></div></div>
-                <div class="hp-orbit hp-orbit-3"><div class="hp-moon"></div></div>
-            </div>
-        </div>
-
-        <div class="hp-particles">
-            <div class="hp-particle"></div>
-            <div class="hp-particle"></div>
-            <div class="hp-particle"></div>
-            <div class="hp-particle"></div>
+        <div class="hp-hero-ai" aria-hidden="true">
+            <div class="hp-hero-ai-grid"></div>
+            <svg class="hp-hero-ai-svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+                <path class="hp-ai-line hp-ai-line-a" d="M0 38 L14 34 L22 46 L36 30 L44 52 L58 36 L68 50 L82 44 L100 40" />
+                <path class="hp-ai-line hp-ai-line-a" d="M4 58 L20 62 L32 54 L46 68 L60 56 L74 64 L96 60" />
+                <path class="hp-ai-line hp-ai-line-b" d="M8 22 L26 18 L34 28 L50 14 L64 26 L78 16 L92 24" />
+                <path class="hp-ai-line hp-ai-line-b" d="M12 72 L28 78 L40 66 L54 80 L70 72 L88 76" />
+                <path class="hp-ai-line hp-ai-line-c" d="M18 8 L38 12 L52 4 L70 10 L88 6" />
+                <path class="hp-ai-line hp-ai-line-c" d="M6 88 L24 92 L42 84 L58 94 L78 88" />
+                <path class="hp-ai-line hp-ai-line-c" d="M90 70 L96 82 L100 96" />
+                <circle class="hp-ai-node" cx="14" cy="34" r="0.85" fill="#4F46E5" />
+                <circle class="hp-ai-node" cx="36" cy="30" r="0.75" fill="#4F46E5" />
+                <circle class="hp-ai-node" cx="58" cy="36" r="0.8" fill="#4F46E5" />
+                <circle class="hp-ai-node" cx="26" cy="18" r="0.7" fill="#A78BFA" />
+                <circle class="hp-ai-node" cx="50" cy="14" r="0.65" fill="#A78BFA" />
+                <circle class="hp-ai-node" cx="32" cy="54" r="0.72" fill="#A78BFA" />
+                <circle class="hp-ai-node" cx="60" cy="56" r="0.68" fill="#4F46E5" />
+                <circle class="hp-ai-node" cx="40" cy="66" r="0.7" fill="#4F46E5" />
+                <circle class="hp-ai-node" cx="74" cy="64" r="0.75" fill="#A78BFA" />
+                <circle class="hp-ai-node hp-ai-node-muted" cx="18" cy="8" r="0.55" fill="rgba(255,255,255,0.5)" />
+                <circle class="hp-ai-node hp-ai-node-muted" cx="52" cy="4" r="0.5" fill="rgba(255,255,255,0.45)" />
+                <circle class="hp-ai-node hp-ai-node-muted" cx="88" cy="6" r="0.55" fill="rgba(255,255,255,0.4)" />
+                <circle class="hp-ai-node hp-ai-node-muted" cx="42" cy="84" r="0.6" fill="rgba(255,255,255,0.35)" />
+            </svg>
+            <div class="hp-hero-ai-fade"></div>
         </div>
 
         <div class="hp-badge">AI-Powered E-commerce</div>
@@ -1088,23 +1714,6 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         themeToggle.addEventListener('click', () => setTheme(getTheme() === 'dark' ? 'light' : 'dark'));
     }
     
-    // Planet runs away on hover
-    const planetContainer = document.querySelector('.hp-planet-container');
-    const mars = document.querySelector('.hp-mars');
-    if (mars && planetContainer) {
-        mars.addEventListener('mouseenter', () => {
-            const runX = (Math.random() - 0.5) * 300;
-            const runY = (Math.random() - 0.5) * 200 - 100;
-            planetContainer.classList.add('scared');
-            planetContainer.style.transform = `translate(${runX}px, ${runY}px)`;
-            
-            setTimeout(() => {
-                planetContainer.style.transform = '';
-                setTimeout(() => planetContainer.classList.remove('scared'), 100);
-            }, 800);
-        });
-    }
-
     // Scroll reveal for features
     const featuresHeader = document.querySelector('.hp-features-header');
     const featureCards = document.querySelectorAll('.hp-feature');
@@ -1482,8 +2091,15 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
 </html>"""
 
 
-def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_apple: bool = False, request_host: str = "") -> str:
+def _build_login_page(
+    next_url: str = "/upload",
+    has_google: bool = True,
+    has_apple: bool = False,
+    request_host: str = "",
+    oauth_err: str = "",
+) -> str:
     """Build login page HTML. Only show providers that are configured."""
+    import html as _html
     from urllib.parse import quote
     import os
     next_param = f"?next={quote(next_url)}" if next_url else ""
@@ -1503,6 +2119,16 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
         else:
             providers.append(('<p class="auth-no-providers">OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, or AUTH_DEV_BYPASS=1 for local testing.</p>', False))
     providers_html = "\n".join(p[0] for p in providers if p[1]) or providers[0][0]
+    oauth_alert_html = ""
+    if oauth_err == "deleted_client":
+        oauth_alert_html = (
+            '<div class="oauth-alert" role="alert"><strong>OAuth client deleted.</strong> '
+            "In Google Cloud Console → APIs &amp; Services → Credentials, create a <strong>new</strong> OAuth 2.0 Client ID (Web application), "
+            "add redirect URIs, then set <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in your server environment and restart. "
+            "Check <code>/api/auth/oauth-debug</code> for the id this process uses.</div>"
+        )
+    elif oauth_err:
+        oauth_alert_html = f'<div class="oauth-alert" role="alert">{_html.escape(oauth_err)}</div>'
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -1514,7 +2140,7 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #050505; color: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; }}
+    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     .login-box {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 48px 40px; max-width: 400px; width: 100%; text-align: center; }}
     [data-theme="light"] .login-box {{ background: #fff; border-color: rgba(15,23,42,0.1); box-shadow: 0 4px 24px rgba(0,0,0,0.06); }}
@@ -1524,7 +2150,7 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
     .auth-btn {{ display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; padding: 14px 24px; font-size: 1rem; font-weight: 500; border-radius: 8px; text-decoration: none; transition: all 0.2s; margin-bottom: 12px; border: 1px solid transparent; }}
     .auth-google {{ background: #fff; color: #1f1f1f; }}
     .auth-google:hover {{ background: #f5f5f5; }}
-    .auth-apple {{ background: #000; color: #fff; border-color: rgba(255,255,255,0.2); }}
+    .auth-apple {{ background: #0B0F19; color: #E5E7EB; border-color: rgba(255,255,255,0.2); }}
     [data-theme="light"] .auth-apple {{ background: #1f1f1f; }}
     .auth-apple:hover {{ opacity: 0.9; }}
     .auth-no-providers {{ color: rgba(255,255,255,0.5); font-size: 0.85rem; }}
@@ -1535,6 +2161,9 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
     .theme-btn {{ width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
     [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
     [data-theme="light"] .auth-no-providers {{ color: rgba(15,23,42,0.5); }}
+    .oauth-alert {{ text-align: left; font-size: 0.82rem; line-height: 1.45; color: #fecaca; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }}
+    .oauth-alert code {{ font-size: 0.78rem; background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; }}
+    [data-theme="light"] .oauth-alert {{ color: #991b1b; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); }}
     </style>
 </head>
 <body>
@@ -1546,6 +2175,7 @@ def _build_login_page(next_url: str = "/upload", has_google: bool = True, has_ap
     <div class="login-box">
         <h1>Sign in to continue</h1>
         <p>Use your Google or Apple account to access the uploader. No registration required.</p>
+        {oauth_alert_html}
         {providers_html}
     </div>
     <script>
@@ -1570,18 +2200,18 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #050505; color: #fff; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; -webkit-font-smoothing: antialiased; }
     [data-theme="light"] body { background: #f8fafc; color: #0f172a; }
     [data-theme="light"] .subtitle, [data-theme="light"] .label, [data-theme="light"] .hint { color: rgba(15,23,42,0.7) !important; }
     [data-theme="light"] .hint code { background: rgba(15,23,42,0.1); }
     [data-theme="light"] .dropzone { border-color: rgba(15,23,42,0.2); }
     [data-theme="light"] .dropzone:hover, [data-theme="light"] .dropzone.dragover { border-color: rgba(15,23,42,0.4); background: rgba(15,23,42,0.02); }
-    [data-theme="light"] .dropzone.has-file { border-color: #FF6B00; background: rgba(255,107,0,0.06); }
+    [data-theme="light"] .dropzone.has-file { border-color: #4F46E5; background: rgba(79,70,229,0.06); }
     [data-theme="light"] .dropzone-text { color: rgba(15,23,42,0.6); }
     [data-theme="light"] .dropzone-text strong { color: #0f172a; }
-    [data-theme="light"] .dropzone.has-file .dropzone-text { color: #FF6B00; }
+    [data-theme="light"] .dropzone.has-file .dropzone-text { color: #4F46E5; }
     [data-theme="light"] .dropzone-icon { color: rgba(15,23,42,0.4); }
-    [data-theme="light"] .dropzone.has-file .dropzone-icon { color: #FF6B00; }
+    [data-theme="light"] .dropzone.has-file .dropzone-icon { color: #4F46E5; }
     [data-theme="light"] .dropzone-hint { color: rgba(15,23,42,0.5); }
     [data-theme="light"] .dropzone-filename, [data-theme="light"] .dropzone-thanks { color: rgba(15,23,42,0.8); }
     [data-theme="light"] select { border-color: rgba(15,23,42,0.15); background-color: rgba(255,255,255,0.9); color: #0f172a; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%230f172a' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; }
@@ -1604,10 +2234,38 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     .theme-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
     [data-theme="light"] .theme-btn { border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }
     [data-theme="light"] .theme-btn:hover { color: #0f172a; background: rgba(15,23,42,0.06); }
-    .nav-links { display: flex; align-items: center; gap: 32px; }
+    .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; justify-content: flex-end; }
     .nav-link { color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }
     .nav-link:hover, .nav-link.active { color: #fff; }
     .nav-cta { background: #fff; color: #000; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; }
+    .nav-merchant { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .nav-merchant-connect { display: inline-flex; align-items: center; justify-content: center; padding: 10px 18px; font-size: 0.85rem; font-weight: 600; border-radius: 8px; text-decoration: none; border: none; cursor: pointer; background: linear-gradient(135deg, #22D3EE 0%, #06b6d4 100%); color: #0a0a0a; box-shadow: 0 2px 12px rgba(34, 211, 238, 0.35); transition: transform 0.15s, filter 0.15s, box-shadow 0.15s; white-space: nowrap; }
+    .nav-merchant-connect:hover { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(34, 211, 238, 0.45); }
+    .nav-merchant-connected { display: none; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .nav-merchant-connected.visible { display: flex; }
+    button.nav-merchant-pill { font: inherit; font-family: inherit; font-size: 0.8rem; font-weight: 600; padding: 8px 14px; border-radius: 999px; background: rgba(34, 211, 238, 0.15); color: #22D3EE; border: 1px solid rgba(34, 211, 238, 0.35); cursor: pointer; }
+    button.nav-merchant-pill:hover { filter: brightness(1.08); }
+    [data-theme="light"] button.nav-merchant-pill { color: #0e7490; border-color: rgba(14, 116, 144, 0.35); background: rgba(34, 211, 238, 0.12); }
+    .mc-confirm-row { display: flex; gap: 12px; margin-top: 8px; justify-content: stretch; }
+    .mc-confirm-no { flex: 1; padding: 12px 14px; font-size: 0.9rem; font-weight: 600; border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); background: transparent; color: rgba(255,255,255,0.9); cursor: pointer; }
+    .mc-confirm-no:hover { background: rgba(255,255,255,0.06); }
+    .mc-confirm-yes { flex: 1; padding: 12px 14px; font-size: 0.9rem; font-weight: 600; border-radius: 10px; border: none; cursor: pointer; background: linear-gradient(135deg, #22D3EE 0%, #06b6d4 100%); color: #0a0a0a; }
+    .mc-confirm-yes:hover { filter: brightness(1.05); }
+    [data-theme="light"] .mc-confirm-no { border-color: rgba(15,23,42,0.2); color: #0f172a; }
+    [data-theme="light"] .mc-confirm-no:hover { background: rgba(15,23,42,0.06); }
+    [data-theme="light"] .nav-merchant-connect { box-shadow: 0 2px 12px rgba(6, 182, 212, 0.3); }
+
+    .mc-success-overlay { position: fixed; inset: 0; background: rgba(5, 8, 15, 0.72); backdrop-filter: blur(6px); z-index: 10000; display: none; align-items: center; justify-content: center; padding: 24px; opacity: 0; transition: opacity 0.28s ease; }
+    .mc-success-overlay.visible { display: flex; opacity: 1; }
+    .mc-success-modal { background: rgba(18, 22, 32, 0.96); border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; padding: 36px 32px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 24px 64px rgba(0,0,0,0.45); }
+    [data-theme="light"] .mc-success-modal { background: #fff; border-color: rgba(15,23,42,0.1); }
+    .mc-success-icon { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 50%; background: linear-gradient(135deg, #22D3EE, #06b6d4); color: #0a0a0a; font-size: 28px; line-height: 56px; font-weight: 700; }
+    .mc-success-modal h3 { font-size: 1.15rem; font-weight: 600; color: #fff; margin-bottom: 8px; }
+    [data-theme="light"] .mc-success-modal h3 { color: #0f172a; }
+    .mc-success-modal p { font-size: 0.9rem; color: rgba(255,255,255,0.6); line-height: 1.5; margin-bottom: 20px; }
+    [data-theme="light"] .mc-success-modal p { color: rgba(15,23,42,0.6); }
+    .mc-success-gotit { width: 100%; padding: 12px 18px; font-size: 0.95rem; font-weight: 600; border-radius: 10px; border: none; cursor: pointer; background: linear-gradient(135deg, #22D3EE 0%, #06b6d4 100%); color: #0a0a0a; }
+    .mc-success-gotit:hover { filter: brightness(1.05); }
 
     .container { max-width: 600px; margin: 80px auto; padding: 0 24px; }
     .title { font-size: 2rem; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; }
@@ -1619,12 +2277,12 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
 
     .dropzone { border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; padding: 48px 24px; text-align: center; cursor: pointer; transition: all 0.3s; }
     .dropzone:hover, .dropzone.dragover { border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.02); }
-    .dropzone.has-file { border-color: #FF6B00; border-style: solid; background: rgba(255,107,0,0.04); }
+    .dropzone.has-file { border-color: #4F46E5; border-style: solid; background: rgba(79,70,229,0.04); }
     .dropzone-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.5; transition: all 0.3s; }
-    .dropzone.has-file .dropzone-icon { font-size: 2rem; color: #FF6B00; opacity: 1; animation: pop 0.3s ease-out; }
+    .dropzone.has-file .dropzone-icon { font-size: 2rem; color: #4F46E5; opacity: 1; animation: pop 0.3s ease-out; }
     .dropzone-text { font-size: 0.95rem; margin-bottom: 4px; color: rgba(255,255,255,0.6); }
     .dropzone-text strong { color: #fff; }
-    .dropzone.has-file .dropzone-text { color: #FF6B00; }
+    .dropzone.has-file .dropzone-text { color: #4F46E5; }
     .dropzone-hint { font-size: 0.8rem; color: rgba(255,255,255,0.4); }
     .dropzone.has-file .dropzone-hint { display: none; }
     .dropzone-filename { margin-top: 10px; font-size: 0.88rem; color: rgba(255,255,255,0.9); font-weight: 500; }
@@ -1660,7 +2318,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     .combo-input::placeholder { color: rgba(255,255,255,0.35); }
     .combo-arrow { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 0.55rem; color: rgba(255,255,255,0.4); pointer-events: none; transition: transform 0.2s; }
     .combo-wrap.open .combo-arrow { transform: translateY(-50%) rotate(180deg); }
-    .combo-list { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto; background: #1a1a2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; list-style: none; margin: 0; padding: 4px 0; z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .combo-list { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto; background: #141b2e; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; list-style: none; margin: 0; padding: 4px 0; z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
     .combo-wrap.open .combo-list { display: block; }
     .combo-list li { padding: 10px 16px; font-size: 0.88rem; color: rgba(255,255,255,0.85); cursor: pointer; transition: background 0.15s; }
     .combo-list li:hover { background: rgba(255,255,255,0.08); }
@@ -1681,17 +2339,44 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     @media (max-width: 768px) { .nav { padding: 16px 24px; } .nav-link { display: none; } .container { margin: 40px auto; } }
     </style>
 </head>
-<body>
+<!-- cartozo-upload-ui:3 merchant-in-nav -->
+<body data-upload-ui="3">
 {GTM_BODY}
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
-            <a href="/upload" class="nav-link active">Optimize Feed</a>
+            <a href="/batches/history" class="nav-link">Batch history</a>
             <!-- ADMIN_NAV -->
+            <div class="nav-merchant" id="navMerchantWrap">
+                <a href="/merchant/google/connect" class="nav-merchant-connect" id="merchantConnectBtn">Connect Merchant Center</a>
+                <div class="nav-merchant-connected" id="navMerchantConnected">
+                    <button type="button" class="nav-merchant-pill" id="merchantConnectedLabel" aria-haspopup="dialog" title="Disconnect Merchant Center">Connected</button>
+                </div>
+            </div>
             <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
             <a href="/logout" class="nav-link">Log out</a>
         </div>
     </nav>
+
+    <div id="mcConnectSuccessOverlay" class="mc-success-overlay" aria-hidden="true">
+        <div class="mc-success-modal" role="dialog" aria-modal="true" aria-labelledby="mcSuccessTitle" onclick="event.stopPropagation()">
+            <div class="mc-success-icon" aria-hidden="true">&#10003;</div>
+            <h3 id="mcSuccessTitle">Merchant Center connected</h3>
+            <p>Cartozo can upload products to your Google Merchant account on your behalf.</p>
+            <button type="button" class="mc-success-gotit" id="mcConnectSuccessGotIt">Got it</button>
+        </div>
+    </div>
+
+    <div id="merchantDisconnectOverlay" class="mc-success-overlay" aria-hidden="true">
+        <div class="mc-success-modal" role="dialog" aria-modal="true" aria-labelledby="mcDiscTitle" onclick="event.stopPropagation()">
+            <h3 id="mcDiscTitle">Disconnect Merchant Center?</h3>
+            <p>Cartozo will stop uploading products to your Google Merchant account until you connect again.</p>
+            <div class="mc-confirm-row">
+                <button type="button" class="mc-confirm-no" id="merchantDisconnectCancel">No</button>
+                <button type="button" class="mc-confirm-yes" id="merchantDisconnectConfirm">Yes, disconnect</button>
+            </div>
+        </div>
+    </div>
 
     <div class="container">
         <h1 class="title">Optimize your product catalog</h1>
@@ -1772,6 +2457,100 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     </div>
 
     <script>
+    (function(){
+        window.dataLayer = window.dataLayer || [];
+        function dlFoundUs(payload) {
+            dataLayer.push(Object.assign({ event: "found_us" }, payload));
+        }
+        try {
+            var sp = new URLSearchParams(location.search);
+            var utm = sp.get("utm_source");
+            if (utm) {
+                dlFoundUs({
+                    found_via: "utm:" + utm,
+                    attribution_channel: "utm",
+                    utm_medium: sp.get("utm_medium") || "",
+                    utm_campaign: sp.get("utm_campaign") || ""
+                });
+            }
+        } catch (e) {}
+        try {
+            if (!sessionStorage.getItem("cartozo_ref_dl")) {
+                var ref = document.referrer;
+                if (ref && ref.indexOf(location.hostname) === -1) {
+                    sessionStorage.setItem("cartozo_ref_dl", "1");
+                    dlFoundUs({ found_via: "referrer", attribution_channel: "referrer", referrer_host: new URL(ref).hostname });
+                }
+            }
+        } catch (e) {}
+        var mConn = document.getElementById("merchantConnectBtn");
+        var navConnected = document.getElementById("navMerchantConnected");
+        var merchantConnectedLabel = document.getElementById("merchantConnectedLabel");
+        var mcSuccessOv = document.getElementById("mcConnectSuccessOverlay");
+        var mcSuccessOk = document.getElementById("mcConnectSuccessGotIt");
+        var discOv = document.getElementById("merchantDisconnectOverlay");
+        var discCancel = document.getElementById("merchantDisconnectCancel");
+        var discConfirm = document.getElementById("merchantDisconnectConfirm");
+        function refreshMerchantUi(s) {
+            if (!mConn || !navConnected) return;
+            if (!s || !s.connected) {
+                mConn.style.display = "inline-flex";
+                navConnected.classList.remove("visible");
+                return;
+            }
+            mConn.style.display = "none";
+            navConnected.classList.add("visible");
+            if (merchantConnectedLabel) {
+                merchantConnectedLabel.textContent = s.merchant_id ? "Connected · ID " + s.merchant_id : "Connected";
+            }
+        }
+        try {
+            var spMc = new URLSearchParams(location.search);
+            if (spMc.get("merchant") === "connected" && mcSuccessOv) {
+                mcSuccessOv.classList.add("visible");
+                mcSuccessOv.setAttribute("aria-hidden", "false");
+                spMc.delete("merchant");
+                var qMc = spMc.toString();
+                history.replaceState({}, "", location.pathname + (qMc ? "?" + qMc : "") + location.hash);
+            }
+        } catch (e) {}
+        if (mcSuccessOk && mcSuccessOv) {
+            function closeMcSuccess() {
+                mcSuccessOv.classList.remove("visible");
+                mcSuccessOv.setAttribute("aria-hidden", "true");
+            }
+            mcSuccessOk.addEventListener("click", closeMcSuccess);
+            mcSuccessOv.addEventListener("click", function(e) { if (e.target === mcSuccessOv) closeMcSuccess(); });
+        }
+        fetch("/api/merchant/status", { credentials: "same-origin" }).then(function(r) { return r.ok ? r.json() : null; }).then(refreshMerchantUi).catch(function() {});
+        function merchantDiscOpen() {
+            if (!discOv) return;
+            discOv.classList.add("visible");
+            discOv.setAttribute("aria-hidden", "false");
+        }
+        function merchantDiscClose() {
+            if (!discOv) return;
+            discOv.classList.remove("visible");
+            discOv.setAttribute("aria-hidden", "true");
+        }
+        if (merchantConnectedLabel) {
+            merchantConnectedLabel.addEventListener("click", function(e) {
+                if (!navConnected || !navConnected.classList.contains("visible")) return;
+                e.preventDefault();
+                merchantDiscOpen();
+            });
+        }
+        if (discCancel) discCancel.addEventListener("click", merchantDiscClose);
+        if (discOv) discOv.addEventListener("click", function(e) { if (e.target === discOv) merchantDiscClose(); });
+        if (discConfirm) {
+            discConfirm.addEventListener("click", function() {
+                merchantDiscClose();
+                fetch("/api/merchant/disconnect", { method: "POST", credentials: "same-origin" }).then(function(r) {
+                    if (r.ok) { refreshMerchantUi({ connected: false }); location.reload(); }
+                });
+            });
+        }
+    })();
     (function(){
         const zone=document.getElementById("dropzone"),inp=document.getElementById("file"),nameEl=document.getElementById("filename"),errEl=document.getElementById("file-error");
         const thanksEl=document.getElementById("thanks"),iconEl=document.getElementById("dropicon"),textEl=document.getElementById("droptext");
@@ -1885,12 +2664,12 @@ def _build_contact_page() -> str:
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #050505; color: #fff; min-height: 100vh; overflow-x: hidden; position: relative; -webkit-font-smoothing: antialiased; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; overflow-x: hidden; position: relative; -webkit-font-smoothing: antialiased; }
     [data-theme="light"] body { background: #f8fafc; color: #0f172a; }
     [data-theme="light"] .subtitle, [data-theme="light"] .label { color: rgba(15,23,42,0.7); }
     [data-theme="light"] input { border-color: rgba(15,23,42,0.15); background: rgba(255,255,255,0.9); color: #0f172a; }
     [data-theme="light"] input:focus { border-color: rgba(15,23,42,0.3); }
-    [data-theme="light"] .contact-email { color: #FF6B00; }
+    [data-theme="light"] .contact-email { color: #4F46E5; }
     .cp-stars { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
     .cp-star { position: absolute; width: 2px; height: 2px; background: rgba(255,255,255,0.5); border-radius: 50%; animation: cp-starDrift 30s ease-in-out infinite; }
     [data-theme="light"] .cp-star { background: rgba(15,23,42,0.25); }
@@ -1934,8 +2713,8 @@ def _build_contact_page() -> str:
     .cp-crater-3 { width: 14px; height: 14px; top: 22%; left: 62%; }
     .cp-crater-4 { width: 8px; height: 8px; top: 55%; left: 55%; }
     .cp-crater-5 { width: 6px; height: 6px; top: 42%; left: 72%; }
-    :root, [data-theme="dark"] { --hp-bg: #050505; --hp-text: #fff; --hp-muted: #A1A1AA; --hp-accent: #FF6B00; --hp-border: rgba(255,255,255,0.1); }
-    [data-theme="light"] { --hp-bg: #f8fafc; --hp-text: #0f172a; --hp-muted: rgba(15,23,42,0.6); --hp-accent: #FF6B00; --hp-border: rgba(15,23,42,0.12); }
+    :root, [data-theme="dark"] { --hp-bg: #0B0F19; --hp-text: #E5E7EB; --hp-muted: #9ca3af; --hp-accent: #4F46E5; --hp-border: rgba(255,255,255,0.1); }
+    [data-theme="light"] { --hp-bg: #f8fafc; --hp-text: #0f172a; --hp-muted: rgba(15,23,42,0.6); --hp-accent: #4F46E5; --hp-border: rgba(15,23,42,0.12); }
     .cp-nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
     [data-theme="light"] .cp-nav { background: rgba(248,250,252,0.95); border-bottom-color: rgba(15,23,42,0.08); }
     .cp-nav-logo { flex-shrink: 0; }
@@ -1958,14 +2737,14 @@ def _build_contact_page() -> str:
     .title { font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; }
     .subtitle { color: rgba(255,255,255,0.6); font-size: 0.95rem; margin-bottom: 32px; line-height: 1.5; }
     .contact-email { font-size: 0.9rem; margin-bottom: 32px; }
-    .contact-email a { color: #FF6B00; text-decoration: none; }
+    .contact-email a { color: #4F46E5; text-decoration: none; }
     .contact-email a:hover { text-decoration: underline; }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .form-group { margin-bottom: 20px; }
     .label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 8px; color: rgba(255,255,255,0.8); }
     input { width: 100%; padding: 12px 16px; font-size: 0.95rem; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; }
     input:focus { outline: none; border-color: rgba(255,255,255,0.4); }
-    .btn { padding: 14px 28px; font-size: 0.95rem; font-weight: 600; background: #FF6B00; color: #fff; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; }
+    .btn { padding: 14px 28px; font-size: 0.95rem; font-weight: 600; background: #4F46E5; color: #fff; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; }
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.6; cursor: not-allowed; }
     .success-msg { margin-top: 20px; padding: 16px; background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3); border-radius: 8px; color: #22c55e; font-size: 0.9rem; display: none; }
@@ -2088,11 +2867,11 @@ def _build_presentation_page() -> str:
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #050505; color: #fff; min-height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     [data-theme="light"] body { background: linear-gradient(165deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); }
-    :root { --pp-accent: #FF6B00; --pp-accent-soft: rgba(255,107,0,0.15); --pp-muted: #A1A1AA; --pp-ease: cubic-bezier(0.22, 1, 0.36, 1); --pp-ease-out: cubic-bezier(0.16, 1, 0.3, 1); }
+    :root { --pp-accent: #4F46E5; --pp-accent-soft: rgba(79,70,229,0.15); --pp-muted: #9ca3af; --pp-ease: cubic-bezier(0.22, 1, 0.36, 1); --pp-ease-out: cubic-bezier(0.16, 1, 0.3, 1); }
     .pp-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
-    .pp-bg-gradient { position: absolute; inset: 0; background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(255,107,0,0.12) 0%, transparent 50%), radial-gradient(ellipse 80% 60% at 80% 80%, rgba(168,85,247,0.06) 0%, transparent 50%), radial-gradient(ellipse 60% 80% at 10% 50%, rgba(59,130,246,0.04) 0%, transparent 50%); }
+    .pp-bg-gradient { position: absolute; inset: 0; background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(79,70,229,0.12) 0%, transparent 50%), radial-gradient(ellipse 80% 60% at 80% 80%, rgba(167,139,250,0.06) 0%, transparent 50%), radial-gradient(ellipse 60% 80% at 10% 50%, rgba(59,130,246,0.04) 0%, transparent 50%); }
     .pp-bg-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 60px 60px; mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 70%); }
     .pp-stars { position: absolute; inset: 0; }
     .pp-star { position: absolute; width: 2px; height: 2px; background: rgba(255,255,255,0.6); border-radius: 50%; animation: pp-twinkle 4s ease-in-out infinite; }
@@ -2123,9 +2902,9 @@ def _build_presentation_page() -> str:
     .pp-slide.active .pp-feature { opacity: 1; transform: translateY(0); }
     .pp-slide.active .pp-feature:nth-child(1){transition-delay:0.2s}.pp-slide.active .pp-feature:nth-child(2){transition-delay:0.28s}.pp-slide.active .pp-feature:nth-child(3){transition-delay:0.36s}
     .pp-slide.active .pp-feature:nth-child(4){transition-delay:0.44s}.pp-slide.active .pp-feature:nth-child(5){transition-delay:0.52s}.pp-slide.active .pp-feature:nth-child(6){transition-delay:0.6s}
-    .pp-feature:hover { background: linear-gradient(145deg, var(--pp-accent-soft) 0%, rgba(255,107,0,0.05) 100%); border-color: rgba(255,107,0,0.25); transform: translateY(-6px); box-shadow: 0 20px 40px -20px rgba(255,107,0,0.2); }
-    .pp-feature-icon { width: 52px; height: 52px; margin: 0 auto 20px; border-radius: 14px; background: linear-gradient(145deg, var(--pp-accent-soft) 0%, rgba(255,107,0,0.05) 100%); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: var(--pp-accent); transition: all 0.35s var(--pp-ease); }
-    .pp-feature:hover .pp-feature-icon { background: rgba(255,107,0,0.2); transform: scale(1.05); }
+    .pp-feature:hover { background: linear-gradient(145deg, var(--pp-accent-soft) 0%, rgba(79,70,229,0.05) 100%); border-color: rgba(79,70,229,0.25); transform: translateY(-6px); box-shadow: 0 20px 40px -20px rgba(79,70,229,0.2); }
+    .pp-feature-icon { width: 52px; height: 52px; margin: 0 auto 20px; border-radius: 14px; background: linear-gradient(145deg, var(--pp-accent-soft) 0%, rgba(79,70,229,0.05) 100%); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: var(--pp-accent); transition: all 0.35s var(--pp-ease); }
+    .pp-feature:hover .pp-feature-icon { background: rgba(79,70,229,0.2); transform: scale(1.05); }
     .pp-feature-title { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 10px; }
     .pp-feature-desc { font-size: 0.88rem; color: var(--pp-muted); line-height: 1.6; }
     .pp-flow { display: flex; align-items: flex-start; justify-content: center; gap: 0; margin-top: 56px; flex-wrap: wrap; max-width: 1000px; }
@@ -2134,10 +2913,10 @@ def _build_presentation_page() -> str:
     .pp-slide.active .pp-flow-step:nth-child(1){transition-delay:0.15s}.pp-slide.active .pp-flow-step:nth-child(2){transition-delay:0.25s}
     .pp-slide.active .pp-flow-step:nth-child(3){transition-delay:0.35s}.pp-slide.active .pp-flow-step:nth-child(4){transition-delay:0.45s}
     .pp-slide.active .pp-flow-step:nth-child(5){transition-delay:0.55s}
-    .pp-flow-connector { flex: 0 0 24px; height: 2px; margin-top: 36px; background: linear-gradient(90deg, rgba(255,107,0,0.4), rgba(255,107,0,0.15)); align-self: center; opacity: 0; transition: opacity 0.5s var(--pp-ease) 0.3s; }
+    .pp-flow-connector { flex: 0 0 24px; height: 2px; margin-top: 36px; background: linear-gradient(90deg, rgba(79,70,229,0.4), rgba(79,70,229,0.15)); align-self: center; opacity: 0; transition: opacity 0.5s var(--pp-ease) 0.3s; }
     .pp-slide.active .pp-flow-connector { opacity: 1; }
-    .pp-flow-num { width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(145deg, var(--pp-accent-soft) 0%, rgba(255,107,0,0.08) 100%); border: 1px solid rgba(255,107,0,0.2); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 700; color: var(--pp-accent); margin: 0 auto 16px; transition: all 0.35s var(--pp-ease); }
-    .pp-flow-step:hover .pp-flow-num { background: rgba(255,107,0,0.2); border-color: rgba(255,107,0,0.4); transform: scale(1.08); }
+    .pp-flow-num { width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(145deg, var(--pp-accent-soft) 0%, rgba(79,70,229,0.08) 100%); border: 1px solid rgba(79,70,229,0.2); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 700; color: var(--pp-accent); margin: 0 auto 16px; transition: all 0.35s var(--pp-ease); }
+    .pp-flow-step:hover .pp-flow-num { background: rgba(79,70,229,0.2); border-color: rgba(79,70,229,0.4); transform: scale(1.08); }
     .pp-flow-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
     .pp-flow-desc { font-size: 0.8rem; color: var(--pp-muted); line-height: 1.5; }
     .pp-result-mock { margin-top: 40px; padding: 24px 32px; border-radius: 16px; background: linear-gradient(165deg, rgba(15,15,18,0.95) 0%, rgba(8,8,10,0.98) 100%); border: 1px solid rgba(255,255,255,0.08); max-width: 500px; opacity: 0; transform: translateY(20px) scale(0.98); transition: all 0.6s var(--pp-ease) 0.3s; }
@@ -2153,18 +2932,18 @@ def _build_presentation_page() -> str:
     .pp-result-badge { display: inline-flex; align-items: center; gap: 8px; margin-top: 20px; padding: 10px 20px; border-radius: 10px; background: linear-gradient(135deg, rgba(52,211,153,0.15), rgba(52,211,153,0.05)); border: 1px solid rgba(52,211,153,0.3); font-size: 0.9rem; font-weight: 600; color: #34d399; }
     .pp-cta { margin-top: 48px; opacity: 0; transform: translateY(16px); transition: all 0.6s var(--pp-ease) 0.4s; }
     .pp-slide.active .pp-cta { opacity: 1; transform: translateY(0); }
-    .pp-cta a { display: inline-block; padding: 18px 44px; font-size: 1.05rem; font-weight: 600; background: linear-gradient(135deg, var(--pp-accent) 0%, #e55f00 100%); color: #fff; border-radius: 14px; text-decoration: none; transition: all 0.3s var(--pp-ease); box-shadow: 0 4px 24px -4px rgba(255,107,0,0.4); }
-    .pp-cta a:hover { transform: translateY(-3px); box-shadow: 0 12px 32px -8px rgba(255,107,0,0.5); }
+    .pp-cta a { display: inline-block; padding: 18px 44px; font-size: 1.05rem; font-weight: 600; background: linear-gradient(135deg, var(--pp-accent) 0%, #6366f1 100%); color: #fff; border-radius: 14px; text-decoration: none; transition: all 0.3s var(--pp-ease); box-shadow: 0 4px 24px -4px rgba(79,70,229,0.4); }
+    .pp-cta a:hover { transform: translateY(-3px); box-shadow: 0 12px 32px -8px rgba(79,70,229,0.5); }
     .pp-progress { position: fixed; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.06); z-index: 200; }
-    .pp-progress-bar { height: 100%; background: linear-gradient(90deg, var(--pp-accent), #fb923c); width: 0%; transition: width 0.5s var(--pp-ease); }
+    .pp-progress-bar { height: 100%; background: linear-gradient(90deg, var(--pp-accent), #22D3EE); width: 0%; transition: width 0.5s var(--pp-ease); }
     .pp-dots { position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 200; }
     .pp-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.2); cursor: pointer; transition: all 0.35s var(--pp-ease); }
     .pp-dot:hover { background: rgba(255,255,255,0.4); transform: scale(1.25); }
     .pp-dot.active { background: var(--pp-accent); width: 24px; border-radius: 4px; }
     .pp-arrows { position: fixed; top: 50%; left: 0; right: 0; transform: translateY(-50%); display: flex; justify-content: space-between; padding: 0 20px; z-index: 200; pointer-events: none; }
     .pp-arrow { width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s var(--pp-ease); pointer-events: auto; }
-    .pp-arrow:hover { background: var(--pp-accent-soft); border-color: rgba(255,107,0,0.3); color: var(--pp-accent); transform: scale(1.05); }
-    @media (max-width: 900px) { .pp-flow { flex-direction: column; align-items: center; gap: 32px; } .pp-flow-connector { width: 2px; height: 24px; margin: 0; background: linear-gradient(180deg, rgba(255,107,0,0.4), rgba(255,107,0,0.15)); } }
+    .pp-arrow:hover { background: var(--pp-accent-soft); border-color: rgba(79,70,229,0.3); color: var(--pp-accent); transform: scale(1.05); }
+    @media (max-width: 900px) { .pp-flow { flex-direction: column; align-items: center; gap: 32px; } .pp-flow-connector { width: 2px; height: 24px; margin: 0; background: linear-gradient(180deg, rgba(79,70,229,0.4), rgba(79,70,229,0.15)); } }
     @media (max-width: 768px) { .pp-features { grid-template-columns: 1fr 1fr; gap: 16px; } .pp-arrows { padding: 0 12px; } .pp-arrow { width: 44px; height: 44px; } .pp-nav { padding: 16px 24px; } }
     </style>
 </head>
@@ -2325,7 +3104,12 @@ async def upload_page(request: Request):
         return redir
     user = get_current_user(request)
     role = user.get("role", "customer") if user else "customer"
-    return HTMLResponse(content=_build_upload_page(user_role=role))
+    r = HTMLResponse(content=_build_upload_page(user_role=role))
+    r.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    r.headers["Pragma"] = "no-cache"
+    r.headers["X-Cartozo-Upload-UI"] = UPLOAD_UI_REVISION
+    _onboarding_track(request, r, 1)
+    return r
 
 
 @app.get("/upload/continue", response_class=HTMLResponse)
@@ -2351,7 +3135,7 @@ async def upload_continue(request: Request, upload_id: str = Query(...)):
 
     user = get_current_user(request)
     role = user.get("role", "customer") if user else "customer"
-    return HTMLResponse(content=_build_mapping_page(
+    r = HTMLResponse(content=_build_mapping_page(
         upload_id=upload_id,
         csv_columns=csv_columns,
         guessed=guessed,
@@ -2362,6 +3146,8 @@ async def upload_continue(request: Request, upload_id: str = Query(...)):
         product_type=product_type,
         user_role=role,
     ))
+    _onboarding_track(request, r, 2)
+    return r
 
 
 @app.post("/batches/preview", response_class=HTMLResponse)
@@ -2408,7 +3194,7 @@ async def preview_csv(
 
     user = get_current_user(request)
     role = user.get("role", "customer") if user else "customer"
-    return HTMLResponse(content=_build_mapping_page(
+    r = HTMLResponse(content=_build_mapping_page(
         upload_id=upload_id,
         csv_columns=csv_columns,
         guessed=guessed,
@@ -2419,6 +3205,8 @@ async def preview_csv(
         product_type=product_type,
         user_role=role,
     ))
+    _onboarding_track(request, r, 2)
+    return r
 
 
 @app.post("/batches/confirm", response_class=HTMLResponse)
@@ -2443,7 +3231,9 @@ async def confirm_mapping(
 
     user = get_current_user(request)
     role = user.get("role", "customer") if user else "customer"
-    return HTMLResponse(content=_build_processing_page(upload_id, mode, target_language, mappings_json, optimize_fields, product_type=product_type, user_role=role))
+    r = HTMLResponse(content=_build_processing_page(upload_id, mode, target_language, mappings_json, optimize_fields, product_type=product_type, user_role=role))
+    _onboarding_track(request, r, 3)
+    return r
 
 
 @app.post("/batches/run")
@@ -2473,7 +3263,15 @@ async def run_processing(
         normalized_products: List[NormalizedProduct] = normalize_records(records, custom_mapping=custom_mapping)
 
         actions = decide_actions_for_products(normalized_products, mode=mode)
-        storage.create_batch(batch_id=batch_id, products=normalized_products, actions=actions, product_type=product_type)
+        user = get_current_user(request)
+        owner_email = (user.get("email") or "").strip() if user else ""
+        storage.create_batch(
+            batch_id=batch_id,
+            products=normalized_products,
+            actions=actions,
+            product_type=product_type,
+            user_email=owner_email or None,
+        )
 
         if target_language:
             storage.default_target_language = target_language
@@ -2486,6 +3284,7 @@ async def run_processing(
 
         storage.process_batch_synchronously(batch_id, optimize_fields=opt_set)
 
+        _onboarding_track(request, None, 4)
         return {"batch_id": batch_id}
     except HTTPException:
         raise
@@ -2508,10 +3307,10 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; display: flex; flex-direction: column; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     [data-theme="light"] .thinking-sub, [data-theme="light"] .progress-pct {{ color: rgba(15,23,42,0.5); }}
-    [data-theme="light"] .spinner {{ border-color: rgba(15,23,42,0.1); border-top-color: #FF6B00; }}
+    [data-theme="light"] .spinner {{ border-color: rgba(15,23,42,0.1); border-top-color: #22D3EE; }}
     [data-theme="light"] .progress {{ background: rgba(15,23,42,0.1); }}
     .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
     [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
@@ -2535,8 +3334,8 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     [data-theme="light"] .loader {{ background: #fff; border-color: rgba(15,23,42,0.1); box-shadow: 0 4px 24px rgba(0,0,0,0.06); }}
 
     .icon-wrap {{ width: 64px; height: 64px; margin: 0 auto 24px; position: relative; }}
-    .spinner {{ width: 64px; height: 64px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #FF6B00; border-radius: 50%; animation: spin 1s cubic-bezier(0.4,0,0.2,1) infinite; }}
-    .checkmark {{ display: none; width: 64px; height: 64px; border-radius: 50%; background: #FF6B00; color: #000; font-size: 32px; line-height: 64px; text-align: center; animation: popIn 0.35s cubic-bezier(0.2,0.8,0.2,1.2); }}
+    .spinner {{ width: 64px; height: 64px; border: 3px solid rgba(255,255,255,0.1); border-top-color: #22D3EE; border-radius: 50%; animation: spin 1s cubic-bezier(0.4,0,0.2,1) infinite; }}
+    .checkmark {{ display: none; width: 64px; height: 64px; border-radius: 50%; background: #4F46E5; color: #fff; font-size: 32px; line-height: 64px; text-align: center; animation: popIn 0.35s cubic-bezier(0.2,0.8,0.2,1.2); }}
     .done .spinner {{ display: none; }}
     .done .checkmark {{ display: block; }}
     @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
@@ -2548,7 +3347,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     @keyframes dots {{ 0%{{content:'';}} 25%{{content:'.';}} 50%{{content:'..';}} 75%{{content:'...';}} }}
 
     .progress {{ width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 999px; margin-top: 32px; overflow: hidden; }}
-    .progress-fill {{ height: 100%; width: 0%; background: linear-gradient(90deg, #e55f00, #FF6B00); border-radius: 999px; transition: width 0.12s linear; }}
+    .progress-fill {{ height: 100%; width: 0%; background: linear-gradient(90deg, #4F46E5, #22D3EE); border-radius: 999px; transition: width 0.12s linear; }}
     .progress-pct {{ font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 10px; font-variant-numeric: tabular-nums; }}
 
     @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} }}
@@ -2559,7 +3358,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
-            <a href="/upload" class="nav-link">Optimize Feed</a>
+            <a href="/batches/history" class="nav-link">Batch history</a>
             {_admin_nav_links(user_role=user_role)}
             <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
         </div>
@@ -2702,7 +3501,7 @@ def _build_mapping_page(
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     [data-theme="light"] .subtitle, [data-theme="light"] .subtitle strong {{ color: rgba(15,23,42,0.8) !important; }}
     [data-theme="light"] .table-container, [data-theme="light"] .options-box {{ background: rgba(255,255,255,0.8); border-color: rgba(15,23,42,0.15); }}
@@ -2755,7 +3554,7 @@ def _build_mapping_page(
     .options-title {{ font-weight: 600; font-size: 0.95rem; margin-bottom: 14px; }}
     .checkboxes {{ display: flex; gap: 32px; flex-wrap: wrap; }}
     .checkbox-label {{ display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.9rem; color: rgba(255,255,255,0.8); }}
-    .checkbox-label input {{ width: 18px; height: 18px; accent-color: #FF6B00; }}
+    .checkbox-label input {{ width: 18px; height: 18px; accent-color: #4F46E5; }}
 
     .actions {{ display: flex; gap: 12px; margin-bottom: 24px; }}
     .btn {{ padding: 14px 28px; font-size: 0.95rem; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s; text-align: center; text-decoration: none; }}
@@ -2772,7 +3571,7 @@ def _build_mapping_page(
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
-            <a href="/upload" class="nav-link active">Optimize Feed</a>
+            <a href="/batches/history" class="nav-link">Batch history</a>
             {_admin_nav_links(user_role=user_role)}
             <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
         </div>
@@ -2883,7 +3682,14 @@ async def create_batch(
     normalized_products: List[NormalizedProduct] = normalize_records(records)
 
     actions = decide_actions_for_products(normalized_products, mode=mode)
-    storage.create_batch(batch_id=batch_id, products=normalized_products, actions=actions)
+    u = get_current_user(request)
+    owner_email = (u.get("email") or "").strip() if u else ""
+    storage.create_batch(
+        batch_id=batch_id,
+        products=normalized_products,
+        actions=actions,
+        user_email=owner_email or None,
+    )
 
     if target_language:
         storage.default_target_language = target_language
@@ -2895,9 +3701,29 @@ async def create_batch(
     return storage.get_batch_summary(batch_id)
 
 
+@app.get("/batches/history", response_class=HTMLResponse)
+async def batches_history_page(request: Request):
+    """All batches for the logged-in user (newest first). Must be registered before /batches/{batch_id} so 'history' is not captured as a batch id."""
+    redir = require_login_redirect(request, "/batches/history")
+    if redir:
+        return redir
+    user = get_current_user(request)
+    email = (user.get("email") or "").strip() if user else ""
+    user_role = user.get("role", "customer") if user else "customer"
+    body_inner = _build_batch_history_html("", email)
+    html = _wrap_batches_history_shell(
+        page_title="Batch history",
+        body_inner=body_inner,
+        user_role=user_role,
+    )
+    return HTMLResponse(content=html)
+
+
 @app.get("/batches/{batch_id}", response_model=BatchSummary)
 def get_batch(request: Request, batch_id: str):
     require_login_http(request)
+    batch = storage.get_batch(batch_id)
+    _ensure_batch_owner_from_batch(request, batch)
     summary = storage.get_batch_summary(batch_id)
     if not summary:
         raise HTTPException(status_code=404, detail="Batch not found.")
@@ -2908,8 +3734,9 @@ def get_batch(request: Request, batch_id: str):
 async def export_batch(request: Request, batch_id: str):
     require_login_http(request)
     batch = storage.get_batch(batch_id)
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found.")
+    _ensure_batch_owner_from_batch(request, batch)
+
+    _onboarding_export_done(request)
 
     csv_buffer = io.StringIO()
     generate_result_csv(batch, csv_buffer)
@@ -2930,8 +3757,7 @@ async def regenerate_batch_items(request: Request, batch_id: str, product_ids: L
     """
     require_login_http(request)
     batch = storage.get_batch(batch_id)
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found.")
+    _ensure_batch_owner_from_batch(request, batch)
 
     storage.regenerate_products(batch_id, product_ids)
     return storage.get_batch_summary(batch_id)
@@ -2945,8 +3771,7 @@ async def update_product_field(request: Request, batch_id: str, data: dict):
     """
     require_login_http(request)
     batch = storage.get_batch(batch_id)
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found.")
+    _ensure_batch_owner_from_batch(request, batch)
 
     product_id = data.get("product_id")
     field = data.get("field")
@@ -2973,8 +3798,7 @@ async def export_selected_products(request: Request, batch_id: str, product_ids:
     """
     require_login_http(request)
     batch = storage.get_batch(batch_id)
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found.")
+    _ensure_batch_owner_from_batch(request, batch)
 
     # Filter to only selected products
     from .models import Batch as BatchModel
@@ -2982,6 +3806,8 @@ async def export_selected_products(request: Request, batch_id: str, product_ids:
     
     if not selected_products:
         raise HTTPException(status_code=400, detail="No products selected.")
+
+    _onboarding_export_done(request)
 
     # Create a temporary batch with only selected products
     filtered_batch = BatchModel(
@@ -3001,17 +3827,30 @@ async def export_selected_products(request: Request, batch_id: str, product_ids:
     )
 
 
+@app.post("/batches/{batch_id}/close")
+async def close_batch(request: Request, batch_id: str):
+    """Mark batch as closed (archived) for history status."""
+    require_login_http(request)
+    batch = storage.get_batch(batch_id)
+    _ensure_batch_owner_from_batch(request, batch)
+    from .db import get_db
+    from .services.db_repository import mark_batch_closed
+
+    with get_db() as db:
+        mark_batch_closed(db, batch_id)
+    return JSONResponse({"ok": True})
+
+
 @app.get("/batches/{batch_id}/review", response_class=HTMLResponse)
 async def review_batch(request: Request, batch_id: str):
     redir = require_login_redirect(request, f"/batches/{batch_id}/review")
     if redir:
         return redir
     batch = storage.get_batch(batch_id)
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found.")
-
     user = get_current_user(request)
+    _ensure_batch_owner_from_batch(request, batch)
     user_role = user.get("role", "customer") if user else "customer"
+    batch_history_html = _build_batch_history_html(batch_id, (user.get("email") or "") if user else "")
 
     total = len(batch.products)
     from .models import ProductStatus as PS
@@ -3068,10 +3907,38 @@ async def review_batch(request: Request, batch_id: str):
         top_issues_html = f'<div class="gmc-top-issues"><div class="gmc-ti-label">Most common issues found in your source CSV data</div><ul class="gmc-ti-list">{issue_items}</ul></div>'
 
     from .services.validator import validate_title, validate_description
-    
+    import re
+
+    def _warning_items_for_row(r):
+        """Merge error, GMC issues, and notes into deduplicated (severity, text) rows."""
+        severity_by_text: dict = {}
+        order: List[str] = []
+
+        def bump(sev: str, text: object) -> None:
+            t = (str(text) if text is not None else "").strip()
+            if not t:
+                return
+            if t not in severity_by_text:
+                order.append(t)
+            prev = severity_by_text.get(t, "warn")
+            if sev == "error" or prev == "error":
+                severity_by_text[t] = "error"
+            else:
+                severity_by_text[t] = "warn"
+
+        if r.error:
+            bump("error", r.error)
+        for e in r.gmc_errors:
+            bump("error", e)
+        for w in r.gmc_warnings:
+            bump("warn", w)
+        if r.notes:
+            for part in re.split(r"[\n;|]+", r.notes):
+                bump("warn", part)
+        return [(severity_by_text[t], t) for t in order]
+
     rows_html = ""
     for r in batch.products:
-        pill_cls = f"pill-{r.status.value}"
         orig_sc = r.original_score
         sc = r.score
         improvement = sc - orig_sc
@@ -3181,9 +4048,20 @@ async def review_batch(request: Request, batch_id: str):
         else:
             new_title_cell = f'<td class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</td>'
 
+        warn_items = _warning_items_for_row(r)
+        if not warn_items:
+            warnings_cell = '<td class="warnings-cell"><span class="warnings-empty">—</span></td>'
+        else:
+            _pills = []
+            for _sev, _txt in warn_items:
+                _pcls = "warn-pill warn-pill--err" if _sev == "error" else "warn-pill warn-pill--warn"
+                _pills.append(f'<span class="{_pcls}">{html_module.escape(_txt)}</span>')
+            warnings_cell = f'<td class="warnings-cell"><div class="warnings-stack">{"".join(_pills)}</div></td>'
+
         rows_html += f"""
         <tr data-id="{r.product.id}" data-status="{r.status.value}" data-gmc="{gmc_status}">
             <td><input type="checkbox" name="product_id" value="{r.product.id}" /></td>
+            {warnings_cell}
             <td class="img-cell">{image_cell}</td>
             <td class="link-cell">{link_cell}</td>
             {old_title_cell}
@@ -3192,8 +4070,6 @@ async def review_batch(request: Request, batch_id: str):
             {new_desc_cell}
             <td class="editable-cell" contenteditable="true" data-field="translated_title" data-product="{r.product.id}">{trans_title}</td>
             {trans_desc_cell}
-            <td><span class="pill {pill_cls}">{r.status.value}</span></td>
-            <td class="note">{r.notes or r.error or ''}</td>
             <td class="score-cell col-sticky col-score">{score_cell}</td>
             <td class="col-sticky col-action"><span class="badge {action_cls}">{action_display}</span></td>
         </tr>
@@ -3210,7 +4086,7 @@ async def review_batch(request: Request, batch_id: str):
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); background: rgba(248,250,252,0.95); }}
     [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
@@ -3220,13 +4096,19 @@ async def review_batch(request: Request, batch_id: str):
     [data-theme="light"] .btn-outline:hover {{ border-color: rgba(15,23,42,0.4); }}
     [data-theme="light"] .btn-primary {{ background: #0f172a; color: #fff; }}
     [data-theme="light"] .btn-primary:hover {{ background: #1e293b; }}
-    [data-theme="light"] .insight {{ background: rgba(255,255,255,0.8); border-color: rgba(15,23,42,0.12); }}
-    [data-theme="light"] .insight-icon {{ color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .insight-title, [data-theme="light"] .insight-text strong {{ color: #0f172a; }}
-    [data-theme="light"] .insight-text {{ color: rgba(15,23,42,0.8); }}
-    [data-theme="light"] .stat {{ background: rgba(255,255,255,0.8); border-color: rgba(15,23,42,0.08); }}
-    [data-theme="light"] .stat-value {{ color: #0f172a; }}
-    [data-theme="light"] .stat-label {{ color: rgba(15,23,42,0.5); }}
+    [data-theme="light"] .btn-merchant-push {{ background: linear-gradient(135deg, #22D3EE 0%, #06b6d4 100%); color: #0a0a0a; box-shadow: 0 2px 14px rgba(6, 182, 212, 0.35); }}
+    [data-theme="light"] .btn-merchant-push:hover {{ filter: brightness(0.97); box-shadow: 0 4px 18px rgba(6, 182, 212, 0.45); }}
+    [data-theme="light"] .merchant-push-modal {{ background: #fff; border-color: rgba(15,23,42,0.1); }}
+    [data-theme="light"] .merchant-push-title {{ color: #0f172a; }}
+    [data-theme="light"] .merchant-push-sub {{ color: rgba(15,23,42,0.55); }}
+    [data-theme="light"] .merchant-push-body {{ color: rgba(15,23,42,0.85); }}
+    [data-theme="light"] .review-summary-bar {{ background: rgba(255,255,255,0.85); border-color: rgba(15,23,42,0.1); }}
+    [data-theme="light"] .review-summary-lead {{ color: #0f172a; }}
+    [data-theme="light"] .review-summary-lead strong {{ color: #0f172a; }}
+    [data-theme="light"] .review-summary-meta {{ color: rgba(15,23,42,0.55); }}
+    [data-theme="light"] .review-summary-meta strong {{ color: #334155; }}
+    [data-theme="light"] .review-summary-meta .c-review {{ color: #b45309; }}
+    [data-theme="light"] .review-summary-meta .c-fail {{ color: #dc2626; }}
     [data-theme="light"] .search {{ border-color: rgba(15,23,42,0.15); background-color: rgba(255,255,255,0.9); color: #0f172a; }}
     [data-theme="light"] .search::placeholder {{ color: rgba(15,23,42,0.4); }}
     [data-theme="light"] .search:focus {{ border-color: rgba(15,23,42,0.3); }}
@@ -3291,27 +4173,37 @@ async def review_batch(request: Request, batch_id: str):
     .btn-outline:hover {{ border-color: rgba(255,255,255,0.4); }}
     .btn-primary {{ background: #fff; color: #0a0a0a; }}
     .btn-primary:hover {{ background: #e5e5e5; }}
+    .btn-merchant-push {{ background: linear-gradient(135deg, #22D3EE 0%, #06b6d4 100%); color: #0a0a0a; border: none; font-weight: 600; padding: 11px 20px; box-shadow: 0 2px 14px rgba(34, 211, 238, 0.35); }}
+    .btn-merchant-push:hover {{ filter: brightness(1.06); box-shadow: 0 4px 20px rgba(34, 211, 238, 0.45); transform: translateY(-1px); }}
+    .btn-merchant-push:disabled {{ opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }}
     .btn:focus-visible, .expand-btn:focus-visible {{ outline: 2px solid #fff; outline-offset: 2px; }}
+    .btn-merchant-push:focus-visible {{ outline: 2px solid #22D3EE; outline-offset: 2px; }}
 
-    .insight {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 20px 24px; margin-bottom: 24px; display: flex; gap: 16px; }}
-    .insight-icon {{ font-size: 1.5rem; color: rgba(255,255,255,0.6); }}
-    .insight-title {{ font-weight: 600; margin-bottom: 6px; color: #fff; }}
-    .insight-text {{ font-size: 0.9rem; color: rgba(255,255,255,0.7); line-height: 1.6; }}
-    .insight-text strong {{ color: #fff; }}
+    .merchant-push-overlay {{ position: fixed; inset: 0; background: rgba(5, 8, 15, 0.72); backdrop-filter: blur(6px); z-index: 10000; display: none; align-items: center; justify-content: center; padding: 24px; opacity: 0; transition: opacity 0.28s ease; }}
+    .merchant-push-overlay.visible {{ display: flex; opacity: 1; }}
+    .merchant-push-modal {{ position: relative; background: rgba(18, 22, 32, 0.96); border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; padding: 36px 32px; max-width: 440px; width: 100%; box-shadow: 0 24px 64px rgba(0,0,0,0.45); }}
+    .merchant-push-state {{ text-align: center; }}
+    .merchant-push-state.is-hidden {{ display: none !important; }}
+    .merchant-push-spinner {{ width: 56px; height: 56px; margin: 0 auto 20px; border: 3px solid rgba(255,255,255,0.12); border-top-color: #22D3EE; border-radius: 50%; animation: merchantSpin 0.9s linear infinite; }}
+    @keyframes merchantSpin {{ to {{ transform: rotate(360deg); }} }}
+    .merchant-push-title {{ font-size: 1.15rem; font-weight: 600; color: #fff; margin-bottom: 8px; }}
+    .merchant-push-sub {{ font-size: 0.88rem; color: rgba(255,255,255,0.55); line-height: 1.45; }}
+    .merchant-push-icon-ok {{ width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 50%; background: linear-gradient(135deg, #22D3EE, #06b6d4); color: #0a0a0a; font-size: 28px; line-height: 56px; font-weight: 700; }}
+    .merchant-push-icon-err {{ width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 50%; background: rgba(239,68,68,0.2); color: #f87171; font-size: 26px; line-height: 56px; font-weight: 700; }}
+    .merchant-push-icon-ok.is-hidden, .merchant-push-icon-err.is-hidden {{ display: none !important; }}
+    .merchant-push-body {{ text-align: left; font-size: 0.82rem; line-height: 1.55; color: rgba(255,255,255,0.82); margin-top: 12px; max-height: 280px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; padding: 12px 14px; background: rgba(0,0,0,0.25); border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); }}
+    .btn-merchant-gotit {{ width: 100%; margin-top: 20px; padding: 12px 18px; font-size: 0.95rem; font-weight: 600; border-radius: 10px; border: none; cursor: pointer; background: linear-gradient(135deg, #22D3EE 0%, #06b6d4 100%); color: #0a0a0a; transition: filter 0.2s, transform 0.15s; }}
+    .btn-merchant-gotit:hover {{ filter: brightness(1.05); }}
 
-    .stats {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 24px; }}
-    @media (max-width: 900px) {{ .stats {{ grid-template-columns: repeat(3, 1fr); }} }}
-    .stat {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 16px 20px; text-align: center; }}
-    .stat-value {{ font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }}
-    .stat-label {{ font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.5); }}
-    .stat-done {{ color: #fff; }}
-    .stat-review {{ color: #e5e5e5; }}
-    .stat-failed {{ color: #ef4444; }}
-    .stat-score {{ color: #e5e5e5; }}
-    [data-theme="light"] .stat-done {{ color: #0f172a; }}
-    [data-theme="light"] .stat-review {{ color: #334155; }}
-    [data-theme="light"] .stat-score {{ color: #334155; }}
-    [data-theme="light"] .stat-failed {{ color: #dc2626; }}
+    .review-summary-bar {{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 8px 12px; margin-bottom: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; font-size: 0.78rem; line-height: 1.35; color: rgba(255,255,255,0.65); }}
+    .review-summary-lead {{ color: rgba(255,255,255,0.92); font-weight: 600; }}
+    .review-summary-lead strong {{ color: #fff; font-weight: 700; }}
+    .review-summary-lead .m {{ opacity: 0.45; font-weight: 400; margin: 0 2px; }}
+    .review-summary-meta {{ font-size: 0.72rem; color: rgba(255,255,255,0.48); text-transform: uppercase; letter-spacing: 0.04em; }}
+    .review-summary-meta strong {{ font-weight: 700; font-size: 0.76rem; text-transform: none; letter-spacing: 0; margin-left: 3px; color: rgba(255,255,255,0.88); }}
+    .review-summary-meta .m {{ opacity: 0.45; margin: 0 2px; font-weight: 400; }}
+    .review-summary-meta .c-review {{ color: #fbbf24; }}
+    .review-summary-meta .c-fail {{ color: #ef4444; }}
 
     .controls {{ display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }}
     .controls-left {{ display: flex; gap: 12px; flex: 1; }}
@@ -3344,8 +4236,8 @@ async def review_batch(request: Request, batch_id: str):
     .feedback-stars {{ display: flex; gap: 8px; margin-bottom: 20px; }}
     .feedback-stars span {{ font-size: 1.75rem; cursor: pointer; color: rgba(255,255,255,0.25); transition: color 0.2s; user-select: none; }}
     .feedback-stars span:hover, .feedback-stars span.filled {{ color: #fbbf24; }}
-    .feedback-box .btn {{ width: 100%; padding: 14px; font-size: 0.95rem; font-weight: 600; border-radius: 8px; cursor: pointer; border: none; background: #FF6B00; color: #fff; }}
-    .feedback-box .btn:hover {{ background: #e55f00; }}
+    .feedback-box .btn {{ width: 100%; padding: 14px; font-size: 0.95rem; font-weight: 600; border-radius: 8px; cursor: pointer; border: none; background: #4F46E5; color: #fff; }}
+    .feedback-box .btn:hover {{ background: #4338ca; }}
     .feedback-thanks {{ display: none; text-align: center; padding: 20px 0; }}
     .feedback-thanks.visible {{ display: block; }}
     .feedback-form.hidden {{ display: none !important; }}
@@ -3364,14 +4256,35 @@ async def review_batch(request: Request, batch_id: str):
     th.sorted-asc::after {{ content: ' ↑'; color: #fff; }}
     th.sorted-desc::after {{ content: ' ↓'; color: #fff; }}
     td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; }}
-    td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9) {{ max-width: 220px; }}
-    td:nth-child(4), td:nth-child(5), td:nth-child(8) {{ overflow: hidden; text-overflow: ellipsis; }}
+    td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10) {{ max-width: 220px; }}
+    td:nth-child(5), td:nth-child(6), td:nth-child(9) {{ overflow: hidden; text-overflow: ellipsis; }}
     .desc-cell {{ overflow: visible; }}
     tr:last-child td {{ border-bottom: none; }}
     tr:nth-child(even) {{ background: rgba(255,255,255,0.015); }}
     tr:hover {{ background: rgba(255,255,255,0.04); }}
     .mono {{ font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: rgba(255,255,255,0.5); }}
     .note {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); max-width: 150px; }}
+    th.th-warnings {{ text-align: center; }}
+    .warnings-cell {{ vertical-align: middle; min-width: 160px; max-width: 320px; }}
+    .warnings-stack {{
+        display: flex; flex-direction: column; justify-content: center; gap: 6px; align-items: flex-start;
+    }}
+    .warnings-empty {{ color: rgba(255,255,255,0.25); font-size: 0.85rem; }}
+    .warn-pill {{
+        display: inline-block; padding: 6px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 600;
+        line-height: 1.35; white-space: normal; word-break: break-word; text-align: left; max-width: 100%;
+    }}
+    .warn-pill--err {{
+        background: rgba(239,68,68,0.28); color: #fecaca; border: 1px solid rgba(239,68,68,0.55);
+        box-shadow: 0 1px 0 rgba(0,0,0,0.2);
+    }}
+    .warn-pill--warn {{
+        background: rgba(245,158,11,0.22); color: #fde68a; border: 1px solid rgba(245,158,11,0.5);
+        box-shadow: 0 1px 0 rgba(0,0,0,0.15);
+    }}
+    [data-theme="light"] .warnings-empty {{ color: rgba(15,23,42,0.35); }}
+    [data-theme="light"] .warn-pill--err {{ background: rgba(254,226,226,0.95); color: #991b1b; border-color: rgba(220,38,38,0.45); }}
+    [data-theme="light"] .warn-pill--warn {{ background: rgba(254,243,199,0.95); color: #92400e; border-color: rgba(217,119,6,0.45); }}
     .new-content {{ color: #fff; font-weight: 500; }}
     .th-center {{ text-align: center; }}
     .score-cell {{ text-align: center; white-space: nowrap; }}
@@ -3504,7 +4417,49 @@ async def review_batch(request: Request, batch_id: str):
     [data-theme="light"] .gmc-ti-err .gmc-ti-count {{ background: rgba(239,68,68,0.1); color: #ef4444; }}
     [data-theme="light"] .gmc-ti-warn .gmc-ti-count {{ background: rgba(245,158,11,0.1); color: #f59e0b; }}
 
-    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ padding: 24px; }} .gmc-panel {{ flex-direction: column; align-items: stretch; }} .gmc-legend {{ flex-wrap: wrap; gap: 8px; }} }}
+    .batch-history {{ margin-bottom: 28px; padding: 20px 22px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); }}
+    .batch-history-title {{ font-size: 1rem; font-weight: 600; margin-bottom: 14px; color: rgba(255,255,255,0.95); }}
+    .batch-history-scroll {{ overflow-x: auto; }}
+    .batch-history-table {{ width: 100%; border-collapse: collapse; font-size: 0.82rem; min-width: 520px; }}
+    .batch-history-table th {{ text-align: left; padding: 10px 12px; color: rgba(255,255,255,0.45); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.68rem; border-bottom: 1px solid rgba(255,255,255,0.08); }}
+    .batch-history-table td {{ padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: middle; }}
+    .batch-history-row--current {{ background: rgba(34,211,238,0.06); }}
+    .batch-history-link {{ color: #22D3EE; font-weight: 600; text-decoration: none; }}
+    .batch-history-link:hover {{ text-decoration: underline; }}
+    .batch-history-meta {{ color: rgba(255,255,255,0.5); white-space: nowrap; }}
+    .batch-history-pill {{ display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }}
+    .batch-history-pill--closed {{ background: rgba(148,163,184,0.2); color: #e2e8f0; }}
+    .batch-history-pill--sent {{ background: rgba(34,211,238,0.15); color: #67e8f9; }}
+    .batch-history-pill--pending {{ background: rgba(245,158,11,0.2); color: #fde68a; }}
+    .batch-history-pill--new {{ background: rgba(99,102,241,0.2); color: #c7d2fe; }}
+    .batch-history-actions {{ white-space: nowrap; }}
+    .batch-history-actions .btn {{ margin-left: 6px; }}
+    .batch-history-hint {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); margin-top: 12px; margin-bottom: 0; line-height: 1.45; }}
+    .btn-sm {{ padding: 6px 12px; font-size: 0.75rem; }}
+    [data-theme="light"] .batch-history {{ background: rgba(255,255,255,0.9); border-color: rgba(15,23,42,0.1); }}
+    [data-theme="light"] .batch-history-title {{ color: #0f172a; }}
+    [data-theme="light"] .batch-history-table th {{ color: rgba(15,23,42,0.45); border-bottom-color: rgba(15,23,42,0.08); }}
+    [data-theme="light"] .batch-history-table td {{ border-bottom-color: rgba(15,23,42,0.06); }}
+    [data-theme="light"] .batch-history-row--current {{ background: rgba(34,211,238,0.1); }}
+    [data-theme="light"] .batch-history-meta {{ color: rgba(15,23,42,0.55); }}
+    [data-theme="light"] .batch-history-hint {{ color: rgba(15,23,42,0.5); }}
+    .batch-history-empty {{ font-size: 0.88rem; color: rgba(255,255,255,0.55); line-height: 1.5; }}
+    .batch-history-empty-link {{ color: #22D3EE; text-decoration: none; }}
+    .batch-history-empty-link:hover {{ text-decoration: underline; }}
+    [data-theme="light"] .batch-history-empty {{ color: rgba(15,23,42,0.55); }}
+
+    .review-tabs {{ margin-bottom: 0; }}
+    .review-tabs-bar {{ display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0; }}
+    .review-tab {{ border: none; background: transparent; color: rgba(255,255,255,0.5); font-size: 0.85rem; font-weight: 600; padding: 10px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; font-family: inherit; }}
+    .review-tab.is-active {{ color: #fff; border-bottom-color: #22D3EE; }}
+    .review-tab:hover {{ color: rgba(255,255,255,0.9); }}
+    .review-tab-aux {{ margin-left: auto; font-size: 0.8rem; color: #22D3EE; text-decoration: none; }}
+    .review-tab-aux:hover {{ text-decoration: underline; }}
+    .review-tab-panel[hidden] {{ display: none !important; }}
+    [data-theme="light"] .review-tab {{ color: rgba(15,23,42,0.45); }}
+    [data-theme="light"] .review-tab.is-active {{ color: #0f172a; border-bottom-color: #22D3EE; }}
+
+    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ padding: 24px; }} .gmc-panel {{ flex-direction: column; align-items: stretch; }} .gmc-legend {{ flex-wrap: wrap; gap: 8px; }} .review-tab-aux {{ margin-left: 0; width: 100%; padding: 4px 14px 10px; }} }}
     </style>
 </head>
 <body>
@@ -3512,7 +4467,7 @@ async def review_batch(request: Request, batch_id: str):
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
-            <a href="/upload" class="nav-link">Optimize Feed</a>
+            <a href="/batches/history" class="nav-link">Batch history</a>
             {_admin_nav_links(user_role=user_role)}
             <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
         </div>
@@ -3526,32 +4481,29 @@ async def review_batch(request: Request, batch_id: str):
             </div>
             <div class="header-actions">
                 <a href="/upload" class="btn btn-outline">&larr; New batch</a>
+                <button type="button" onclick="pushToMerchant()" class="btn btn-merchant-push" id="merchantPushBtn">Push to Merchant</button>
                 <button onclick="downloadSelected()" class="btn btn-primary">&#8681; Download selected</button>
                 <button type="button" onclick="downloadAll()" class="btn btn-outline">&#8681; Download all</button>
             </div>
         </div>
 
-        <div class="insight">
-            <div class="insight-icon">&#9889;</div>
-            <div class="insight-body">
-                <p class="insight-title">Optimization summary</p>
-                <p class="insight-text">
-                    <strong>{done}</strong> of <strong>{total}</strong> products optimized
-                    with an average quality score of <strong>{avg_score}/100</strong>.
-                    {"Titles and descriptions were expanded with relevant keywords, product type identifiers, and secondary search phrases with separators — a proven approach for improving visibility in search engines and marketplaces." if avg_score >= 50 else "Some products had limited metadata, which constrained optimization potential. Adding more attributes (category, material, color) will significantly improve results."}
-                    Well-structured titles with descriptive keywords and category terms are indexed more effectively by search engines,
-                    leading to higher rankings, better click-through rates, and stronger organic visibility — directly impacting your ROI.
-                </p>
-            </div>
+        <div class="review-tabs">
+        <div class="review-tabs-bar" role="tablist" aria-label="Batch views">
+            <button type="button" class="review-tab is-active" role="tab" aria-selected="true" aria-controls="review-panel-current" id="tab-review-current" data-panel="review-panel-current">Current batch</button>
+            <button type="button" class="review-tab" role="tab" aria-selected="false" aria-controls="review-panel-history" id="tab-review-history" data-panel="review-panel-history">Batch history</button>
+            <a class="review-tab-aux" href="/batches/history">Open full page</a>
         </div>
+        <div id="review-panel-current" class="review-tab-panel" role="tabpanel" aria-labelledby="tab-review-current">
 
-        <div class="stats">
-            <div class="stat"><div class="stat-value">{total}</div><div class="stat-label">Total</div></div>
-            <div class="stat"><div class="stat-value stat-done">{done}</div><div class="stat-label">Done</div></div>
-            <div class="stat"><div class="stat-value stat-review">{review}</div><div class="stat-label">Needs review</div></div>
-            <div class="stat"><div class="stat-value stat-failed">{failed}</div><div class="stat-label">Failed</div></div>
-            <div class="stat"><div class="stat-value">{skipped}</div><div class="stat-label">Skipped</div></div>
-            <div class="stat"><div class="stat-value stat-score">{avg_score}</div><div class="stat-label">Avg score</div></div>
+        <div class="review-summary-bar" role="region" aria-label="Optimization summary">
+            <span class="review-summary-lead">&#9889; <strong>{done}</strong>/<strong>{total}</strong> optimized <span class="m">&middot;</span> avg <strong>{avg_score}</strong>/100</span>
+            <span class="review-summary-meta">
+                Total <strong>{total}</strong><span class="m">&middot;</span>
+                Done <strong>{done}</strong><span class="m">&middot;</span>
+                Review <strong class="c-review">{review}</strong><span class="m">&middot;</span>
+                Failed <strong class="c-fail">{failed}</strong><span class="m">&middot;</span>
+                Skipped <strong>{skipped}</strong>
+            </span>
         </div>
 
         <div class="gmc-panel">
@@ -3618,18 +4570,17 @@ async def review_batch(request: Request, batch_id: str):
                         <thead>
                             <tr>
                                 <th style="width:40px;"><input type="checkbox" onclick="toggleAll(this)" /></th>
+                                <th onclick="sortTable(1)" class="th-warnings">Warnings</th>
                                 <th style="width:60px;" class="th-center">Image</th>
                                 <th style="width:50px;" class="th-center">Link</th>
-                                <th onclick="sortTable(3)">Old title</th>
-                                <th onclick="sortTable(4)">New title</th>
-                                <th onclick="sortTable(5)">Old description</th>
-                                <th onclick="sortTable(6)">New description</th>
-                                <th onclick="sortTable(7)">Translated title</th>
-                                <th onclick="sortTable(8)">Translated desc</th>
-                                <th onclick="sortTable(9)">Status</th>
-                                <th onclick="sortTable(10)">Notes</th>
-                                <th onclick="sortTable(11)" class="th-center col-sticky col-score">Score</th>
-                                <th onclick="sortTable(12)" class="th-center col-sticky col-action">Action</th>
+                                <th onclick="sortTable(4)">Old title</th>
+                                <th onclick="sortTable(5)">New title</th>
+                                <th onclick="sortTable(6)">Old description</th>
+                                <th onclick="sortTable(7)">New description</th>
+                                <th onclick="sortTable(8)">Translated title</th>
+                                <th onclick="sortTable(9)">Translated desc</th>
+                                <th onclick="sortTable(10)" class="th-center col-sticky col-score">Score</th>
+                                <th onclick="sortTable(11)" class="th-center col-sticky col-action">Action</th>
                             </tr>
                         </thead>
                         <tbody>{rows_html}</tbody>
@@ -3638,9 +4589,34 @@ async def review_batch(request: Request, batch_id: str):
             </div>
             <div class="scroll-hint" id="scrollHint">&#8596; Scroll horizontally to see all columns</div>
         </div>
+        </div>
+        <div id="review-panel-history" class="review-tab-panel" role="tabpanel" aria-labelledby="tab-review-history" hidden>
+            {batch_history_html}
+        </div>
+        </div>
     </div>
 
     <script>
+    (function(){{
+        var tabs = document.querySelectorAll(".review-tab[data-panel]");
+        var panels = document.querySelectorAll(".review-tab-panel");
+        function activate(id) {{
+            tabs.forEach(function(t) {{
+                var on = t.getAttribute("data-panel") === id;
+                t.classList.toggle("is-active", on);
+                t.setAttribute("aria-selected", on ? "true" : "false");
+            }});
+            panels.forEach(function(p) {{
+                var show = p.id === id;
+                if (show) {{ p.removeAttribute("hidden"); }} else {{ p.setAttribute("hidden", ""); }}
+            }});
+        }}
+        tabs.forEach(function(btn) {{
+            btn.addEventListener("click", function() {{
+                activate(btn.getAttribute("data-panel"));
+            }});
+        }});
+    }})();
     function applyFilters(){{
         const s=document.getElementById("search").value.toLowerCase();
         const f=document.getElementById("statusFilter").value;
@@ -3653,7 +4629,7 @@ async def review_batch(request: Request, batch_id: str):
         }});
     }}
     let sortCol=-1, sortAsc=true;
-    const numericCols=new Set([11]);
+    const numericCols=new Set([10]);
     function sortTable(colIdx){{
         const tbody=document.querySelector("tbody");
         const rows=Array.from(tbody.querySelectorAll("tr"));
@@ -3767,6 +4743,114 @@ async def review_batch(request: Request, batch_id: str):
         }});
     }});
     
+    function merchantPushCloseOverlay() {{
+        var ov = document.getElementById("merchantPushOverlay");
+        if (ov) {{ ov.classList.remove("visible"); ov.setAttribute("aria-hidden", "true"); }}
+    }}
+    function merchantPushShowLoading() {{
+        var ov = document.getElementById("merchantPushOverlay");
+        var loadEl = document.getElementById("merchantPushLoading");
+        var resEl = document.getElementById("merchantPushResult");
+        if (loadEl) loadEl.classList.remove("is-hidden");
+        if (resEl) resEl.classList.add("is-hidden");
+        if (ov) {{ ov.classList.add("visible"); ov.setAttribute("aria-hidden", "false"); }}
+    }}
+    function merchantPushShowResult(isError, title, bodyText) {{
+        var loadEl = document.getElementById("merchantPushLoading");
+        var resEl = document.getElementById("merchantPushResult");
+        var titleEl = document.getElementById("merchantPushResultTitle");
+        var bodyEl = document.getElementById("merchantPushResultBody");
+        var iconOk = document.getElementById("merchantPushIconOk");
+        var iconErr = document.getElementById("merchantPushIconErr");
+        if (loadEl) loadEl.classList.add("is-hidden");
+        if (resEl) resEl.classList.remove("is-hidden");
+        if (titleEl) titleEl.textContent = title || (isError ? "Could not upload" : "Upload finished");
+        if (bodyEl) bodyEl.textContent = bodyText || "";
+        if (iconOk) iconOk.classList.toggle("is-hidden", !!isError);
+        if (iconErr) iconErr.classList.toggle("is-hidden", !isError);
+        var gBtn = document.getElementById("merchantPushGotIt");
+        if (gBtn) gBtn.onclick = function() {{ merchantPushCloseOverlay(); }};
+    }}
+
+    async function pushToMerchant() {{
+        const btn = document.getElementById("merchantPushBtn");
+        const checked = Array.from(document.querySelectorAll("input[name='product_id']:checked")).map(function(c) {{ return c.value; }});
+        let payload;
+        if (checked.length) {{
+            payload = {{ product_ids: checked }};
+        }} else {{
+            if (!confirm("No rows selected. Push ALL products in this batch to your linked Google Merchant Center account?")) return;
+            payload = {{}};
+        }}
+        if (btn) btn.disabled = true;
+        merchantPushShowLoading();
+        try {{
+            const r = await fetch("/api/batches/{batch_id}/merchant-push", {{
+                method: "POST",
+                headers: {{
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                }},
+                credentials: "same-origin",
+                body: JSON.stringify(payload)
+            }});
+            const raw = await r.text();
+            let data = {{}};
+            try {{ data = raw ? JSON.parse(raw) : {{}}; }} catch (e) {{ data = {{}}; }}
+            if (!r.ok) {{
+                let msg = "";
+                if (typeof data.detail === "string") msg = data.detail;
+                else if (Array.isArray(data.detail)) msg = data.detail.map(function(x){{ return (x.msg || x.type || "") + (x.loc ? " " + x.loc.join(".") : ""); }}).filter(Boolean).join("\\n");
+                else if (data.detail != null) msg = JSON.stringify(data.detail);
+                if (!msg && raw) msg = raw.length < 1200 ? raw : raw.slice(0, 1200) + "…";
+                if (!msg) msg = "HTTP " + r.status;
+                merchantPushShowResult(true, "Could not upload", msg);
+                return;
+            }}
+            const line = "Inserted " + (data.inserted||0) + ", skipped " + (data.skipped||0) + ", failed " + (data.failed||0);
+            var tips = [];
+            var bodyLines = [line];
+            if (data.merchant_id) {{ bodyLines.push("Merchant ID: " + data.merchant_id); }}
+            if (data.feed_label || data.content_language) {{
+                bodyLines.push("Feed: " + (data.feed_label||"") + " · Language: " + (data.content_language||"") + " · Country: " + (data.target_country||""));
+            }}
+            if (data.data_source) bodyLines.push("Data source: " + data.data_source);
+            if (data.processing_note) bodyLines.push(data.processing_note);
+            var ex = (data.details||[]).filter(function(x){{ return x.merchant_resource_name; }}).slice(0, 6).map(function(x){{ return x.merchant_resource_name; }});
+            if (ex.length) bodyLines.push("productInput names (Google):\\n" + ex.join("\\n"));
+            var mapi = data.merchant_products_api;
+            if (mapi && typeof mapi === "object") {{
+                if (mapi.count_on_page != null) bodyLines.push("Processed products (API, first page): " + mapi.count_on_page + (mapi.has_more ? " (more pages)" : ""));
+                if (mapi.sample_product_names && mapi.sample_product_names.length) bodyLines.push("Sample: " + mapi.sample_product_names.slice(0,3).join(" · "));
+                if (mapi.error) bodyLines.push("products.list: " + mapi.error);
+            }}
+            var ver = data.merchant_verification;
+            if (ver && typeof ver === "object") {{
+                if (ver.list_error) bodyLines.push("Verification error: " + ver.list_error);
+                if (ver.expected != null && ver.expected > 0) {{
+                    bodyLines.push("Catalog match: " + (ver.found_in_catalog||0) + " / " + ver.expected + " offerIds found in Merchant processed catalog (products.list).");
+                    if (ver.note) bodyLines.push(ver.note);
+                    if (ver.catalog_match_complete) bodyLines.push("Check: all pushed offerIds appear in the API catalog for this merchant.");
+                    else if (ver.not_yet_in_catalog && ver.not_yet_in_catalog.length) bodyLines.push("Still processing (sample offerIds): " + ver.not_yet_in_catalog.slice(0, 8).join(", "));
+                }}
+            }}
+            if (data.skipped > 0 && data.details && data.details.length) {{
+                var skips = data.details.filter(function(x){{ return x.status === "skipped"; }}).slice(0, 20).map(function(x){{ return x.product_id + ": " + (x.reason || "skipped"); }}).join("\\n");
+                if (skips) bodyLines.push("\\nSkipped rows:\\n" + skips);
+            }}
+            if (data.failed > 0 && data.details && data.details.length) {{
+                var errs = data.details.filter(function(x){{ return x.status === "error"; }}).slice(0, 12).map(function(x){{ return x.product_id + ": " + (x.message||""); }}).join("\\n");
+                if (errs) bodyLines.push("\\nAPI errors:\\n" + errs);
+            }}
+            var okTitle = ((data.failed||0) > 0) ? "Finished with issues" : "Upload finished";
+            merchantPushShowResult(false, okTitle, bodyLines.join("\\n\\n"));
+        }} catch (e) {{
+            merchantPushShowResult(true, "Could not upload", (e && e.message) ? String(e.message) : "Network error.");
+        }} finally {{
+            if (btn) btn.disabled = false;
+        }}
+    }}
+
     // Download all products (fetch + blob to stay on page, no navigation)
     async function downloadAll() {{
         try {{
@@ -3878,6 +4962,30 @@ async def review_batch(request: Request, batch_id: str):
         if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\u2600":"\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
     }})();
     </script>
+    <div id="merchantPushOverlay" class="merchant-push-overlay" aria-hidden="true">
+        <div class="merchant-push-modal" role="dialog" aria-modal="true" aria-labelledby="merchantPushLoadingTitle" onclick="event.stopPropagation()">
+            <div id="merchantPushLoading" class="merchant-push-state">
+                <div class="merchant-push-spinner" aria-hidden="true"></div>
+                <p class="merchant-push-title" id="merchantPushLoadingTitle">Uploading to Merchant Center</p>
+                <p class="merchant-push-sub">Sending products to your linked account. Please keep this page open.</p>
+            </div>
+            <div id="merchantPushResult" class="merchant-push-state is-hidden">
+                <div id="merchantPushIconOk" class="merchant-push-icon-ok">&#10003;</div>
+                <div id="merchantPushIconErr" class="merchant-push-icon-err is-hidden">!</div>
+                <p class="merchant-push-title" id="merchantPushResultTitle">Done</p>
+                <div id="merchantPushResultBody" class="merchant-push-body"></div>
+                <button type="button" class="btn-merchant-gotit" id="merchantPushGotIt" onclick="merchantPushCloseOverlay()">Got it</button>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function() {{
+        var ov = document.getElementById("merchantPushOverlay");
+        if (ov) ov.addEventListener("click", function(e) {{ if (e.target === ov) merchantPushCloseOverlay(); }});
+        var g = document.getElementById("merchantPushGotIt");
+        if (g && !g.onclick) g.onclick = function() {{ merchantPushCloseOverlay(); }};
+    }})();
+    </script>
     <div id="feedbackOverlay" class="feedback-overlay">
         <div class="feedback-box" onclick="event.stopPropagation()">
             <div id="feedbackForm" class="feedback-form">
@@ -3936,11 +5044,30 @@ async def review_batch(request: Request, batch_id: str):
             }}catch(e){{alert("Could not send. Try again.");}}
         }};
     }})();
+    (function(){{
+        document.querySelectorAll(".batch-history-close").forEach(function(btn){{
+            btn.addEventListener("click", async function(){{
+                var bid = btn.getAttribute("data-batch-id");
+                if (!bid || !confirm("Close this batch? It will be marked Closed in your history.")) return;
+                try {{
+                    var r = await fetch("/batches/" + encodeURIComponent(bid) + "/close", {{
+                        method: "POST",
+                        credentials: "same-origin",
+                        headers: {{ "Accept": "application/json" }}
+                    }});
+                    if (!r.ok) {{ alert("Could not close batch."); return; }}
+                    window.location.reload();
+                }} catch (e) {{ alert("Could not close batch."); }}
+            }});
+        }});
+    }})();
     </script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
-    return HTMLResponse(content=html)
+    r = HTMLResponse(content=html)
+    _onboarding_track(request, r, 5)
+    return r
 
 
 @app.post("/api/feedback")
@@ -3962,9 +5089,22 @@ async def submit_feedback(request: Request, data: dict):
     return {"status": "ok"}
 
 
+def _request_is_loopback(request: Request) -> bool:
+    host = request.client.host if request.client else None
+    if not host:
+        return False
+    if host in ("127.0.0.1", "::1", "localhost"):
+        return True
+    return host.startswith("::ffff:127.0.0.1")
+
+
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+def health(request: Request):
+    """Loopback clients get main_py path — use to verify which code instance serves :8000."""
+    out: dict = {"status": "ok", "upload_ui": UPLOAD_UI_REVISION}
+    if _request_is_loopback(request):
+        out["main_py"] = __file__
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3977,12 +5117,18 @@ async def settings_page(request: Request):
     if redir:
         return redir
     s = _get_settings()
+    import html as _html
+    from .google_cloud import get_google_oauth_env_summary
+
+    _gc = get_google_oauth_env_summary()
+    gcp_pid = _gc.get("google_cloud_project_id") or ""
+    gcp_hint = _gc.get("oauth_client_id_hint") or ""
+    gcp_oauth_ok = _gc.get("oauth_client_configured")
+    gcp_hint_line = f'<br/>Client ID: <code>{_html.escape(gcp_hint)}</code>' if gcp_hint else ""
     api_key_masked = ""
     if s.get("openai_api_key"):
         key = s["openai_api_key"]
         api_key_masked = key[:7] + "..." + key[-4:] if len(key) > 15 else "••••••••"
-
-    import html as _html
     from .db import get_db
     from .services.db_repository import get_all_feedback, get_all_users, get_all_chat_sessions
 
@@ -4046,7 +5192,7 @@ async def settings_page(request: Request):
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
     [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
@@ -4097,7 +5243,7 @@ async def settings_page(request: Request):
     .group {{ margin-bottom: 28px; }}
     .group-title {{ font-weight: 600; font-size: 1rem; margin-bottom: 8px; }}
     .group-desc {{ font-size: 0.85rem; color: rgba(255,255,255,0.5); margin-bottom: 14px; line-height: 1.5; }}
-    .group-desc a {{ color: #FF6B00; }}
+    .group-desc a {{ color: #4F46E5; }}
     .group-desc code {{ background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; }}
 
     textarea {{ width: 100%; min-height: 140px; padding: 14px 16px; font-size: 0.85rem; font-family: monospace; line-height: 1.5; border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; background: rgba(255,255,255,0.05); color: #fff; resize: vertical; }}
@@ -4113,7 +5259,7 @@ async def settings_page(request: Request):
     .btn-primary {{ background: #fff; color: #000; }}
     .btn-primary:hover {{ opacity: 0.9; }}
 
-    .save-msg {{ display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; font-size: 0.85rem; color: #FF6B00; opacity: 0; transition: opacity 0.3s; }}
+    .save-msg {{ display: inline-flex; align-items: center; gap: 6px; margin-left: 14px; font-size: 0.85rem; color: #4F46E5; opacity: 0; transition: opacity 0.3s; }}
     .save-msg.show {{ opacity: 1; }}
 
     .note-box {{ margin-top: 28px; padding: 16px 20px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); }}
@@ -4141,9 +5287,9 @@ async def settings_page(request: Request):
     .ts {{ font-size: 0.78rem; white-space: nowrap; color: rgba(255,255,255,0.5); }}
     [data-theme="light"] .ts {{ color: rgba(15,23,42,0.5); }}
     .badge {{ display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }}
-    .badge-admin {{ background: rgba(255,107,0,0.15); color: #FF6B00; }}
+    .badge-admin {{ background: rgba(79,70,229,0.15); color: #4F46E5; }}
     .badge-customer {{ background: rgba(99,102,241,0.15); color: #818cf8; }}
-    [data-theme="light"] .badge-admin {{ background: rgba(255,107,0,0.1); }}
+    [data-theme="light"] .badge-admin {{ background: rgba(79,70,229,0.1); }}
     [data-theme="light"] .badge-customer {{ background: rgba(99,102,241,0.1); }}
     .empty {{ text-align: center; padding: 60px 24px; color: rgba(255,255,255,0.3); font-size: 1rem; }}
     [data-theme="light"] .empty {{ color: rgba(15,23,42,0.3); }}
@@ -4157,7 +5303,7 @@ async def settings_page(request: Request):
     [data-theme="light"] .modal-content {{ background: #fff; border-color: rgba(15,23,42,0.1); }}
     .chat-msg {{ padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; font-size: 0.88rem; }}
     .chat-msg.user {{ background: rgba(255,255,255,0.08); margin-left: 20px; }}
-    .chat-msg.assistant {{ background: rgba(255,107,0,0.12); margin-right: 20px; }}
+    .chat-msg.assistant {{ background: rgba(79,70,229,0.12); margin-right: 20px; }}
     @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 32px auto; }} .stats {{ flex-direction: column; gap: 12px; }} }}
     </style>
 </head>
@@ -4166,7 +5312,7 @@ async def settings_page(request: Request):
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
-            <a href="/upload" class="nav-link">Optimize Feed</a>
+            <a href="/batches/history" class="nav-link">Batch history</a>
             {_admin_nav_links(active="settings", user_role="admin")}
             <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
             <a href="/logout" class="nav-link">Log out</a>
@@ -4231,6 +5377,18 @@ async def settings_page(request: Request):
 
             <div class="note-box">
                 <p><strong>Note:</strong> With an API key, the system uses OpenAI GPT-4o-mini for generation. Without one, a placeholder algorithm demonstrates the flow.</p>
+            </div>
+
+            <div class="group" style="margin-top:32px;">
+                <div class="group-title">Google Cloud (OAuth)</div>
+                <p class="group-desc">
+                    User login and Merchant Center connection use the <strong>same</strong> OAuth 2.0 Web Client in one Google Cloud project.
+                    Set <code>GOOGLE_CLOUD_PROJECT_ID</code> to that project’s ID (Console top bar). Enable APIs and redirect URIs there.
+                </p>
+                <div class="key-status">
+                    GCP project ID: <code>{_html.escape(gcp_pid) if gcp_pid else "—"}</code><br/>
+                    OAuth client: <code>{"configured" if gcp_oauth_ok else "missing GOOGLE_CLIENT_ID / SECRET"}</code>{gcp_hint_line}
+                </div>
             </div>
         </div>
 
@@ -4467,10 +5625,13 @@ async def save_api_key(request: Request):
 async def get_settings(request: Request):
     require_admin_http(request)
     s = _get_settings()
+    from .google_cloud import get_google_oauth_env_summary
+
     return {
         "prompt_title": s["prompt_title"],
         "prompt_description": s["prompt_description"],
         "has_api_key": bool(s.get("openai_api_key")),
+        "google_cloud": get_google_oauth_env_summary(),
     }
 
 
@@ -4544,7 +5705,7 @@ async def admin_contact_results_page(request: Request):
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; min-height: 100vh; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
     [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
@@ -4577,8 +5738,8 @@ async def admin_contact_results_page(request: Request):
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
-            <a href="/upload" class="nav-link">Optimize Feed</a>
-            <a href="/admin/contact-results" class="nav-link active">Contact results</a>
+            <a href="/batches/history" class="nav-link">Batch history</a>
+            <a href="/admin/onboarding-analytics" class="nav-link">Dashboard</a>
             <a href="/settings" class="nav-link">Settings</a>
             <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">&#9728;</button>
             <a href="/logout" class="nav-link">Log out</a>
@@ -4669,4 +5830,500 @@ async def admin_seo_page(request: Request):
     if redir:
         return redir
     return RedirectResponse(url="/settings?tab=seo", status_code=302)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Onboarding analytics (admin) + public tracking API
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _format_total_seconds_summary(total_sec: int) -> tuple:
+    """Human-readable total time + minutes string for display."""
+    if total_sec <= 0:
+        return "0m", "0"
+    total_min = total_sec // 60
+    if total_sec >= 86400:
+        main = f"{total_sec // 86400}d {total_sec % 86400 // 3600}h"
+    elif total_sec >= 3600:
+        main = f"{total_sec // 3600}h {total_sec % 3600 // 60}m"
+    else:
+        main = f"{max(1, total_min)}m"
+    return main, str(total_min)
+
+
+@app.post("/api/onboarding/start")
+async def api_onboarding_start(request: Request):
+    """Start a new onboarding session (call from your onboarding wizard)."""
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    from .db import get_db
+    from .services.db_repository import create_onboarding_session
+
+    with get_db() as db:
+        public_id = create_onboarding_session(
+            db,
+            email=data.get("email"),
+            name=data.get("name"),
+            source=(data.get("source") or data.get("utm_source") or None),
+        )
+    return JSONResponse({"session_id": public_id})
+
+
+@app.post("/api/onboarding/step")
+async def api_onboarding_step(request: Request):
+    """Report progress: step 1–7, optional source (how they found us)."""
+    data = await request.json()
+    sid = data.get("session_id")
+    if not sid:
+        raise HTTPException(status_code=400, detail="session_id required")
+    step = int(data.get("step", 1))
+    from .db import get_db
+    from .services.db_repository import update_onboarding_progress
+
+    with get_db() as db:
+        ok = update_onboarding_progress(
+            db,
+            sid,
+            step,
+            source=data.get("source"),
+        )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/onboarding/complete")
+async def api_onboarding_complete(request: Request):
+    """Mark onboarding as completed (sets duration)."""
+    data = await request.json()
+    sid = data.get("session_id")
+    if not sid:
+        raise HTTPException(status_code=400, detail="session_id required")
+    from .db import get_db
+    from .services.db_repository import complete_onboarding
+
+    with get_db() as db:
+        ok = complete_onboarding(db, sid)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/onboarding/found-us")
+async def api_onboarding_found_us(request: Request):
+    """Store self-reported attribution (How they found us) on the cookie-bound session."""
+    require_login_http(request)
+    sid = request.cookies.get(_OB_COOKIE)
+    if not sid:
+        raise HTTPException(status_code=400, detail="No onboarding session; open /upload first.")
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    raw = (data.get("found_via") or data.get("source") or "").strip()
+    if not raw or len(raw) > 128:
+        raise HTTPException(status_code=400, detail="found_via required (max 128 chars)")
+    from .db import get_db
+    from .services.db_repository import update_onboarding_progress
+
+    with get_db() as db:
+        ok = update_onboarding_progress(db, sid, 1, source=raw)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/admin/onboarding-analytics")
+async def api_admin_onboarding_analytics(request: Request):
+    require_admin_http(request)
+    from .db import get_db
+    from .services.db_repository import (
+        get_onboarding_analytics_summary,
+        list_onboarding_sessions,
+        get_onboarding_source_filter_options,
+    )
+
+    q = request.query_params.get("q") or ""
+    source = request.query_params.get("source") or "all"
+    status = request.query_params.get("status") or "all"
+    with get_db() as db:
+        summary = get_onboarding_analytics_summary(db)
+        rows = list_onboarding_sessions(db, q=q or None, source=source, status=status)
+        src_opts = get_onboarding_source_filter_options(db)
+    return {
+        "summary": summary,
+        "rows": rows,
+        "filters": {"source_options": src_opts},
+    }
+
+
+@app.post("/api/admin/onboarding-analytics/clear")
+async def api_admin_onboarding_analytics_clear(request: Request):
+    """Delete all rows in onboarding_sessions (admin only). Use after removing test/seed data."""
+    require_admin_http(request)
+    from .db import get_db
+    from .services.db_repository import delete_all_onboarding_sessions
+
+    with get_db() as db:
+        delete_all_onboarding_sessions(db)
+    return JSONResponse({"ok": True})
+
+
+@app.get("/admin/onboarding-analytics/export")
+async def admin_onboarding_export_csv(request: Request):
+    """CSV export of onboarding sessions (admin only)."""
+    redir = require_admin_redirect(request, "/admin/onboarding-analytics")
+    if redir:
+        return redir
+    import csv as _csv
+    import io
+    import html as _html
+    from .db import get_db
+    from .services.db_repository import list_onboarding_sessions
+
+    q = request.query_params.get("q") or ""
+    source = request.query_params.get("source") or "all"
+    status = request.query_params.get("status") or "all"
+    with get_db() as db:
+        rows = list_onboarding_sessions(db, q=q or None, source=source, status=status)
+    buf = io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(["name", "email", "found_via", "steps", "status", "duration", "date"])
+    for r in rows:
+        w.writerow(
+            [
+                r.get("name", ""),
+                r.get("email", ""),
+                r.get("source", ""),
+                r.get("steps", ""),
+                r.get("status", ""),
+                r.get("duration_label", ""),
+                r.get("date", ""),
+            ]
+        )
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="onboarding_sessions.csv"'},
+    )
+
+
+@app.get("/admin/onboarding-analytics", response_class=HTMLResponse)
+async def admin_onboarding_analytics_page(
+    request: Request,
+    q: str = "",
+    source: str = "all",
+    status: str = "all",
+):
+    import html as _html
+    from .db import get_db
+    from .services.db_repository import (
+        get_onboarding_analytics_summary,
+        list_onboarding_sessions,
+        get_onboarding_source_filter_options,
+    )
+
+    redir = require_admin_redirect(request, "/admin/onboarding-analytics")
+    if redir:
+        return redir
+    with get_db() as db:
+        summary = get_onboarding_analytics_summary(db)
+        rows = list_onboarding_sessions(db, q=q or None, source=source, status=status)
+        src_opts = get_onboarding_source_filter_options(db)
+
+    started = summary["started"]
+    completed = summary["completed"]
+    rate = summary["completion_rate"]
+    drop_step = _html.escape(summary["biggest_drop_step"])
+    total_main, total_min = _format_total_seconds_summary(summary["total_time_seconds"])
+    funnel = summary["funnel"]
+    funnel_max = max(funnel[0], 1) if funnel else 1
+    by_src = summary["by_source"][:12]
+    src_max = max((x["count"] for x in by_src), default=1)
+
+    chart_colors = ["#4F46E5", "#22D3EE", "#A78BFA", "#6366f1", "#06b6d4", "#c4b5fd"]
+
+    def hbar_items(items, vmax):
+        out = ""
+        for i, it in enumerate(items):
+            label = _html.escape(it["label"])
+            c = it["count"]
+            pct = min(100, round(100 * c / vmax)) if vmax else 0
+            col = chart_colors[i % len(chart_colors)]
+            out += f'<div class="oa-hbar-row"><span class="oa-hbar-label">{label}</span><div class="oa-hbar-track"><div class="oa-hbar-fill" style="width:{pct}%;background:{col}"></div></div><span class="oa-hbar-num">{c}</span></div>'
+        return out or '<div class="oa-empty">No data yet</div>'
+
+    funnel_rows = ""
+    for i, cnt in enumerate(funnel):
+        step_n = i + 1
+        h = min(100, round(100 * cnt / funnel_max)) if funnel_max else 0
+        funnel_rows += f'<div class="oa-funnel-col"><div class="oa-funnel-bar" style="height:{h}%"></div><span class="oa-funnel-n">{cnt}</span><span class="oa-funnel-s">Step {step_n}</span></div>'
+
+    table_rows = ""
+    for r in rows:
+        name = _html.escape(r.get("name") or "—")
+        email = _html.escape(r.get("email") or "—")
+        src = _html.escape(r.get("source") or "—")
+        st = r.get("status") or ""
+        badge = "oa-badge-done" if st == "completed" else ("oa-badge-warn" if st == "in_progress" else "oa-badge-muted")
+        if st == "completed":
+            st_label = "Done"
+        elif st == "in_progress":
+            st_label = "In progress"
+        elif st == "abandoned":
+            st_label = "Abandoned"
+        else:
+            st_label = _html.escape(st)
+        table_rows += f"""
+        <tr>
+          <td>{name}</td>
+          <td class="oa-mono">{email}</td>
+          <td><span class="oa-link">{src}</span></td>
+          <td>{_html.escape(r.get("steps") or "")}</td>
+          <td><span class="oa-badge {badge}">{st_label}</span></td>
+          <td>{_html.escape(r.get("duration_label") or "—")}</td>
+          <td>{_html.escape(r.get("date") or "")}</td>
+        </tr>"""
+
+    if not table_rows:
+        table_rows = '<tr><td colspan="7" class="oa-empty">No sessions match filters.</td></tr>'
+
+    def opt_sel(options, val, name):
+        opts = f'<option value="all">All {name}</option>'
+        for o in options:
+            sel = " selected" if o == val else ""
+            opts += f'<option value="{_html.escape(o)}"{sel}>{_html.escape(o)}</option>'
+        return opts
+
+    q_esc = _html.escape(q)
+    src_sel = opt_sel(src_opts, source, "Sources")
+    stat_opts = (
+        f'<option value="all"{" selected" if status == "all" else ""}>All statuses</option>'
+        f'<option value="completed"{" selected" if status == "completed" else ""}>Done</option>'
+        f'<option value="in_progress"{" selected" if status == "in_progress" else ""}>In progress</option>'
+        f'<option value="abandoned"{" selected" if status == "abandoned" else ""}>Abandoned</option>'
+    )
+
+    from urllib.parse import urlencode
+
+    export_href = "/admin/onboarding-analytics/export?" + urlencode(
+        {"q": q, "source": source, "status": status}
+    )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+{GTM_HEAD}
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dashboard — Cartozo.ai</title>
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <style>
+    :root {{
+      --oa-bg: #0B0F19;
+      --oa-surface: #111827;
+      --oa-border: rgba(255,255,255,0.08);
+      --oa-text: #E5E7EB;
+      --oa-muted: #9ca3af;
+      --oa-primary: #4F46E5;
+      --oa-accent: #22D3EE;
+      --oa-violet: #A78BFA;
+    }}
+    [data-theme="light"] {{
+      --oa-bg: #f8fafc;
+      --oa-surface: #fff;
+      --oa-border: rgba(15,23,42,0.1);
+      --oa-text: #0f172a;
+      --oa-muted: #64748b;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--oa-bg); color: var(--oa-text); min-height: 100vh; }}
+    .oa-layout {{ display: flex; min-height: 100vh; }}
+    .oa-sidebar {{
+      width: 260px; flex-shrink: 0; background: #0a0e18; border-right: 1px solid var(--oa-border);
+      display: flex; flex-direction: column; padding: 24px 16px;
+    }}
+    [data-theme="light"] .oa-sidebar {{ background: #fff; }}
+    .oa-brand {{ display: flex; align-items: center; gap: 10px; margin-bottom: 8px; padding: 0 8px; }}
+    .oa-brand img {{ height: 28px; }}
+    .oa-brand .logo-light {{ display: block; filter: brightness(0) invert(1); }}
+    .oa-brand .logo-dark {{ display: none; }}
+    [data-theme="light"] .oa-brand .logo-light {{ display: none; }}
+    [data-theme="light"] .oa-brand .logo-dark {{ display: block; filter: none; }}
+    .oa-admin-badge {{
+      display: inline-block; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em;
+      padding: 4px 10px; border-radius: 6px; background: rgba(79,70,229,0.2); color: #A78BFA; margin: 12px 8px 24px;
+    }}
+    .oa-nav {{ display: flex; flex-direction: column; gap: 4px; flex: 1; }}
+    .oa-nav a {{
+      display: block; padding: 10px 14px; border-radius: 8px; color: var(--oa-muted); text-decoration: none; font-size: 0.9rem;
+    }}
+    .oa-nav a:hover {{ background: rgba(255,255,255,0.05); color: var(--oa-text); }}
+    [data-theme="light"] .oa-nav a:hover {{ background: rgba(15,23,42,0.06); }}
+    .oa-nav a.active {{ background: rgba(79,70,229,0.15); color: #4F46E5; font-weight: 600; }}
+    .oa-logout {{ margin-top: auto; padding-top: 24px; }}
+    .oa-main {{ flex: 1; padding: 28px 32px 48px; overflow-x: auto; }}
+    .oa-header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; flex-wrap: wrap; gap: 16px; }}
+    .oa-title {{ font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em; }}
+    .oa-sub {{ color: var(--oa-muted); font-size: 0.95rem; margin-top: 6px; }}
+    .oa-btn-export {{
+      display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 8px;
+      background: #4F46E5; color: #fff; font-size: 0.88rem; font-weight: 600; text-decoration: none; border: none; cursor: pointer;
+    }}
+    .oa-btn-export:hover {{ filter: brightness(1.05); }}
+    .oa-btn-danger {{
+      display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 8px;
+      background: transparent; color: #f87171; font-size: 0.88rem; font-weight: 600; border: 1px solid rgba(248,113,113,0.45); cursor: pointer;
+    }}
+    .oa-btn-danger:hover {{ background: rgba(248,113,113,0.12); }}
+    .oa-cards {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 28px; }}
+    @media (max-width: 1200px) {{ .oa-cards {{ grid-template-columns: repeat(3, 1fr); }} }}
+    @media (max-width: 768px) {{ .oa-layout {{ flex-direction: column; }} .oa-sidebar {{ width: 100%; border-right: none; border-bottom: 1px solid var(--oa-border); }} .oa-cards {{ grid-template-columns: 1fr 1fr; }} }}
+    .oa-card {{
+      background: var(--oa-surface); border: 1px solid var(--oa-border); border-radius: 14px; padding: 18px 20px;
+    }}
+    .oa-card-label {{ font-size: 0.78rem; color: var(--oa-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }}
+    .oa-card-val {{ font-size: 1.75rem; font-weight: 700; }}
+    .oa-card-hint {{ font-size: 0.75rem; color: var(--oa-muted); margin-top: 6px; line-height: 1.4; }}
+    .oa-charts {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 28px; }}
+    @media (max-width: 1024px) {{ .oa-charts {{ grid-template-columns: 1fr; }} }}
+    .oa-chart {{
+      background: var(--oa-surface); border: 1px solid var(--oa-border); border-radius: 14px; padding: 18px;
+    }}
+    .oa-chart h3 {{ font-size: 0.95rem; font-weight: 600; margin-bottom: 16px; }}
+    .oa-funnel {{
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; height: 220px; padding-top: 8px;
+    }}
+    .oa-funnel-col {{ flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; height: 100%; }}
+    .oa-funnel-bar {{
+      width: 100%; max-width: 48px; margin-top: auto; background: linear-gradient(180deg, #4F46E5, #6366f1);
+      border-radius: 6px 6px 0 0; min-height: 4px; transition: height 0.3s ease;
+    }}
+    .oa-funnel-n {{ font-weight: 700; font-size: 0.9rem; }}
+    .oa-funnel-s {{ font-size: 0.68rem; color: var(--oa-muted); text-transform: uppercase; letter-spacing: 0.04em; }}
+    .oa-hbar-row {{ display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: center; margin-bottom: 10px; font-size: 0.82rem; }}
+    .oa-hbar-label {{ color: var(--oa-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .oa-hbar-track {{ height: 8px; background: rgba(255,255,255,0.06); border-radius: 99px; overflow: hidden; }}
+    [data-theme="light"] .oa-hbar-track {{ background: rgba(15,23,42,0.08); }}
+    .oa-hbar-fill {{ height: 100%; border-radius: 99px; min-width: 2px; }}
+    .oa-hbar-num {{ font-weight: 600; font-variant-numeric: tabular-nums; }}
+    .oa-toolbar {{ display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; align-items: center; }}
+    .oa-toolbar input, .oa-toolbar select {{
+      padding: 10px 14px; border-radius: 8px; border: 1px solid var(--oa-border); background: var(--oa-surface); color: var(--oa-text); font-size: 0.88rem;
+    }}
+    .oa-toolbar input {{ flex: 1; min-width: 200px; max-width: 360px; }}
+    .oa-table-wrap {{ overflow-x: auto; border: 1px solid var(--oa-border); border-radius: 12px; }}
+    table.oa-table {{ width: 100%; border-collapse: collapse; font-size: 0.88rem; }}
+    .oa-table th {{
+      text-align: left; padding: 12px 14px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--oa-muted);
+      border-bottom: 1px solid var(--oa-border); background: rgba(79,70,229,0.06);
+    }}
+    .oa-table td {{ padding: 12px 14px; border-bottom: 1px solid var(--oa-border); }}
+    .oa-table tr:last-child td {{ border-bottom: none; }}
+    .oa-mono {{ font-size: 0.82rem; }}
+    .oa-link {{ color: #22D3EE; text-decoration: none; }}
+    .oa-link:hover {{ text-decoration: underline; }}
+    .oa-pill {{
+      display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.78rem; font-weight: 500;
+      background: rgba(167,139,250,0.15); color: #A78BFA; border: 1px solid rgba(167,139,250,0.25);
+    }}
+    .oa-badge {{ display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; }}
+    .oa-badge-done {{ background: rgba(34,197,94,0.15); color: #4ade80; }}
+    .oa-badge-warn {{ background: rgba(251,191,36,0.2); color: #fbbf24; }}
+    .oa-badge-muted {{ background: rgba(148,163,184,0.15); color: #94a3b8; }}
+    .oa-empty {{ text-align: center; padding: 24px; color: var(--oa-muted); }}
+    .oa-theme {{ width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--oa-border); background: transparent; cursor: pointer; }}
+    </style>
+</head>
+<body>
+{GTM_BODY}
+    <div class="oa-layout">
+      <aside class="oa-sidebar">
+        <div class="oa-brand">
+          <a href="/"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
+        </div>
+        <span class="oa-admin-badge">ADMIN</span>
+        <nav class="oa-nav">
+          <a href="/admin/onboarding-analytics" class="active">Dashboard</a>
+          <a href="/admin/contact-results">Contact results</a>
+          <a href="/settings">Settings</a>
+        </nav>
+        <div class="oa-logout">
+          <a href="/logout" class="oa-nav" style="padding:10px 14px;border-radius:8px;color:var(--oa-muted);">Log out</a>
+        </div>
+      </aside>
+      <main class="oa-main">
+        <div class="oa-header">
+          <div>
+            <h1 class="oa-title">Dashboard</h1>
+            <p class="oa-sub">{started} users started onboarding</p>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <button type="button" class="oa-theme" id="oaTheme" aria-label="Toggle theme">&#9728;</button>
+            <a class="oa-btn-export" href="{_html.escape(export_href)}">Export CSV</a>
+            <button type="button" class="oa-btn-danger" id="oaClearAll">Clear all data</button>
+          </div>
+        </div>
+        <div class="oa-cards">
+          <div class="oa-card">
+            <div class="oa-card-label">Started</div>
+            <div class="oa-card-val">{started}</div>
+          </div>
+          <div class="oa-card">
+            <div class="oa-card-label">Completed</div>
+            <div class="oa-card-val">{completed}</div>
+          </div>
+          <div class="oa-card">
+            <div class="oa-card-label">Completion rate</div>
+            <div class="oa-card-val">{rate}%</div>
+          </div>
+          <div class="oa-card">
+            <div class="oa-card-label">Biggest drop-off</div>
+            <div class="oa-card-val" style="font-size:1.35rem;">{drop_step}</div>
+          </div>
+          <div class="oa-card">
+            <div class="oa-card-label">Total time</div>
+            <div class="oa-card-val">{_html.escape(total_main)}</div>
+            <div class="oa-card-hint">Sum of all completed session durations · {total_min} min total</div>
+          </div>
+        </div>
+        <div class="oa-charts">
+          <div class="oa-chart">
+            <h3>Onboarding funnel</h3>
+            <div class="oa-funnel">{funnel_rows}</div>
+          </div>
+          <div class="oa-chart">
+            <h3>How they found us</h3>
+            {hbar_items(by_src, src_max)}
+          </div>
+        </div>
+        <form class="oa-toolbar" method="get" action="/admin/onboarding-analytics">
+          <input type="search" name="q" placeholder="Search by name or email…" value="{q_esc}" />
+          <select name="source">{src_sel}</select>
+          <select name="status">{stat_opts}</select>
+          <button type="submit" class="oa-btn-export" style="background:#4338ca;">Apply</button>
+        </form>
+        <div class="oa-table-wrap">
+          <table class="oa-table">
+            <thead>
+              <tr>
+                <th>Name</th><th>Email</th><th>Found us via</th><th>Steps</th><th>Status</th><th>Time</th><th>Date</th>
+              </tr>
+            </thead>
+            <tbody>{table_rows}</tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+    <script>
+    (function(){{const t=document.getElementById('oaTheme');if(t){{const k='hp-theme';function g(){{return localStorage.getItem(k)||'dark';}}function s(v){{document.documentElement.setAttribute('data-theme',v);localStorage.setItem(k,v);t.textContent=v==='dark'?'\u2600':'\u263E';}}t.onclick=()=>s(g()==='dark'?'light':'dark');s(g());}}}})();
+    (function(){{var b=document.getElementById('oaClearAll');if(!b)return;b.onclick=function(){{if(!confirm('Delete all onboarding rows in this database? Cannot be undone.'))return;b.disabled=true;fetch('/api/admin/onboarding-analytics/clear',{{method:'POST',credentials:'same-origin'}}).then(function(r){{if(r.ok)location.reload();else r.text().then(function(t){{alert('Failed: '+t);b.disabled=false;}});}}).catch(function(e){{alert(e);b.disabled=false;}});}};}})();
+    </script>
+    <script src="/static/page-transition.js"></script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
 

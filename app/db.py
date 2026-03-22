@@ -71,4 +71,48 @@ def init_db():
             Batch.__table__.drop(engine)
             Batch.__table__.create(engine)
 
+    # Migration: users.merchant_* columns (Google Merchant Center OAuth)
+    if "users" in inspector.get_table_names():
+        from sqlalchemy import text
+
+        ucols = {c["name"] for c in inspector.get_columns("users")}
+        dialect = engine.dialect.name
+        with engine.begin() as conn:
+            if "merchant_refresh_token" not in ucols:
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN merchant_refresh_token TEXT"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN merchant_refresh_token TEXT"))
+            if "merchant_id" not in ucols:
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN merchant_id VARCHAR(64)"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN merchant_id VARCHAR(64)"))
+            if "merchant_connected_at" not in ucols:
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN merchant_connected_at TIMESTAMP"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN merchant_connected_at TIMESTAMP"))
+
+    # Migration: batches — user ownership + Merchant push / closed timestamps
+    if "batches" in inspector.get_table_names():
+        from sqlalchemy import text
+
+        bcols = {c["name"] for c in inspector.get_columns("batches")}
+        dialect = engine.dialect.name
+        with engine.begin() as conn:
+            if "user_email" not in bcols:
+                conn.execute(text("ALTER TABLE batches ADD COLUMN user_email VARCHAR(255)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_batches_user_email ON batches (user_email)"))
+            if "merchant_pushed_at" not in bcols:
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE batches ADD COLUMN merchant_pushed_at TIMESTAMP"))
+                else:
+                    conn.execute(text("ALTER TABLE batches ADD COLUMN merchant_pushed_at TIMESTAMP WITH TIME ZONE"))
+            if "closed_at" not in bcols:
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE batches ADD COLUMN closed_at TIMESTAMP"))
+                else:
+                    conn.execute(text("ALTER TABLE batches ADD COLUMN closed_at TIMESTAMP WITH TIME ZONE"))
+
     Base.metadata.create_all(bind=engine)

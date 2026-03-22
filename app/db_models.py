@@ -29,6 +29,10 @@ class User(Base):
     role = Column(String(32), default="customer")
     first_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    # Google Merchant Center (Merchant API) — OAuth refresh token for server-side uploads
+    merchant_refresh_token = Column(Text, nullable=True)
+    merchant_id = Column(String(64), nullable=True)
+    merchant_connected_at = Column(DateTime, nullable=True)
 
 
 class Feedback(Base):
@@ -70,6 +74,10 @@ class Batch(Base):
     client_id = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
+    # Owner + Merchant Center push / archive (per-user batch history on review page)
+    user_email = Column(String(255), nullable=True, index=True)
+    merchant_pushed_at = Column(DateTime, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
 
 
 class ChatSession(Base):
@@ -94,3 +102,21 @@ class ContactSubmission(Base):
     email = Column(String(255), nullable=False)
     phone = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class OnboardingSession(Base):
+    """User onboarding wizard progress (steps 1–7)."""
+    __tablename__ = "onboarding_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    public_id = Column(String(64), unique=True, nullable=False, index=True)
+    email = Column(String(255), nullable=True, index=True)
+    name = Column(String(255), nullable=True)
+    designation = Column(String(128), nullable=True)
+    source = Column(String(128), nullable=True)
+    max_step = Column(Integer, nullable=False, default=1)
+    status = Column(String(32), nullable=False, default="in_progress")  # in_progress, completed, abandoned
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    completed_at = Column(DateTime, nullable=True)
+    duration_seconds = Column(Integer, nullable=True)

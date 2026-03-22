@@ -1,0 +1,494 @@
+<!-- Backup: replace HOMEPAGE_HTML content in main.py with this -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sartozo.AI — AI-Powered Product Feed Optimization</title>
+    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <style>
+    html { scroll-behavior: smooth; }
+    :root, [data-theme="dark"] { --hp-bg: #000; --hp-text: #fff; --hp-muted: rgba(255,255,255,0.6); --hp-border: rgba(255,255,255,0.1); }
+    [data-theme="light"] { --hp-bg: #f8fafc; --hp-text: #0f172a; --hp-muted: rgba(15,23,42,0.6); --hp-border: rgba(15,23,42,0.12); }
+
+    .hp-body { background: var(--hp-bg); color: var(--hp-text); min-height: 100vh; overflow-x: hidden; position: relative; }
+    .hp-container { max-width: 1440px; margin: 0 auto; }
+    
+    /* Global stars background */
+    .hp-stars { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
+    .hp-star { position: absolute; width: 2px; height: 2px; background: rgba(255,255,255,0.5); border-radius: 50%; animation: starDrift 30s ease-in-out infinite; }
+    [data-theme="light"] .hp-star { background: rgba(15,23,42,0.25); }
+    .hp-star::after { content: ''; position: absolute; top: -1px; left: -1px; width: 4px; height: 4px; background: radial-gradient(circle, rgba(255,255,255,0.4) 0%, transparent 70%); border-radius: 50%; }
+    @keyframes starDrift { 0% { transform: translate(0, 0); } 25% { transform: translate(15px, -10px); } 50% { transform: translate(5px, -20px); } 75% { transform: translate(-10px, -8px); } 100% { transform: translate(0, 0); } }
+    
+    .hp-star:nth-child(1) { top: 8%; left: 15%; animation-delay: 0s; animation-duration: 30s; }
+    .hp-star:nth-child(2) { top: 12%; left: 85%; animation-delay: 5s; animation-duration: 35s; }
+    .hp-star:nth-child(3) { top: 25%; left: 92%; animation-delay: 3s; animation-duration: 28s; }
+    .hp-star:nth-child(4) { top: 35%; left: 5%; animation-delay: 8s; animation-duration: 32s; }
+    .hp-star:nth-child(5) { top: 45%; left: 78%; animation-delay: 2s; animation-duration: 38s; }
+    .hp-star:nth-child(6) { top: 55%; left: 25%; animation-delay: 10s; animation-duration: 25s; }
+    .hp-star:nth-child(7) { top: 65%; left: 95%; animation-delay: 6s; animation-duration: 33s; }
+    .hp-star:nth-child(8) { top: 72%; left: 12%; animation-delay: 4s; animation-duration: 29s; }
+    .hp-star:nth-child(9) { top: 82%; left: 68%; animation-delay: 12s; animation-duration: 36s; }
+    .hp-star:nth-child(10) { top: 88%; left: 42%; animation-delay: 7s; animation-duration: 31s; }
+    .hp-star:nth-child(11) { top: 18%; left: 55%; animation-delay: 9s; animation-duration: 27s; }
+    .hp-star:nth-child(12) { top: 38%; left: 35%; animation-delay: 1s; animation-duration: 34s; }
+    .hp-star:nth-child(13) { top: 58%; left: 8%; animation-delay: 11s; animation-duration: 26s; }
+    .hp-star:nth-child(14) { top: 78%; left: 88%; animation-delay: 13s; animation-duration: 37s; }
+    .hp-star:nth-child(15) { top: 92%; left: 22%; animation-delay: 0s; animation-duration: 30s; }
+    
+    /* Decorative background elements */
+    .hp-bg-decor { position: absolute; pointer-events: none; z-index: 0; }
+    .hp-bg-circle { border: 1px solid rgba(255,255,255,0.04); border-radius: 50%; }
+    .hp-bg-circle-1 { width: 600px; height: 600px; top: -200px; right: -200px; }
+    .hp-bg-circle-2 { width: 400px; height: 400px; top: 50%; left: -150px; }
+    .hp-bg-circle-3 { width: 800px; height: 800px; bottom: -400px; right: -300px; border-style: dashed; border-color: rgba(255,255,255,0.03); }
+    .hp-bg-line { background: linear-gradient(180deg, transparent, rgba(255,255,255,0.04), transparent); }
+    .hp-bg-line-v { width: 1px; height: 300px; }
+    .hp-bg-line-h { width: 300px; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent); }
+    .hp-bg-glow { border-radius: 50%; background: radial-gradient(circle, rgba(193,68,14,0.08) 0%, transparent 70%); }
+
+    /* Navigation */
+    .hp-nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
+    [data-theme="light"] .hp-nav { background: rgba(248,250,252,0.95); border-bottom-color: rgba(15,23,42,0.08); }
+    .hp-nav-logo { flex-shrink: 0; position: relative; }
+    .hp-nav-logo img { height: 32px; }
+    .hp-nav-logo .logo-dark { display: none; filter: brightness(0) invert(1); }
+    .hp-nav-logo .logo-light { display: block; filter: brightness(0) invert(1); }
+    [data-theme="light"] .hp-nav-logo .logo-light { display: none; }
+    [data-theme="light"] .hp-nav-logo .logo-dark { display: block; filter: none; }
+    .hp-nav-links { display: flex; align-items: center; justify-content: center; gap: 28px; flex: 1; }
+    .hp-nav-right { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+    .hp-nav-link { color: var(--hp-muted); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }
+    .hp-nav-link:hover { color: var(--hp-text); }
+    .hp-theme-btn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--hp-border); background: transparent; color: var(--hp-muted); cursor: pointer; font-size: 1rem; transition: all 0.2s; }
+    .hp-theme-btn:hover { color: var(--hp-text); background: rgba(255,255,255,0.08); }
+    [data-theme="light"] .hp-theme-btn:hover { background: rgba(15,23,42,0.06); }
+    .hp-nav-cta { background: var(--hp-text); color: var(--hp-bg); padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; transition: opacity 0.2s; }
+    .hp-nav-cta:hover { opacity: 0.9; }
+
+    @media (max-width: 1024px) {
+        .hp-nav-links { display: none; }
+        .hp-nav-right { gap: 12px; }
+    }
+
+    /* Hero */
+    .hp-hero { text-align: center; padding: 160px 24px 120px; position: relative; min-height: 600px; }
+    .hp-badge { display: inline-block; color: var(--hp-muted); font-size: 0.85rem; margin-bottom: 28px; letter-spacing: 0.02em; }
+    .hp-title { font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 600; line-height: 1.1; margin-bottom: 24px; letter-spacing: -0.03em; position: relative; z-index: 2; }
+    .hp-sub { font-size: 1.1rem; color: var(--hp-muted); max-width: 540px; margin: 0 auto 40px; line-height: 1.6; position: relative; z-index: 2; }
+    .hp-buttons { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; position: relative; z-index: 2; }
+    .hp-btn { padding: 14px 28px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; text-decoration: none; transition: all 0.3s ease; }
+    .hp-btn-primary { background: var(--hp-text); color: var(--hp-bg); }
+    .hp-btn-primary:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 10px 30px rgba(255,255,255,0.1); }
+    .hp-btn-secondary { background: transparent; color: var(--hp-text); border: 1px solid var(--hp-border); }
+    .hp-btn-secondary:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }
+
+    /* Mars Planet - positioned left */
+    .hp-planet-container { position: absolute; width: 380px; height: 380px; z-index: 1; animation: orbit-hero 260s ease-in-out infinite; transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .hp-planet-container.scared { animation-play-state: paused; }
+    .hp-mars { cursor: pointer; pointer-events: auto; }
+    @keyframes orbit-hero {
+        0% { left: -100px; top: 30%; }
+        25% { left: 85%; top: 10%; }
+        50% { left: 90%; top: 70%; }
+        75% { left: 5%; top: 80%; }
+        100% { left: -100px; top: 30%; }
+    }
+    .hp-planet { position: relative; width: 100%; height: 100%; }
+    .hp-mars { position: absolute; top: 50%; left: 50%; width: 180px; height: 180px; margin: -90px 0 0 -90px; border-radius: 50%; background: radial-gradient(circle at 30% 25%, #e8a87c, #c1440e 40%, #8b2500 70%, #4a1a0a 100%); box-shadow: 0 0 60px rgba(193,68,14,0.5), 0 0 120px rgba(193,68,14,0.3), inset -20px -20px 40px rgba(0,0,0,0.4), inset 10px 10px 30px rgba(255,200,150,0.15); animation: marsFloat 8s ease-in-out infinite; overflow: hidden; transition: background 0.5s, box-shadow 0.5s; }
+    [data-theme="light"] .hp-mars { background: radial-gradient(circle at 30% 25%, #5a5a5a, #3d3d3d 40%, #252525 70%, #141414 100%); box-shadow: 0 0 60px rgba(60,60,60,0.35), 0 0 100px rgba(60,60,60,0.15), inset -20px -20px 40px rgba(0,0,0,0.3), inset 10px 10px 30px rgba(90,90,90,0.15); }
+    .hp-crater { position: absolute; border-radius: 50%; background: rgba(74,26,10,0.4); box-shadow: inset 2px 2px 4px rgba(0,0,0,0.3); }
+    [data-theme="light"] .hp-crater { background: rgba(20,20,20,0.5); }
+    .hp-crater-1 { width: 20px; height: 20px; top: 35%; left: 40%; }
+    .hp-crater-2 { width: 12px; height: 12px; top: 65%; left: 25%; }
+    .hp-crater-3 { width: 15px; height: 15px; top: 25%; left: 65%; }
+    @keyframes marsFloat { 0%, 100% { transform: translate(-50%, -50%) translateY(0); } 50% { transform: translate(-50%, -50%) translateY(-15px); } }
+    @keyframes marsSpin { from { background-position: 0 0; } to { background-position: 200px 0; } }
+
+    /* Mars glow */
+    .hp-mars-glow { position: absolute; top: 50%; left: 50%; width: 280px; height: 280px; margin: -140px 0 0 -140px; border-radius: 50%; background: radial-gradient(circle, rgba(193,68,14,0.2) 0%, rgba(193,68,14,0.1) 40%, transparent 70%); animation: glowPulse 4s ease-in-out infinite; transition: background 0.5s; }
+    [data-theme="light"] .hp-mars-glow { background: radial-gradient(circle, rgba(60,60,60,0.2) 0%, rgba(60,60,60,0.1) 40%, transparent 70%); }
+    @keyframes glowPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: 0.7; } }
+
+    /* Orbits around Mars */
+    .hp-orbit { position: absolute; top: 50%; left: 50%; border: 1px solid rgba(255,255,255,0.06); border-radius: 50%; }
+    .hp-orbit-1 { width: 240px; height: 240px; margin: -120px 0 0 -120px; animation: orbitSpin 15s linear infinite; transform-origin: center; }
+    .hp-orbit-2 { width: 320px; height: 320px; margin: -160px 0 0 -160px; animation: orbitSpin 25s linear infinite reverse; border-style: dashed; }
+    .hp-orbit-3 { width: 380px; height: 380px; margin: -190px 0 0 -190px; animation: orbitSpin 35s linear infinite; border-color: rgba(255,255,255,0.03); }
+    @keyframes orbitSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* Moons/satellites */
+    .hp-moon { position: absolute; border-radius: 50%; box-shadow: 0 0 15px currentColor; animation: moonGlow 2s ease-in-out infinite; }
+    .hp-orbit-1 .hp-moon { width: 10px; height: 10px; top: -5px; left: 50%; margin-left: -5px; background: #f59e0b; color: rgba(245,158,11,0.6); }
+    .hp-orbit-2 .hp-moon { width: 8px; height: 8px; top: 50%; right: -4px; margin-top: -4px; background: #ef4444; color: rgba(239,68,68,0.6); animation-delay: 0.5s; }
+    .hp-orbit-3 .hp-moon { width: 6px; height: 6px; bottom: 20%; left: -3px; background: #a855f7; color: rgba(168,85,247,0.6); animation-delay: 1s; }
+    @keyframes moonGlow { 0%, 100% { box-shadow: 0 0 10px currentColor; } 50% { box-shadow: 0 0 20px currentColor, 0 0 30px currentColor; } }
+
+    /* Floating particles */
+    .hp-particles { position: absolute; width: 100%; height: 100%; top: 0; left: 0; }
+    .hp-particle { position: absolute; width: 3px; height: 3px; background: rgba(255,255,255,0.4); border-radius: 50%; animation: particleDrift 8s ease-in-out infinite; }
+    .hp-particle:nth-child(1) { top: 20%; left: 30%; animation-delay: 0s; }
+    .hp-particle:nth-child(2) { top: 60%; left: 70%; animation-delay: 2s; animation-duration: 10s; }
+    .hp-particle:nth-child(3) { top: 40%; left: 85%; animation-delay: 4s; animation-duration: 12s; }
+    .hp-particle:nth-child(4) { top: 80%; left: 20%; animation-delay: 1s; animation-duration: 9s; }
+    @keyframes particleDrift { 0%, 100% { transform: translate(0, 0); opacity: 0.4; } 25% { transform: translate(10px, -15px); opacity: 0.8; } 50% { transform: translate(-5px, -25px); opacity: 0.4; } 75% { transform: translate(-15px, -10px); opacity: 0.7; } }
+
+    /* Features */
+    .hp-features { padding: 120px 48px; border-top: 1px solid var(--hp-border); position: relative; overflow: hidden; }
+    .hp-features .hp-container { position: relative; z-index: 1; }
+    .hp-features-bg { position: absolute; inset: 0; pointer-events: none; }
+    .hp-features-bg .hp-bg-circle { position: absolute; }
+    .hp-features-bg .circle-1 { width: 500px; height: 500px; top: -100px; right: -150px; border: 1px solid rgba(255,255,255,0.03); }
+    .hp-features-bg .circle-2 { width: 300px; height: 300px; bottom: 50px; left: -100px; border: 1px dashed rgba(255,255,255,0.04); }
+    .hp-features-bg .glow-1 { position: absolute; width: 400px; height: 400px; top: 20%; right: -100px; background: radial-gradient(circle, rgba(193,68,14,0.06) 0%, transparent 70%); border-radius: 50%; }
+    .hp-features-header { text-align: center; margin-bottom: 72px; opacity: 0; transform: translateY(40px); transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+    .hp-features-header.visible { opacity: 1; transform: translateY(0); }
+    .hp-features-title { font-size: 2.5rem; font-weight: 600; margin-bottom: 16px; letter-spacing: -0.03em; }
+    .hp-features-sub { color: var(--hp-muted); font-size: 1.05rem; }
+    .hp-features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; max-width: 1100px; margin: 0 auto; }
+    @media (max-width: 1024px) { .hp-features-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 640px) { .hp-features-grid { grid-template-columns: 1fr; } }
+    
+    .hp-feature { position: relative; padding: 32px; border: 1px solid var(--hp-border); border-radius: 16px; background: rgba(255,255,255,0.01); overflow: hidden; opacity: 0; transform: translateY(30px); transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s, background 0.3s; }
+    .hp-feature.visible { opacity: 1; transform: translateY(0); }
+    .hp-feature:hover { border-color: rgba(249,115,22,0.3); background: rgba(249,115,22,0.03); }
+    [data-theme="light"] .hp-feature { background: rgba(255,255,255,0.5); }
+    [data-theme="light"] .hp-feature:hover { border-color: rgba(15,23,42,0.2); background: rgba(255,255,255,0.8); }
+    
+    .hp-feature-visual { position: relative; height: 120px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; }
+    .hp-feature-icon-wrap { position: relative; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; background: rgba(255,255,255,0.03); font-size: 1.5rem; z-index: 2; transition: all 0.3s; }
+    .hp-feature:hover .hp-feature-icon-wrap { border-color: rgba(249,115,22,0.4); background: rgba(249,115,22,0.08); transform: scale(1.05); }
+    [data-theme="light"] .hp-feature-icon-wrap { border-color: rgba(15,23,42,0.15); background: rgba(255,255,255,0.8); }
+    [data-theme="light"] .hp-feature:hover .hp-feature-icon-wrap { border-color: rgba(15,23,42,0.25); background: #fff; }
+    
+    .hp-feature-dots { position: absolute; inset: 0; overflow: hidden; opacity: 0.4; }
+    .hp-feature-dot { position: absolute; width: 3px; height: 3px; background: rgba(255,255,255,0.4); border-radius: 50%; }
+    .hp-feature:nth-child(1) .hp-feature-dot:nth-child(1) { top: 20%; left: 15%; animation: float-dot 3s ease-in-out infinite; }
+    .hp-feature:nth-child(1) .hp-feature-dot:nth-child(2) { top: 60%; left: 25%; animation: float-dot 4s ease-in-out infinite 0.5s; }
+    .hp-feature:nth-child(1) .hp-feature-dot:nth-child(3) { top: 30%; right: 20%; animation: float-dot 3.5s ease-in-out infinite 1s; }
+    .hp-feature:nth-child(1) .hp-feature-dot:nth-child(4) { top: 70%; right: 15%; animation: float-dot 4.5s ease-in-out infinite 0.3s; }
+    .hp-feature:nth-child(2) .hp-feature-dot:nth-child(1) { top: 25%; left: 20%; animation: float-dot 4s ease-in-out infinite 0.2s; }
+    .hp-feature:nth-child(2) .hp-feature-dot:nth-child(2) { top: 55%; left: 10%; animation: float-dot 3s ease-in-out infinite 0.8s; }
+    .hp-feature:nth-child(2) .hp-feature-dot:nth-child(3) { top: 40%; right: 25%; animation: float-dot 3.5s ease-in-out infinite 0.4s; }
+    .hp-feature:nth-child(2) .hp-feature-dot:nth-child(4) { top: 75%; right: 20%; animation: float-dot 4s ease-in-out infinite 1.2s; }
+    .hp-feature:nth-child(odd) .hp-feature-dot { background: rgba(249,115,22,0.5); }
+    @keyframes float-dot { 0%, 100% { transform: translateY(0) scale(1); opacity: 0.4; } 50% { transform: translateY(-8px) scale(1.2); opacity: 0.8; } }
+    
+    .hp-feature-ring { position: absolute; border: 1px solid rgba(255,255,255,0.08); border-radius: 50%; }
+    .hp-feature-ring-1 { width: 90px; height: 90px; animation: pulse-ring 4s ease-in-out infinite; }
+    .hp-feature-ring-2 { width: 130px; height: 130px; animation: pulse-ring 4s ease-in-out infinite 1s; }
+    @keyframes pulse-ring { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.05); opacity: 0.6; } }
+    
+    .hp-feature-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 10px; }
+    .hp-feature-desc { font-size: 0.88rem; color: var(--hp-muted); line-height: 1.6; }
+
+    /* How it works */
+    .hp-steps { padding: 100px 48px; text-align: center; position: relative; overflow: hidden; }
+    .hp-steps-bg { position: absolute; inset: 0; pointer-events: none; }
+    .hp-steps-bg .line-1 { position: absolute; width: 1px; height: 200px; left: 20%; top: 0; background: linear-gradient(180deg, transparent, rgba(255,255,255,0.05), transparent); }
+    .hp-steps-bg .line-2 { position: absolute; width: 1px; height: 250px; right: 15%; bottom: 0; background: linear-gradient(180deg, transparent, rgba(255,255,255,0.04), transparent); }
+    .hp-steps-bg .circle-1 { position: absolute; width: 200px; height: 200px; border: 1px solid rgba(255,255,255,0.03); border-radius: 50%; left: 5%; top: 30%; }
+    .hp-steps .hp-container { position: relative; z-index: 1; }
+    .hp-steps-title { font-size: 2.2rem; font-weight: 600; margin-bottom: 12px; letter-spacing: -0.02em; }
+    .hp-steps-sub { color: var(--hp-muted); font-size: 1rem; margin-bottom: 64px; }
+    .hp-steps-grid { display: flex; justify-content: center; gap: 64px; flex-wrap: wrap; max-width: 900px; margin: 0 auto; }
+    .hp-step { text-align: center; max-width: 240px; }
+    .hp-step-num { width: 48px; height: 48px; border: 2px solid var(--hp-border); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; font-weight: 600; margin: 0 auto 20px; transition: border-color 0.3s, background 0.3s; }
+    .hp-step:hover .hp-step-num { border-color: rgba(193,68,14,0.6); background: rgba(193,68,14,0.1); }
+    [data-theme="light"] .hp-step:hover .hp-step-num { border-color: rgba(15,23,42,0.4); background: rgba(15,23,42,0.06); }
+    .hp-step-title { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+    .hp-step-desc { font-size: 0.85rem; color: var(--hp-muted); line-height: 1.5; }
+
+    /* CTA */
+    .hp-cta { padding: 100px 48px; text-align: center; border-top: 1px solid var(--hp-border); position: relative; overflow: hidden; }
+    .hp-cta-bg { position: absolute; inset: 0; pointer-events: none; }
+    .hp-cta-bg .circle-1 { position: absolute; width: 600px; height: 600px; border: 1px dashed rgba(255,255,255,0.03); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .hp-cta-bg .circle-2 { position: absolute; width: 400px; height: 400px; border: 1px solid rgba(255,255,255,0.04); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .hp-cta-bg .glow { position: absolute; width: 300px; height: 300px; background: radial-gradient(circle, rgba(193,68,14,0.08) 0%, transparent 70%); border-radius: 50%; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    .hp-cta .hp-container { position: relative; z-index: 1; }
+    .hp-cta-title { font-size: 2rem; font-weight: 600; margin-bottom: 16px; letter-spacing: -0.02em; }
+    .hp-cta-sub { color: var(--hp-muted); font-size: 1rem; margin-bottom: 32px; }
+
+    /* Footer */
+    .hp-footer { padding: 32px 48px; text-align: center; font-size: 0.82rem; color: var(--hp-muted); border-top: 1px solid var(--hp-border); }
+
+    /* Back to top button */
+    .back-to-top { position: fixed; bottom: 32px; right: 32px; width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: var(--hp-text); font-size: 1.2rem; cursor: pointer; opacity: 0; visibility: hidden; transform: translateY(20px); transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); z-index: 999; }
+    .back-to-top:hover { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.3); transform: translateY(-2px); }
+    [data-theme="light"] .back-to-top { background: rgba(15,23,42,0.08); border-color: rgba(15,23,42,0.15); }
+    [data-theme="light"] .back-to-top:hover { background: rgba(15,23,42,0.15); border-color: rgba(15,23,42,0.25); }
+    .back-to-top.visible { opacity: 1; visibility: visible; transform: translateY(0); }
+
+    @media (max-width: 1024px) {
+        .hp-planet-container { width: 320px; height: 320px; animation-duration: 260s; }
+        .hp-mars { width: 140px; height: 140px; margin: -70px 0 0 -70px; }
+        .hp-mars-glow { width: 220px; height: 220px; margin: -110px 0 0 -110px; }
+    }
+    @media (max-width: 768px) {
+        .hp-nav { padding: 16px 24px; }
+        .hp-hero { padding: 120px 24px 100px; min-height: auto; }
+        .hp-planet-container { position: relative; width: 280px; height: 280px; margin: 40px auto 0; animation: none; left: auto !important; top: auto !important; }
+        .hp-mars { width: 100px; height: 100px; margin: -50px 0 0 -50px; }
+        .hp-mars-glow { width: 160px; height: 160px; margin: -80px 0 0 -80px; }
+        .hp-orbit-1 { width: 160px; height: 160px; margin: -80px 0 0 -80px; }
+        .hp-orbit-2 { width: 220px; height: 220px; margin: -110px 0 0 -110px; }
+        .hp-orbit-3 { width: 270px; height: 270px; margin: -135px 0 0 -135px; }
+        .hp-features, .hp-steps, .hp-cta { padding: 60px 24px; }
+    }
+    </style>
+</head>
+<body class="hp-body">
+    <div class="hp-stars">
+        <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
+        <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
+        <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
+        <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
+        <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
+    </div>
+    <nav class="hp-nav">
+        <a href="/" class="hp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Sartozo.AI" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Sartozo.AI" /></a>
+        <div class="hp-nav-links">
+            <a href="#features" class="hp-nav-link">Features</a>
+            <a href="#how-it-works" class="hp-nav-link">How it works</a>
+            <a href="/settings" class="hp-nav-link">Settings</a>
+        </div>
+        <div class="hp-nav-right">
+            <button type="button" class="hp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
+            <a href="/upload" class="hp-nav-cta">Get Started</a>
+        </div>
+    </nav>
+
+    <section class="hp-hero">
+        <div class="hp-planet-container">
+            <div class="hp-planet">
+                <div class="hp-mars-glow"></div>
+                <div class="hp-mars">
+                    <div class="hp-crater hp-crater-1"></div>
+                    <div class="hp-crater hp-crater-2"></div>
+                    <div class="hp-crater hp-crater-3"></div>
+                </div>
+                <div class="hp-orbit hp-orbit-1"><div class="hp-moon"></div></div>
+                <div class="hp-orbit hp-orbit-2"><div class="hp-moon"></div></div>
+                <div class="hp-orbit hp-orbit-3"><div class="hp-moon"></div></div>
+            </div>
+        </div>
+
+        <div class="hp-particles">
+            <div class="hp-particle"></div>
+            <div class="hp-particle"></div>
+            <div class="hp-particle"></div>
+            <div class="hp-particle"></div>
+        </div>
+
+        <div class="hp-badge">Sartozo.AI for E-commerce</div>
+        <h1 class="hp-title">Optimize Every Product<br/>for Maximum Visibility</h1>
+        <p class="hp-sub">
+            AI-powered optimization for your product titles and descriptions. Boost search rankings, increase clicks, and drive more sales.
+        </p>
+        <div class="hp-buttons">
+            <a href="/upload" class="hp-btn hp-btn-primary">Get Started</a>
+            <a href="#how-it-works" class="hp-btn hp-btn-secondary">Learn More</a>
+        </div>
+    </section>
+
+    <section class="hp-features" id="features">
+        <div class="hp-features-bg">
+            <div class="hp-bg-circle circle-1"></div>
+            <div class="hp-bg-circle circle-2"></div>
+            <div class="glow-1"></div>
+        </div>
+        <div class="hp-container">
+            <div class="hp-features-header">
+                <h2 class="hp-features-title">Complete feed optimization platform</h2>
+                <p class="hp-features-sub">Everything you need to transform your product content</p>
+            </div>
+            <div class="hp-features-grid">
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#128269;</div>
+                </div>
+                <div class="hp-feature-title">SEO-Optimized Titles</div>
+                <div class="hp-feature-desc">AI expands short titles with relevant keywords and search phrases using proven e-commerce patterns.</div>
+            </div>
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#128221;</div>
+                </div>
+                <div class="hp-feature-title">Compelling Descriptions</div>
+                <div class="hp-feature-desc">Generate conversion-focused product descriptions that highlight features and benefits.</div>
+            </div>
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#127760;</div>
+                </div>
+                <div class="hp-feature-title">Multi-Language Translation</div>
+                <div class="hp-feature-desc">Translate optimized content to German, Swedish, French, Spanish, Polish and more.</div>
+            </div>
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#128200;</div>
+                </div>
+                <div class="hp-feature-title">Quality Scoring</div>
+                <div class="hp-feature-desc">Every optimization gets a quality score (1-100) so you know the improvement level.</div>
+            </div>
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#128736;</div>
+                </div>
+                <div class="hp-feature-title">Custom Prompts</div>
+                <div class="hp-feature-desc">Configure AI prompts to match your brand voice and SEO strategy.</div>
+            </div>
+            <div class="hp-feature">
+                <div class="hp-feature-visual">
+                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
+                    <div class="hp-feature-ring hp-feature-ring-1"></div>
+                    <div class="hp-feature-ring hp-feature-ring-2"></div>
+                    <div class="hp-feature-icon-wrap">&#128230;</div>
+                </div>
+                <div class="hp-feature-title">CSV Import/Export</div>
+                <div class="hp-feature-desc">Upload your feed as CSV, review results, and export the optimized data.</div>
+            </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="hp-steps" id="how-it-works">
+        <div class="hp-steps-bg">
+            <div class="line-1"></div>
+            <div class="line-2"></div>
+            <div class="circle-1"></div>
+        </div>
+        <div class="hp-container">
+            <h2 class="hp-steps-title">How it works</h2>
+            <p class="hp-steps-sub">Three simple steps to better product content</p>
+            <div class="hp-steps-grid">
+                <div class="hp-step">
+                    <div class="hp-step-num">1</div>
+                    <div class="hp-step-title">Upload your CSV</div>
+                    <div class="hp-step-desc">Drop your product feed file and map columns to standard fields.</div>
+                </div>
+                <div class="hp-step">
+                    <div class="hp-step-num">2</div>
+                    <div class="hp-step-title">AI optimizes content</div>
+                    <div class="hp-step-desc">Our AI analyzes each product and generates improved titles and descriptions.</div>
+                </div>
+                <div class="hp-step">
+                    <div class="hp-step-num">3</div>
+                    <div class="hp-step-title">Review &amp; export</div>
+                    <div class="hp-step-desc">Check results, regenerate if needed, then download your optimized feed.</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="hp-cta">
+        <div class="hp-cta-bg">
+            <div class="circle-1"></div>
+            <div class="circle-2"></div>
+            <div class="glow"></div>
+        </div>
+        <div class="hp-container">
+            <h2 class="hp-cta-title">Ready to optimize your product feed?</h2>
+            <p class="hp-cta-sub">Start with a free test — no API key required for demo mode.</p>
+            <a href="/upload" class="hp-btn hp-btn-primary">Get Started Free</a>
+        </div>
+    </section>
+
+    <footer class="hp-footer">
+        &copy; 2024 Sartozo.AI &mdash; AI-Powered Product Feed Optimization
+    </footer>
+
+    <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">
+        &#8593;
+    </button>
+
+    <script>
+    const btn = document.getElementById('backToTop');
+    
+    // Theme toggle
+    const themeToggle = document.getElementById('themeToggle');
+    const THEME_KEY = 'hp-theme';
+    function getTheme() { return localStorage.getItem(THEME_KEY) || 'dark'; }
+    function setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem(THEME_KEY, theme);
+        themeToggle.textContent = theme === 'dark' ? '\u2600' : '\u263E';
+        themeToggle.setAttribute('aria-label', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+    }
+    if (themeToggle) {
+        setTheme(getTheme());
+        themeToggle.addEventListener('click', () => setTheme(getTheme() === 'dark' ? 'light' : 'dark'));
+    }
+    
+    // Planet runs away on hover
+    const planetContainer = document.querySelector('.hp-planet-container');
+    const mars = document.querySelector('.hp-mars');
+    if (mars && planetContainer) {
+        mars.addEventListener('mouseenter', () => {
+            const runX = (Math.random() - 0.5) * 300;
+            const runY = (Math.random() - 0.5) * 200 - 100;
+            planetContainer.classList.add('scared');
+            planetContainer.style.transform = `translate(${runX}px, ${runY}px)`;
+            
+            setTimeout(() => {
+                planetContainer.style.transform = '';
+                setTimeout(() => planetContainer.classList.remove('scared'), 100);
+            }, 800);
+        });
+    }
+
+    // Scroll reveal for features
+    const featuresHeader = document.querySelector('.hp-features-header');
+    const featureCards = document.querySelectorAll('.hp-feature');
+    
+    const observerOptions = {
+        threshold: 0.15,
+        rootMargin: '0px 0px -50px 0px'
+    };
+    
+    const revealObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                
+                // Stagger animation for feature cards
+                if (entry.target.classList.contains('hp-features-header')) {
+                    featureCards.forEach((card, i) => {
+                        setTimeout(() => card.classList.add('visible'), 150 + i * 100);
+                    });
+                }
+            }
+        });
+    }, observerOptions);
+    
+    if (featuresHeader) revealObserver.observe(featuresHeader);
+    featureCards.forEach(card => revealObserver.observe(card));
+    
+    // Back to top button
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 400) {
+            btn.classList.add('visible');
+        } else {
+            btn.classList.remove('visible');
+        }
+    });
+    </script>
+</body>
+</html>
