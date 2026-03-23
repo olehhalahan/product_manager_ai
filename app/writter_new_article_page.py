@@ -94,12 +94,15 @@ PAGE = r"""<!DOCTYPE html>
   .wt-sh-upload { margin-top:8px; }
   .wt-sh-input { width:auto !important; max-width:100%; padding:8px; font-size:.88rem; cursor:pointer; }
   .wt-sh-hint { font-size:.78rem; color:#64748b; margin:6px 0 10px; text-transform:none; letter-spacing:0; line-height:1.45; }
-  .wt-sh-preview { display:flex; flex-wrap:wrap; gap:12px; margin-top:12px; }
-  .wt-sh-card { position:relative; width:128px; border-radius:10px; overflow:hidden; border:1px solid rgba(255,255,255,.12); background:#111827; }
+  .wt-sh-preview { display:flex; flex-direction:column; gap:14px; margin-top:12px; }
+  .wt-sh-card { position:relative; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:#111827; padding:10px 10px 12px; max-width:100%; }
   [data-theme="light"] .wt-sh-card { background:#fff; border-color:rgba(15,23,42,.12); }
-  .wt-sh-card img { display:block; width:100%; height:92px; object-fit:cover; }
-  .wt-sh-remove { position:absolute; top:4px; right:4px; width:26px; height:26px; border-radius:6px; border:none; background:rgba(0,0,0,.55); color:#fff; cursor:pointer; font-size:16px; line-height:1; padding:0; }
+  .wt-sh-card-top { position:relative; display:inline-block; max-width:280px; }
+  .wt-sh-card img { display:block; width:100%; max-height:180px; object-fit:contain; border-radius:6px; background:rgba(0,0,0,.2); }
+  .wt-sh-remove { position:absolute; top:4px; right:4px; width:26px; height:26px; border-radius:6px; border:none; background:rgba(0,0,0,.55); color:#fff; cursor:pointer; font-size:16px; line-height:1; padding:0; z-index:1; }
   .wt-sh-remove:hover { background:rgba(239,68,68,.92); }
+  .wt-sh-card label { margin:10px 0 4px; font-size:.72rem; text-transform:none; letter-spacing:0; color:#94a3b8; }
+  .wt-sh-caption { min-height:64px; font-size:.85rem; line-height:1.45; margin-top:0; }
   .wt-sh-status { font-size:.78rem; color:#94a3b8; margin-top:8px; min-height:1.2em; }
   </style>
 </head>
@@ -162,7 +165,7 @@ PAGE = r"""<!DOCTYPE html>
           </div>
           <div id="evBlockSh" class="wt-ev-block">
             <label>Product screenshots</label>
-            <p class="wt-sh-hint">Upload images (PNG, JPEG, WebP, or GIF — max 5 MB each, up to 20 per upload). Files are saved on the server; URLs are passed to the article generator.</p>
+            <p class="wt-sh-hint">Upload images (PNG, JPEG, WebP, or GIF — max 5 MB each, up to 20 per upload). For each image, add a short <strong>placement note</strong> (which section or idea it belongs with) so the article generator positions screenshots next to the right text — not at random.</p>
             <div class="wt-sh-upload">
               <input type="file" id="screenshot_files" class="wt-sh-input" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif" multiple />
             </div>
@@ -270,26 +273,52 @@ PAGE = r"""<!DOCTYPE html>
   var articlePlan = null;
   var oppTimer = null;
   var ruleIdx = 0;
-  var screenshotUrls = [];
+  var screenshotItems = [];
 
   function renderScreenshotPreview() {
     var el = document.getElementById('screenshot_preview');
     if (!el) return;
     el.innerHTML = '';
-    screenshotUrls.forEach(function(url, idx) {
+    screenshotItems.forEach(function(item, idx) {
       var card = document.createElement('div');
       card.className = 'wt-sh-card';
-      card.innerHTML = '<img src="' + url.replace(/"/g, '') + '" alt="" loading="lazy" /><button type="button" class="wt-sh-remove" data-idx="' + idx + '" title="Remove">×</button>';
-      el.appendChild(card);
-    });
-    el.querySelectorAll('.wt-sh-remove').forEach(function(btn) {
-      btn.onclick = function() {
-        var i = parseInt(btn.getAttribute('data-idx'), 10);
+      var top = document.createElement('div');
+      top.className = 'wt-sh-card-top';
+      var img = document.createElement('img');
+      img.src = item.url || '';
+      img.alt = '';
+      img.loading = 'lazy';
+      var rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'wt-sh-remove';
+      rm.title = 'Remove';
+      rm.setAttribute('data-idx', String(idx));
+      rm.appendChild(document.createTextNode('×'));
+      rm.onclick = function() {
+        var i = parseInt(rm.getAttribute('data-idx'), 10);
         if (!isNaN(i)) {
-          screenshotUrls.splice(i, 1);
+          screenshotItems.splice(i, 1);
           renderScreenshotPreview();
         }
       };
+      top.appendChild(img);
+      top.appendChild(rm);
+      var lbl = document.createElement('label');
+      lbl.textContent = 'Placement / context for AI (optional but recommended)';
+      lbl.setAttribute('for', 'sh_cap_' + idx);
+      var ta = document.createElement('textarea');
+      ta.id = 'sh_cap_' + idx;
+      ta.className = 'wt-sh-caption';
+      ta.placeholder = 'e.g. Place under the H2 “Diagnosing feed issues” — Merchant Center disapprovals table';
+      ta.rows = 3;
+      ta.value = item.caption || '';
+      ta.addEventListener('input', function() {
+        if (screenshotItems[idx]) screenshotItems[idx].caption = ta.value;
+      });
+      card.appendChild(top);
+      card.appendChild(lbl);
+      card.appendChild(ta);
+      el.appendChild(card);
     });
   }
 
@@ -312,7 +341,7 @@ PAGE = r"""<!DOCTYPE html>
         })
         .then(function(data) {
           var urls = data.urls || [];
-          urls.forEach(function(u) { screenshotUrls.push(u); });
+          urls.forEach(function(u) { screenshotItems.push({ url: u, caption: '' }); });
           renderScreenshotPreview();
           var evSh = document.getElementById('ev_use_sh');
           if (evSh) { evSh.checked = true; syncEvBlocks(); }
@@ -588,7 +617,8 @@ PAGE = r"""<!DOCTYPE html>
         add_diagram: document.getElementById('ev_add_dia').checked,
         add_metrics: document.getElementById('ev_add_met').checked,
         add_use_case: document.getElementById('ev_add_uc').checked,
-        screenshot_urls: screenshotUrls.slice(),
+        screenshot_urls: screenshotItems.map(function(x) { return x.url; }),
+        screenshots: screenshotItems.map(function(x) { return { url: x.url, caption: (x.caption || '').trim() }; }),
         product_screen_ids: (document.getElementById('product_screen_ids').value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
         metrics_manual: document.getElementById('metrics_manual').value,
         customer_scenario: document.getElementById('customer_scenario').value,

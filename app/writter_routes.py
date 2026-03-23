@@ -751,12 +751,20 @@ class RuleItem(BaseModel):
     value: Optional[str] = None
 
 
+class ScreenshotEvidenceItem(BaseModel):
+    """Product screenshot URL plus editor context so the model places images deliberately."""
+
+    url: str = Field(..., min_length=1)
+    caption: str = ""
+
+
 class EvidencePayload(BaseModel):
     use_product_screenshots: bool = False
     add_diagram: bool = False
     add_metrics: bool = False
     add_use_case: bool = False
     screenshot_urls: List[str] = Field(default_factory=list)
+    screenshots: List[ScreenshotEvidenceItem] = Field(default_factory=list)
     product_screen_ids: List[str] = Field(default_factory=list)
     metrics_manual: str = ""
     customer_scenario: str = ""

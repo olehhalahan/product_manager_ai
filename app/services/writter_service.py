@@ -657,12 +657,34 @@ def evidence_to_prompt_fragment(evidence: Optional[Dict[str, Any]]) -> str:
     add_met = bool(evidence.get("add_metrics"))
     add_uc = bool(evidence.get("add_use_case"))
 
-    urls = evidence.get("screenshot_urls") or []
-    if isinstance(urls, list) and urls:
-        lines.append("Screenshots / uploads (describe and reference in copy; use <figure> and meaningful alt text):")
-        for u in urls[:12]:
+    shot_rows: List[Tuple[str, str]] = []
+    raw_shots = evidence.get("screenshots")
+    if isinstance(raw_shots, list):
+        for item in raw_shots:
+            if not isinstance(item, dict):
+                continue
+            u = (item.get("url") or "").strip()
+            if not u:
+                continue
+            cap = (item.get("caption") or "").strip()
+            shot_rows.append((u[:900], cap[:2000]))
+    if not shot_rows:
+        for u in (evidence.get("screenshot_urls") or []):
             if u:
-                lines.append(f"  - {str(u)[:500]}")
+                shot_rows.append((str(u).strip()[:900], ""))
+    if shot_rows:
+        lines.append(
+            "Uploaded screenshots (MANDATORY placement rules): embed each with "
+            '<figure><img src="EXACT_URL" alt="descriptive alt text"/><figcaption>short label</figcaption></figure>. '
+            "Use each URL exactly once. Follow the editor's placement note so images appear next to the relevant section — not in random order."
+        )
+        for u, cap in shot_rows[:12]:
+            if cap:
+                lines.append(f'  - Image URL: {u}\n    Editor placement / context (follow this): {cap}')
+            else:
+                lines.append(
+                    f"  - Image URL: {u}\n    (No placement note — put in the most relevant section for the topic, after introducing that idea in text.)"
+                )
     elif use_sh:
         lines.append(
             "Include a plausible product screenshot callout (describe a realistic feed/Merchant UI area if no URL is given)."
