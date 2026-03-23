@@ -1806,7 +1806,7 @@ async def blog_public_page(request: Request, slug: str):
   body.blog-article-body {{ color:#e2e8f0; }}
   [data-theme="light"] body.blog-article-body {{ color:#0f172a; }}
   .blog-layout {{ display:flex; min-height:100vh; width:100%; }}
-  .blog-side {{ width:260px; flex-shrink:0; border-right:1px solid rgba(255,255,255,.08); padding:24px 16px; position:sticky; top:80px; align-self:flex-start; max-height:calc(100vh - 80px); overflow-y:auto; }}
+  .blog-side {{ width:260px; flex-shrink:0; border-right:1px solid rgba(255,255,255,.08); padding:12px 16px 24px; position:sticky; top:72px; align-self:flex-start; max-height:calc(100vh - 72px); overflow-y:auto; }}
   [data-theme="light"] .blog-side {{ border-color:rgba(15,23,42,.1); }}
   .blog-side h2 {{ font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin:0 0 12px; }}
   .blog-side ul {{ list-style:none; padding:0; margin:0; }}
@@ -1816,9 +1816,9 @@ async def blog_public_page(request: Request, slug: str):
   .blog-side li.wt-sb-active a {{ color:#a5b4fc; font-weight:600; background:rgba(79,70,229,.18); border:1px solid rgba(129,140,248,.25); }}
   [data-theme="light"] .blog-side a {{ color:#475569; }}
   [data-theme="light"] .blog-side li.wt-sb-active a {{ color:#4338ca; background:rgba(79,70,229,.1); border-color:rgba(79,70,229,.2); }}
-  .blog-center {{ flex:1; min-width:0; padding:clamp(20px,4vw,40px) clamp(16px,4vw,40px) 80px; margin-inline:auto; }}
+  .blog-center {{ flex:1; min-width:0; padding:clamp(10px,2.5vw,20px) clamp(16px,4vw,40px) 80px; margin-inline:auto; }}
   .writter-cta a, .blog-main .writter-cta a {{ color:#4F46E5; font-weight:600; }}
-  .blog-admin-r {{ width:320px; flex-shrink:0; padding:24px 20px 48px; border-left:1px solid rgba(255,255,255,.08); position:sticky; top:80px; align-self:flex-start; max-height:calc(100vh - 80px); overflow-y:auto; background:linear-gradient(180deg, rgba(79,70,229,.06) 0%, transparent 120px); }}
+  .blog-admin-r {{ width:320px; flex-shrink:0; padding:16px 20px 48px; border-left:1px solid rgba(255,255,255,.08); position:sticky; top:72px; align-self:flex-start; max-height:calc(100vh - 72px); overflow-y:auto; background:linear-gradient(180deg, rgba(79,70,229,.06) 0%, transparent 120px); }}
   [data-theme="light"] .blog-admin-r {{ border-color:rgba(15,23,42,.1); background:linear-gradient(180deg, rgba(79,70,229,.04) 0%, transparent 120px); }}
   .bar-card {{ background:rgba(17,24,39,.85); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px 18px; margin-bottom:14px; }}
   [data-theme="light"] .bar-card {{ background:#fff; border-color:rgba(15,23,42,.1); }}
@@ -1868,20 +1868,20 @@ async def blog_public_page(request: Request, slug: str):
       <ul>{nav_li}</ul>
     </aside>
     <article class="blog-main blog-center blog-article-page">
-      <nav class="blog-breadcrumbs" aria-label="Breadcrumb">
-        <ol class="blog-breadcrumbs-list">
-          <li class="blog-breadcrumbs-item"><a href="/">Home</a></li>
-          <li class="blog-breadcrumbs-sep" aria-hidden="true">/</li>
-          <li class="blog-breadcrumbs-item"><a href="/blog">Blog</a></li>
-          <li class="blog-breadcrumbs-sep" aria-hidden="true">/</li>
-          <li class="blog-breadcrumbs-item blog-breadcrumbs-current" aria-current="page">{breadcrumb_title_esc}</li>
-        </ol>
-      </nav>
-      <header class="blog-article-header">
-        <h1 class="blog-article-title">{title_esc}</h1>
-        {subtitle_block}
-      </header>
-      <div class="blog-article-body-row">
+      <div class="blog-article-page-grid">
+        <div class="blog-article-head-slot">
+          <nav class="blog-breadcrumbs" aria-label="Breadcrumb">
+            <ol class="blog-breadcrumbs-list">
+              <li class="blog-breadcrumbs-item"><a href="/blog">Blog</a></li>
+              <li class="blog-breadcrumbs-sep" aria-hidden="true">/</li>
+              <li class="blog-breadcrumbs-item blog-breadcrumbs-current" aria-current="page">{breadcrumb_title_esc}</li>
+            </ol>
+          </nav>
+          <header class="blog-article-header">
+            <h1 class="blog-article-title">{title_esc}</h1>
+            {subtitle_block}
+          </header>
+        </div>
         <nav class="blog-toc" id="blogToc" aria-label="On this page">
           <p class="blog-toc-label">On this page</p>
           <ol class="blog-toc-list" id="blogTocList"></ol>
