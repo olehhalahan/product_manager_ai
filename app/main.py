@@ -391,7 +391,10 @@ def _onboarding_export_done(request: Request) -> None:
 
 def _build_error_page(status_code: int = 404, message: str = "Page not found") -> str:
     """Build 404/error page HTML for any bad result."""
+    import html as _html
+
     title = "Page not found" if status_code == 404 else "Something went wrong"
+    safe_msg = _html.escape(message)
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -428,7 +431,7 @@ def _build_error_page(status_code: int = 404, message: str = "Page not found") -
     <div class="err-box">
         <div class="err-code">{status_code}</div>
         <h1 class="err-title">{title}</h1>
-        <p class="err-msg">{message}</p>
+        <p class="err-msg">{safe_msg}</p>
         <a href="/" class="err-btn">Back to homepage</a>
     </div>
 </body>
@@ -463,10 +466,33 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    """Show error page for unhandled exceptions (500)."""
+    """Show error page for unhandled exceptions (500). Logs full traceback; HTML may include error id + detail on localhost."""
+    import logging as _logging
+
+    # Let the HTTPException handler run (HTTPException is a subclass of Exception).
+    if isinstance(exc, HTTPException):
+        return await http_exception_handler(request, exc)
+
+    rid = uuid.uuid4().hex[:12]
+    _logging.getLogger("uvicorn.error").exception(
+        "Unhandled exception request_id=%s path=%s: %s", rid, request.url.path, exc
+    )
+
     if _wants_html(request):
-        return HTMLResponse(content=_build_error_page(500, "An unexpected error occurred. Please try again."), status_code=500)
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        host = (request.url.hostname or "").lower()
+        show_detail = bool(
+            _os.getenv("SHOW_ERROR_DETAILS", "").lower() in ("1", "true", "yes")
+            or host in ("127.0.0.1", "localhost", "::1")
+        )
+        if show_detail:
+            msg = f"Error id: {rid}. {type(exc).__name__}: {exc}"
+        else:
+            msg = f"An unexpected error occurred. Error id: {rid}. Please try again."
+        return HTMLResponse(content=_build_error_page(500, msg), status_code=500)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "request_id": rid},
+    )
 
 
 @app.get("/favicon.ico", include_in_schema=False)

@@ -6,6 +6,7 @@ Role-based access: admin vs customer.
 Google sign-in and Merchant Center use the same OAuth 2.0 Web Client created in
 Google Cloud Console. Set GOOGLE_CLOUD_PROJECT_ID to that project’s ID; see app/google_cloud.py.
 """
+import os
 from typing import Optional
 from urllib.parse import quote
 from fastapi import Request, HTTPException
@@ -13,7 +14,30 @@ from fastapi.responses import RedirectResponse
 
 from .google_cloud import get_normalized_google_oauth_credentials
 
-ADMIN_EMAILS = {"oleh.halahan@zanzarra.com"}
+# Base admin(s); extend with env ADMIN_EMAILS="a@x.com,b@y.com" (comma-separated, case-insensitive).
+_ADMIN_EMAILS_BASE = frozenset({"oleh.halahan@zanzarra.com"})
+
+
+def _admin_email_set() -> set:
+    """Emails that receive admin role (session email must match)."""
+    s = set(_ADMIN_EMAILS_BASE)
+    extra = os.getenv("ADMIN_EMAILS", "") or ""
+    for part in extra.split(","):
+        e = part.strip().lower()
+        if e:
+            s.add(e)
+    return s
+
+
+def _local_admin_enabled(request: Request) -> bool:
+    """
+    When AUTH_LOCAL_ADMIN=1 and the request host is loopback only, treat any logged-in user as admin.
+    For local development when Google OAuth returns an email not listed in ADMIN_EMAILS.
+    """
+    if os.getenv("AUTH_LOCAL_ADMIN", "").lower() not in ("1", "true", "yes"):
+        return False
+    host = (request.url.hostname or "").lower()
+    return host in ("127.0.0.1", "localhost", "::1")
 
 _oauth = None
 # Rebuild OAuth clients if env changes (avoids stale client_id after .env edit + hot reload edge cases)
@@ -109,15 +133,19 @@ def get_current_user(request: Request) -> Optional[dict]:
 
 
 def get_user_role(email: str) -> str:
-    """Return 'admin' if email is in ADMIN_EMAILS, otherwise 'customer'."""
-    return "admin" if email.lower().strip() in ADMIN_EMAILS else "customer"
+    """Return 'admin' if email is in the admin list (env + defaults), otherwise 'customer'."""
+    em = (email or "").lower().strip()
+    return "admin" if em in _admin_email_set() else "customer"
 
 
 def is_admin(request: Request) -> bool:
     user = request.session.get("user")
     if not user:
         return False
-    return user.get("role") == "admin"
+    if _local_admin_enabled(request):
+        return True
+    # Re-check from email so ADMIN_EMAILS env applies without forcing re-login.
+    return get_user_role(user.get("email") or "") == "admin"
 
 
 def require_login_redirect(request: Request, next_url: str = "/upload") -> Optional[RedirectResponse]:

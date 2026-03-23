@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import html as html_module
 import json
+import logging
 import math
+import os
+import traceback
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +25,8 @@ from .services import db_repository as repo
 from .services.db_repository import get_settings
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
 from .writter_new_article_page import render_writter_new_article_html
+
+_log = logging.getLogger("uvicorn.error")
 from .services.writter_service import (
     ARTICLE_TYPE_LABELS,
     PRIMARY_GOAL_LABELS,
@@ -188,6 +193,16 @@ def _sanitize_for_json(obj: Any) -> Any:
     return obj
 
 
+def _fmt_table_date(val: Any) -> str:
+    """Short YYYY-MM-DD for list cells (avoids wrapped ISO timestamps)."""
+    s = str(val) if val is not None else "—"
+    if s == "—":
+        return s
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[:10]
+    return s[:19].replace("T", " ")
+
+
 def _json_snippet_for_pre(obj: Any, limit: int) -> str:
     try:
         clean = _sanitize_for_json(obj)
@@ -195,6 +210,14 @@ def _json_snippet_for_pre(obj: Any, limit: int) -> str:
     except (TypeError, ValueError, OverflowError):
         s = repr(obj)
     return html_module.escape(s[:limit])
+
+
+def _json_literal_for_script(value: Any) -> str:
+    """
+    Serialize as JSON for embedding inside <script>. Escapes '<' so '</script>' in strings
+    cannot close the script tag and break the page.
+    """
+    return json.dumps(value, ensure_ascii=False).replace("<", "\\u003c")
 
 
 def _merge_refresh_html(action: str, html: str, patches: Dict[str, str]) -> str:
@@ -228,6 +251,89 @@ def _admin_shell_nav(active: str) -> str:
 </nav>"""
 
 
+def _writter_article_missing_html(article_id: int) -> HTMLResponse:
+    """Browser-friendly 404 when blog_articles row does not exist (avoids raw JSON error page)."""
+    aid = int(article_id)
+    html = f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Article not found — Writter</title>
+  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <style>
+  body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
+  .wt-box {{ max-width:560px; margin:48px auto; padding:0 24px 80px; }}
+  </style>
+</head>
+<body>
+  {admin_top_nav_html("writter")}
+  <div class="wt-box">
+    <h1 style="font-size:1.25rem;margin:0 0 12px;">Article not found</h1>
+    <p style="color:#94a3b8;line-height:1.5;">No row with id <strong>{aid}</strong> in this database (wrong URL or different environment).</p>
+    <p style="color:#94a3b8;line-height:1.5;">Use <strong>Writter →</strong> the article title links to Review for each id.</p>
+    <p style="margin-top:20px;"><a href="/admin/writter" style="color:#818cf8;font-weight:600;">← All articles</a></p>
+  </div>
+  {ADMIN_THEME_SCRIPT.strip()}
+</body>
+</html>"""
+    return HTMLResponse(content=html, status_code=404)
+
+
+def _writter_review_show_exception_ui(request: Request) -> bool:
+    """Show exception text on the error page (localhost or WRITTER_REVIEW_DEBUG_UI=1)."""
+    if os.getenv("WRITTER_REVIEW_DEBUG_UI", "").lower() in ("1", "true", "yes"):
+        return True
+    host = (request.url.hostname or "").lower()
+    return host in ("127.0.0.1", "localhost", "::1")
+
+
+def _writter_review_error_html(
+    request: Request, article_id: int, exc: Exception, request_id: str
+) -> HTMLResponse:
+    """500 page with correlation id; optional traceback on localhost / WRITTER_REVIEW_DEBUG_UI."""
+    detail = ""
+    if _writter_review_show_exception_ui(request):
+        tb = traceback.format_exc()
+        msg = f"{type(exc).__name__}: {exc}"
+        safe_msg = html_module.escape(msg[:4000])
+        safe_tb = html_module.escape(tb[-12000:])
+        detail = f"""
+    <p style="color:#fca5a5;font-family:ui-monospace,monospace;font-size:.82rem;word-break:break-word;">{safe_msg}</p>
+    <details style="margin-top:12px;"><summary style="cursor:pointer;color:#94a3b8;">Traceback</summary>
+    <pre style="font-size:.72rem;overflow:auto;max-height:360px;background:#111827;padding:12px;border-radius:8px;color:#cbd5e1;">{safe_tb}</pre>
+    </details>"""
+    aid = int(article_id)
+    html = f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Review error — Writter</title>
+  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <style>
+  body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
+  .wt-box {{ max-width:640px; margin:48px auto; padding:0 24px 80px; }}
+  .wt-rid {{ font-family:ui-monospace,monospace; font-size:.85rem; color:#94a3b8; }}
+  </style>
+</head>
+<body>
+  {admin_top_nav_html("writter")}
+  <div class="wt-box">
+    <h1 style="font-size:1.25rem;margin:0 0 12px;">Review page failed to render</h1>
+    <p class="wt-rid">Request id: <strong style="color:#e5e7eb;">{html_module.escape(request_id)}</strong> · article id: <strong>{aid}</strong></p>
+    <p style="color:#94a3b8;line-height:1.5;">Search server logs for this request id (uvicorn / <code>writter review FAILED</code>).</p>
+    {detail}
+    <p style="margin-top:20px;"><a href="/admin/writter" style="color:#818cf8;font-weight:600;">← All articles</a></p>
+  </div>
+  {ADMIN_THEME_SCRIPT.strip()}
+</body>
+</html>"""
+    return HTMLResponse(content=html, status_code=500)
+
+
 @router.get("/admin/writter", response_class=HTMLResponse)
 async def writter_list_page(request: Request):
     redir = require_admin_redirect(request, "/admin/writter")
@@ -244,10 +350,17 @@ async def writter_list_page(request: Request):
         kw = html_module.escape(r.get("keywords") or "")
         pub = r.get("published_at") or r.get("created_at") or "—"
         views = r.get("views") or 0
-        if st == "draft" and aid:
-            title_cell = f'<a href="/admin/writter/article/{aid}/review">{title_esc}</a> <span style="color:#64748b;font-size:.75rem;">(draft)</span>'
+        if aid:
+            title_cell = f'<a href="/admin/writter/article/{aid}/review">{title_esc}</a>'
+            if st == "draft":
+                title_cell += ' <span style="color:#64748b;font-size:.75rem;">(draft)</span>'
+            else:
+                title_cell += (
+                    f' <a href="/blog/{slug_esc}" target="_blank" rel="noopener" '
+                    'style="color:#94a3b8;font-size:.82rem;margin-left:6px;">View live</a>'
+                )
         else:
-            title_cell = f'<a href="/blog/{slug_esc}" target="_blank" rel="noopener">{title_esc}</a>'
+            title_cell = title_esc
         action_opts = '<option value="" selected disabled>Actions…</option>'
         if st != "published":
             action_opts += '<option value="publish">Publish</option>'
@@ -263,19 +376,21 @@ async def writter_list_page(request: Request):
         ov = scores.get("overall")
         qcell = html_module.escape(str(ov)) if isinstance(ov, int) else "—"
         lu = r.get("updated_at") or r.get("created_at") or "—"
+        lu_disp = _fmt_table_date(lu)
+        pub_disp = _fmt_table_date(pub)
         cid = r.get("cluster_id")
         cstr = html_module.escape(str(cid)) if cid else "—"
         rf = html_module.escape((r.get("writter_refresh_status") or "")[:28] or "—")
         tr += f"""<tr data-article-id="{aid}">
-  <td>{title_cell}</td>
-  <td>{html_module.escape(str(pub)[:19])}</td>
-  <td class="wt-muted">{kw}</td>
-  <td>{atype}</td>
-  <td>{qcell}</td>
-  <td>{cstr}</td>
-  <td class="wt-muted">{rf}</td>
-  <td>{views}</td>
-  <td class="wt-muted">{html_module.escape(str(lu)[:19])}</td>
+  <td class="wt-col-title">{title_cell}</td>
+  <td class="wt-col-dt">{html_module.escape(pub_disp)}</td>
+  <td class="wt-col-keywords" title="{kw}">{kw}</td>
+  <td class="wt-col-type">{atype}</td>
+  <td class="wt-col-q">{qcell}</td>
+  <td class="wt-col-cluster">{cstr}</td>
+  <td class="wt-col-refresh" title="{rf}">{rf}</td>
+  <td class="wt-col-views">{views}</td>
+  <td class="wt-col-dt wt-muted">{html_module.escape(lu_disp)}</td>
   <td class="wt-status-cell"><span class="wt-pill {pill_mod}">{st_esc}</span></td>
   <td class="wt-actions-cell">
     <select class="wt-dd" data-id="{aid}" aria-label="Article actions">{action_opts}</select>
@@ -303,24 +418,36 @@ async def writter_list_page(request: Request):
   .wt-admin-nav a.active {{ background:rgba(79,70,229,.15); color:#818cf8; font-weight:600; }}
   [data-theme="light"] .wt-admin-nav a {{ color:#64748b; }}
   [data-theme="light"] .wt-admin-nav a.active {{ color:#4F46E5; }}
-  .wt-main {{ flex:1; padding:32px 40px; }}
+  .wt-main {{ flex:1; min-width:0; padding:32px clamp(16px,3vw,40px); }}
   .wt-h1 {{ font-size:1.6rem; font-weight:700; margin:0 0 8px; }}
   .wt-toolbar {{ margin:24px 0; display:flex; gap:12px; align-items:center; }}
   .wt-btn {{ display:inline-flex; align-items:center; gap:8px; padding:10px 18px; border-radius:8px; background:#4F46E5; color:#fff; font-weight:600; text-decoration:none; border:none; cursor:pointer; font-size:.9rem; }}
   .wt-btn:hover {{ filter:brightness(1.05); }}
-  table.wt-table {{ width:100%; border-collapse:collapse; font-size:.9rem; }}
-  .wt-table th {{ text-align:left; padding:12px 14px; color:#9ca3af; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid rgba(255,255,255,.1); }}
-  .wt-table td {{ padding:14px; border-bottom:1px solid rgba(255,255,255,.06); }}
+  .wt-table-wrap {{ width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-inline-end:20px; box-sizing:border-box; }}
+  table.wt-table {{ width:100%; min-width:1120px; border-collapse:collapse; font-size:.9rem; table-layout:fixed; }}
+  .wt-table th {{ text-align:left; padding:12px 10px; color:#9ca3af; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid rgba(255,255,255,.1); vertical-align:bottom; }}
+  .wt-table td {{ padding:12px 10px; border-bottom:1px solid rgba(255,255,255,.06); vertical-align:top; }}
   .wt-table a {{ color:#22D3EE; }}
-  .wt-muted {{ color:#9ca3af; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+  .wt-col-title {{ width:34%; min-width:260px; line-height:1.45; word-wrap:break-word; overflow-wrap:anywhere; }}
+  .wt-col-dt {{ width:7.5rem; white-space:nowrap; font-size:.82rem; font-variant-numeric:tabular-nums; color:#cbd5e1; }}
+  .wt-col-keywords {{ width:14%; max-width:14rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#9ca3af; }}
+  .wt-col-type {{ width:8rem; }}
+  .wt-col-q {{ width:4.5rem; text-align:center; }}
+  .wt-col-cluster {{ width:5rem; }}
+  .wt-col-refresh {{ width:6.5rem; max-width:6.5rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#9ca3af; font-size:.85rem; }}
+  .wt-col-views {{ width:3.5rem; text-align:right; font-variant-numeric:tabular-nums; }}
+  .wt-muted {{ color:#9ca3af; }}
   .wt-pill {{ font-size:.75rem; padding:4px 10px; border-radius:99px; background:rgba(148,163,184,.15); }}
   .wt-pill-published {{ background:rgba(74,222,128,.12); color:#4ade80; }}
   .wt-pill-draft {{ background:rgba(251,191,36,.12); color:#fbbf24; }}
-  .wt-status-cell {{ vertical-align:middle; white-space:nowrap; }}
-  .wt-actions-cell {{ vertical-align:middle; width:1%; text-align:right; }}
+  .wt-status-cell {{ vertical-align:top; white-space:nowrap; width:6.5rem; }}
+  .wt-actions-cell {{ vertical-align:top; width:12rem; min-width:12rem; text-align:right; padding-inline-end:4px !important; }}
   .wt-th-actions {{ text-align:right; }}
   .wt-dd {{
-    min-width:148px; max-width:200px;
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    box-sizing:border-box;
     padding:9px 32px 9px 12px;
     border-radius:10px;
     border:1px solid rgba(255,255,255,.12);
@@ -385,10 +512,24 @@ async def writter_list_page(request: Request):
       <div class="wt-toolbar">
         <a class="wt-btn" href="/admin/writter/new">+ Create New Article</a>
       </div>
+      <div class="wt-table-wrap">
       <table class="wt-table">
-        <thead><tr><th>Title</th><th>Published</th><th>Keywords</th><th>Type</th><th>Quality</th><th>Cluster</th><th>Refresh</th><th>Views</th><th>Updated</th><th>Status</th><th class="wt-th-actions">Actions</th></tr></thead>
+        <thead><tr>
+          <th class="wt-col-title">Title</th>
+          <th class="wt-col-dt">Published</th>
+          <th class="wt-col-keywords">Keywords</th>
+          <th class="wt-col-type">Type</th>
+          <th class="wt-col-q">Quality</th>
+          <th class="wt-col-cluster">Cluster</th>
+          <th class="wt-col-refresh">Refresh</th>
+          <th class="wt-col-views">Views</th>
+          <th class="wt-col-dt">Updated</th>
+          <th class="wt-status-cell">Status</th>
+          <th class="wt-th-actions wt-actions-cell">Actions</th>
+        </tr></thead>
         <tbody>{tr}</tbody>
       </table>
+      </div>
     </main>
   </div>
   <script>
@@ -474,275 +615,297 @@ async def writter_article_review(request: Request, article_id: int):
     redir = require_admin_redirect(request, f"/admin/writter/article/{article_id}/review")
     if redir:
         return redir
-    with get_db() as db:
-        row = repo.get_blog_article_by_id(db, article_id)
-    if not row:
-        raise HTTPException(404, detail="Article not found")
+    req_id = uuid.uuid4().hex[:12]
+    _log.debug("writter review start article_id=%s req_id=%s", article_id, req_id)
+    try:
+        with get_db() as db:
+            row = repo.get_blog_article_by_id(db, article_id)
+            if not row:
+                _log.info("writter review: article not found id=%s req_id=%s", article_id, req_id)
+                return _writter_article_missing_html(article_id)
+            # Snapshot while Session is open — avoids DetachedInstanceError after `with` exits.
+            art = repo.blog_article_to_dict(row)
 
-    title_esc = html_module.escape(row.title or "")
-    slug_raw = row.slug or ""
-    slug_esc = html_module.escape(slug_raw)
-    status = (row.status or "").strip()
-    kw_esc = html_module.escape(row.keywords or "")
-    topic_esc = html_module.escape(row.topic or "")
-    content = row.content_html or ""
-    metrics = _only_dict(row.metrics_json or {})
-    m_imp = html_module.escape(str(metrics.get("estimated_impressions", "—")))
-    m_ctr = metrics.get("estimated_ctr")
-    if m_ctr is not None:
-        try:
-            m_ctr_s = html_module.escape(str(round(float(m_ctr), 4)))
-        except (TypeError, ValueError):
-            m_ctr_s = html_module.escape(str(m_ctr))
-    else:
-        m_ctr_s = "—"
-    m_clk = html_module.escape(str(metrics.get("estimated_clicks", "—")))
-    m_conv = html_module.escape(str(metrics.get("potential_conversions", "—")))
-    seo = _only_dict(metrics.get("seo_qa"))
-    scores = _only_dict(seo.get("scores"))
-    verdict_esc = html_module.escape(str(seo.get("verdict") or "—"))
-    plan = _only_dict(row.planning_json)
-    opp = plan.get("opportunity")
-    val_sc = opp.get("estimated_value_score") if isinstance(opp, dict) else None
-    val_cell = html_module.escape(str(val_sc)) if val_sc is not None else "—"
-    seo_block = ""
-    if scores:
-        seo_block = f"""
-      <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">SEO QA</h2>
-      <p class="wt-meta">Verdict: <strong style="color:#e5e7eb;">{verdict_esc}</strong></p>
-      <div class="wt-metrics" style="grid-template-columns:repeat(5,1fr);">
-        <div class="wt-mc"><span>SEO</span><strong>{scores.get("seo", "—")}</strong></div>
-        <div class="wt-mc"><span>Readability</span><strong>{scores.get("readability", "—")}</strong></div>
-        <div class="wt-mc"><span>Originality</span><strong>{scores.get("originality", "—")}</strong></div>
-        <div class="wt-mc"><span>Evidence</span><strong>{scores.get("evidence", "—")}</strong></div>
-        <div class="wt-mc"><span>Product fit</span><strong>{scores.get("product_relevance", "—")}</strong></div>
-      </div>"""
-    plan_block = ""
-    if isinstance(opp, dict) and opp:
-        plan_block = f"""
-      <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Opportunity (pre-generation)</h2>
-      <p class="wt-meta">Estimated value score: <strong>{val_cell}</strong> · Difficulty: {html_module.escape(str(opp.get("estimated_difficulty", "—")))}</p>
-      <pre style="font-size:.78rem;background:#111827;padding:14px;border-radius:10px;overflow:auto;max-height:200px;color:#cbd5e1;">{_json_snippet_for_pre(opp, 6000)}</pre>"""
-
-    is_draft = status == "draft"
-    publish_block = ""
-    if is_draft:
-        publish_block = f"""
-      <button type="button" class="wt-btn" id="wtPublishBtn">Publish</button>
-      <p style="color:#94a3b8;font-size:.88rem;margin:12px 0 0;">Publishing makes this URL public: <code style="color:#22D3EE;">/blog/{slug_esc}</code></p>"""
-    live_block = ""
-    if status == "published":
-        live_block = f"""
-      <a class="wt-btn" style="background:#0ea5e9;text-decoration:none;display:inline-flex;" href="/blog/{slug_esc}" target="_blank" rel="noopener">View live article</a>"""
-
-    status_badge = f'<span class="wt-pill" style="background:rgba(251,191,36,.15);color:#fbbf24;">Draft</span>' if is_draft else '<span class="wt-pill" style="background:rgba(74,222,128,.15);color:#4ade80;">Published</span>'
-
-    gsc = _only_dict(metrics.get("gsc"))
-    gsc_sug = metrics.get("gsc_suggestions")
-    if gsc_sug is None:
-        gsc_sug = {}
-    ctr_v = _only_dict(metrics.get("ctr_variants"))
-    gsc_panel = ""
-    if isinstance(gsc, dict) and gsc:
-        gsc_panel = f"""
-      <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Search Console (imported)</h2>
-      <p class="wt-meta">Impressions: {html_module.escape(str(gsc.get("impressions", "—")))} · Clicks: {html_module.escape(str(gsc.get("clicks", "—")))} · CTR: {html_module.escape(str(gsc.get("ctr", "—")))} · Avg pos: {html_module.escape(str(gsc.get("avg_position", "—")))}</p>
-      <pre style="font-size:.75rem;background:#111827;padding:12px;border-radius:8px;overflow:auto;max-height:120px;">{_json_snippet_for_pre(gsc_sug, 4000)}</pre>"""
-    ctr_panel = ""
-    if isinstance(ctr_v, dict) and ctr_v:
-        ctr_panel = f"""
-      <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">CTR variants (stored)</h2>
-      <pre style="font-size:.75rem;background:#111827;padding:12px;border-radius:8px;overflow:auto;max-height:180px;">{_json_snippet_for_pre(ctr_v, 8000)}</pre>"""
-
-    aid = int(article_id)
-    toolbox = f"""
-      <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Editor &amp; growth tools</h2>
-      <p class="wt-meta"><a href="/admin/writter/article/{aid}/edit">Open HTML editor</a> · <a href="/admin/writter/clusters">Content clusters</a></p>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;">
-        <button type="button" class="wt-btn" style="padding:8px 14px;font-size:.82rem;" id="wtCtrBtn">Generate CTR variants</button>
-        <button type="button" class="wt-btn" style="padding:8px 14px;font-size:.82rem;background:#334155;" id="wtConvBtn">Append conversion blocks</button>
-        <select id="wtRefreshSel" style="padding:8px;border-radius:8px;background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.12);">
-          <option value="">Refresh action…</option>
-          <option value="intro">Regenerate intro</option>
-          <option value="title">Improve title + meta</option>
-          <option value="cta">Improve CTA</option>
-          <option value="faq">Add FAQ</option>
-          <option value="evidence">Add evidence block</option>
-          <option value="clarity">Rewrite for clarity</option>
-        </select>
-        <button type="button" class="wt-btn" style="padding:8px 14px;font-size:.82rem;" id="wtRefreshGo">Run</button>
+        title_esc = html_module.escape(art.get("title") or "")
+        slug_raw = art.get("slug") or ""
+        slug_esc = html_module.escape(slug_raw)
+        status = (art.get("status") or "").strip()
+        kw_esc = html_module.escape(art.get("keywords") or "")
+        topic_esc = html_module.escape(art.get("topic") or "")
+        content = art.get("content_html") or ""
+        metrics = _only_dict(art.get("metrics_json") or {})
+        m_imp = html_module.escape(str(metrics.get("estimated_impressions", "—")))
+        m_ctr = metrics.get("estimated_ctr")
+        if m_ctr is not None:
+            try:
+                m_ctr_s = html_module.escape(str(round(float(m_ctr), 4)))
+            except (TypeError, ValueError):
+                m_ctr_s = html_module.escape(str(m_ctr))
+        else:
+            m_ctr_s = "—"
+        m_clk = html_module.escape(str(metrics.get("estimated_clicks", "—")))
+        m_conv = html_module.escape(str(metrics.get("potential_conversions", "—")))
+        seo = _only_dict(metrics.get("seo_qa"))
+        scores = _only_dict(seo.get("scores"))
+        verdict_esc = html_module.escape(str(seo.get("verdict") or "—"))
+        plan = _only_dict(art.get("planning_json"))
+        opp = plan.get("opportunity")
+        val_sc = opp.get("estimated_value_score") if isinstance(opp, dict) else None
+        val_cell = html_module.escape(str(val_sc)) if val_sc is not None else "—"
+        seo_block = ""
+        if scores:
+            seo_block = f"""
+          <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">SEO QA</h2>
+          <p class="wt-meta">Verdict: <strong style="color:#e5e7eb;">{verdict_esc}</strong></p>
+          <div class="wt-metrics" style="grid-template-columns:repeat(5,1fr);">
+            <div class="wt-mc"><span>SEO</span><strong>{scores.get("seo", "—")}</strong></div>
+            <div class="wt-mc"><span>Readability</span><strong>{scores.get("readability", "—")}</strong></div>
+            <div class="wt-mc"><span>Originality</span><strong>{scores.get("originality", "—")}</strong></div>
+            <div class="wt-mc"><span>Evidence</span><strong>{scores.get("evidence", "—")}</strong></div>
+            <div class="wt-mc"><span>Product fit</span><strong>{scores.get("product_relevance", "—")}</strong></div>
+          </div>"""
+        plan_block = ""
+        if isinstance(opp, dict) and opp:
+            plan_block = f"""
+          <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Opportunity (pre-generation)</h2>
+          <p class="wt-meta">Estimated value score: <strong>{val_cell}</strong> · Difficulty: {html_module.escape(str(opp.get("estimated_difficulty", "—")))}</p>
+          <pre style="font-size:.78rem;background:#111827;padding:14px;border-radius:10px;overflow:auto;max-height:200px;color:#cbd5e1;">{_json_snippet_for_pre(opp, 6000)}</pre>"""
+    
+        is_draft = status == "draft"
+        publish_block = ""
+        if is_draft:
+            publish_block = f"""
+          <button type="button" class="wt-btn" id="wtPublishBtn">Publish</button>
+          <p style="color:#94a3b8;font-size:.88rem;margin:12px 0 0;">Publishing makes this URL public: <code style="color:#22D3EE;">/blog/{slug_esc}</code></p>"""
+        live_block = ""
+        if status == "published":
+            live_block = f'<a class="wt-btn wt-btn-live" href="/blog/{slug_esc}" target="_blank" rel="noopener">View live article</a>'
+    
+        status_badge = f'<span class="wt-pill" style="background:rgba(251,191,36,.15);color:#fbbf24;">Draft</span>' if is_draft else '<span class="wt-pill" style="background:rgba(74,222,128,.15);color:#4ade80;">Published</span>'
+    
+        gsc = _only_dict(metrics.get("gsc"))
+        gsc_sug = metrics.get("gsc_suggestions")
+        if gsc_sug is None:
+            gsc_sug = {}
+        ctr_v = _only_dict(metrics.get("ctr_variants"))
+        gsc_panel = ""
+        if isinstance(gsc, dict) and gsc:
+            gsc_panel = f"""
+          <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Search Console (imported)</h2>
+          <p class="wt-meta">Impressions: {html_module.escape(str(gsc.get("impressions", "—")))} · Clicks: {html_module.escape(str(gsc.get("clicks", "—")))} · CTR: {html_module.escape(str(gsc.get("ctr", "—")))} · Avg pos: {html_module.escape(str(gsc.get("avg_position", "—")))}</p>
+          <pre style="font-size:.75rem;background:#111827;padding:12px;border-radius:8px;overflow:auto;max-height:120px;">{_json_snippet_for_pre(gsc_sug, 4000)}</pre>"""
+        ctr_panel = ""
+        if isinstance(ctr_v, dict) and ctr_v:
+            ctr_panel = f"""
+          <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">CTR variants (stored)</h2>
+          <pre style="font-size:.75rem;background:#111827;padding:12px;border-radius:8px;overflow:auto;max-height:180px;">{_json_snippet_for_pre(ctr_v, 8000)}</pre>"""
+    
+        aid = int(article_id)
+        toolbox = f"""
+          <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Editor &amp; growth tools</h2>
+          <p class="wt-meta"><a href="/admin/writter/article/{aid}/edit">Open HTML editor</a> · <a href="/admin/writter/clusters">Content clusters</a></p>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;">
+            <button type="button" class="wt-btn" style="padding:8px 14px;font-size:.82rem;" id="wtCtrBtn">Generate CTR variants</button>
+            <button type="button" class="wt-btn" style="padding:8px 14px;font-size:.82rem;background:#334155;" id="wtConvBtn">Append conversion blocks</button>
+            <select id="wtRefreshSel" style="padding:8px;border-radius:8px;background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.12);">
+              <option value="">Refresh action…</option>
+              <option value="intro">Regenerate intro</option>
+              <option value="title">Improve title + meta</option>
+              <option value="cta">Improve CTA</option>
+              <option value="faq">Add FAQ</option>
+              <option value="evidence">Add evidence block</option>
+              <option value="clarity">Rewrite for clarity</option>
+            </select>
+            <button type="button" class="wt-btn" style="padding:8px 14px;font-size:.82rem;" id="wtRefreshGo">Run</button>
+          </div>
+          <p class="wt-meta">GSC import (JSON body: impressions, clicks, ctr, avg_position, queries[])</p>
+          <textarea id="wtGscJson" placeholder='{{"impressions":1200,"clicks":18,"ctr":0.015,"avg_position":12.4,"queries":[{{"query":"example"}}]}}' style="width:100%;min-height:72px;font-size:.8rem;border-radius:8px;padding:10px;background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.12);box-sizing:border-box;"></textarea>
+          <button type="button" class="wt-btn" style="margin-top:8px;padding:8px 14px;font-size:.82rem;" id="wtGscBtn">Import GSC metrics</button>
+          <p class="wt-meta" style="margin-top:12px;">Version history: <button type="button" class="wt-btn" style="padding:6px 12px;font-size:.78rem;background:#334155;" id="wtVerLoad">Load versions</button></p>
+          <pre id="wtVerOut" style="display:none;font-size:.72rem;background:#111827;padding:12px;border-radius:8px;max-height:160px;overflow:auto;"></pre>
+          <p class="wt-err" id="wtToolErr" style="margin-top:8px;"></p>"""
+    
+        # Article HTML is concatenated, not f-interpolated: `{`/`}` in SVG/CSS/JS break f-string parsing.
+        _body_html = content if isinstance(content, str) else str(content or "")
+        html = (
+            f"""<!DOCTYPE html>
+    <html lang="en" data-theme="dark">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Review — {title_esc} — Writter</title>
+      <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+      <link rel="stylesheet" href="/static/styles.css" />
+      <style>
+      body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
+      [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
+      .wt-layout {{ flex:1; display:flex; min-height:0; }}
+      .wt-side {{ width:240px; background:#0a0e18; border-right:1px solid rgba(255,255,255,.08); padding:24px 16px; flex-shrink:0; }}
+      [data-theme="light"] .wt-side {{ background:#fff; border-color:rgba(15,23,42,.1); }}
+      .wt-admin-nav a {{ display:block; padding:10px 14px; border-radius:8px; color:#9ca3af; text-decoration:none; font-size:.9rem; }}
+      .wt-admin-nav a:hover {{ background:rgba(255,255,255,.05); color:#fff; }}
+      .wt-admin-nav a.active {{ background:rgba(79,70,229,.15); color:#818cf8; font-weight:600; }}
+      .wt-main {{ flex:1; padding:32px clamp(16px,4vw,40px) 80px; max-width:900px; margin-inline:auto; width:100%; min-width:0; }}
+      .wt-toolbar-r {{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:20px; }}
+      .wt-review-topbar {{ display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px 16px; margin-bottom:16px; width:100%; }}
+      .wt-review-breadcrumb {{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-width:0; }}
+      .wt-review-topbar-actions {{ flex-shrink:0; margin-left:auto; }}
+      .wt-btn-live {{ background:#0ea5e9 !important; padding:8px 16px !important; font-size:.85rem !important; }}
+      .wt-btn {{ display:inline-flex; align-items:center; gap:8px; padding:10px 18px; border-radius:8px; background:#4F46E5; color:#fff; font-weight:600; text-decoration:none; border:none; cursor:pointer; font-size:.9rem; }}
+      .wt-btn:hover {{ filter:brightness(1.05); }}
+      .wt-btn:disabled {{ opacity:.55; cursor:not-allowed; }}
+      .wt-preview {{ border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:clamp(16px,3vw,28px); background:#111827; margin-top:16px; max-width:min(900px,100%); margin-inline:auto; box-sizing:border-box; }}
+      [data-theme="light"] .wt-preview {{ background:#fff; border-color:rgba(15,23,42,.1); }}
+      .wt-meta {{ color:#94a3b8; font-size:.88rem; margin:8px 0 0; }}
+      .wt-metrics {{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:16px; }}
+      @media(max-width:700px){{ .wt-metrics{{ grid-template-columns:1fr 1fr; }} }}
+      .wt-mc {{ background:rgba(79,70,229,.08); border-radius:10px; padding:10px 12px; font-size:.85rem; }}
+      .wt-mc span {{ display:block; color:#64748b; font-size:.72rem; }}
+      .wt-err {{ color:#f87171; margin-top:8px; }}
+      .wt-pill {{ font-size:.75rem; padding:4px 10px; border-radius:99px; }}
+      </style>
+    </head>
+    <body>
+      {admin_top_nav_html("writter")}
+      <div class="wt-layout">
+        <aside class="wt-side">
+          <div style="margin-bottom:16px;"><a href="/admin/writter">← All articles</a></div>
+          {_admin_shell_nav("writter")}
+        </aside>
+        <main class="wt-main">
+          <div class="wt-toolbar-r wt-review-topbar">
+            <div class="wt-review-breadcrumb">
+              <a href="/admin/writter" style="color:#94a3b8;">Writter</a>
+              <span>/</span>
+              <span>Review</span>
+              {status_badge}
+            </div>
+            <div class="wt-review-topbar-actions">{live_block}</div>
+          </div>
+          <h1 style="font-size:1.5rem;margin:0 0 8px;">{title_esc}</h1>
+          <p class="wt-meta">Slug: <code>{slug_esc}</code> · Keywords: {kw_esc}</p>
+          <p class="wt-meta">Topic: {topic_esc}</p>
+          <div class="wt-metrics">
+            <div class="wt-mc"><span>Est. impressions</span><strong>{m_imp}</strong></div>
+            <div class="wt-mc"><span>Est. CTR</span><strong>{m_ctr_s}</strong></div>
+            <div class="wt-mc"><span>Est. clicks</span><strong>{m_clk}</strong></div>
+            <div class="wt-mc"><span>Potential conversions</span><strong>{m_conv}</strong></div>
+          </div>
+          {plan_block}
+          {seo_block}
+          {gsc_panel}
+          {ctr_panel}
+          {toolbox}
+          <div class="wt-toolbar-r" style="margin-top:20px;">
+            {publish_block}
+          </div>
+          <p class="wt-err" id="wtPubErr"></p>
+          <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Preview</h2>
+          <div class="wt-preview"><div class="content writter-article">"""
+            + _body_html
+            + f"""</div></div>
+        </main>
       </div>
-      <p class="wt-meta">GSC import (JSON body: impressions, clicks, ctr, avg_position, queries[])</p>
-      <textarea id="wtGscJson" placeholder='{{"impressions":1200,"clicks":18,"ctr":0.015,"avg_position":12.4,"queries":[{{"query":"example"}}]}}' style="width:100%;min-height:72px;font-size:.8rem;border-radius:8px;padding:10px;background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.12);box-sizing:border-box;"></textarea>
-      <button type="button" class="wt-btn" style="margin-top:8px;padding:8px 14px;font-size:.82rem;" id="wtGscBtn">Import GSC metrics</button>
-      <p class="wt-meta" style="margin-top:12px;">Version history: <button type="button" class="wt-btn" style="padding:6px 12px;font-size:.78rem;background:#334155;" id="wtVerLoad">Load versions</button></p>
-      <pre id="wtVerOut" style="display:none;font-size:.72rem;background:#111827;padding:12px;border-radius:8px;max-height:160px;overflow:auto;"></pre>
-      <p class="wt-err" id="wtToolErr" style="margin-top:8px;"></p>"""
-
-    # Article HTML is concatenated, not f-interpolated: `{`/`}` in SVG/CSS/JS break f-string parsing.
-    _body_html = content if isinstance(content, str) else str(content or "")
-    html = (
-        f"""<!DOCTYPE html>
-<html lang="en" data-theme="dark">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Review — {title_esc} — Writter</title>
-  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
-  <link rel="stylesheet" href="/static/styles.css" />
-  <style>
-  body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
-  [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
-  .wt-layout {{ flex:1; display:flex; min-height:0; }}
-  .wt-side {{ width:240px; background:#0a0e18; border-right:1px solid rgba(255,255,255,.08); padding:24px 16px; flex-shrink:0; }}
-  [data-theme="light"] .wt-side {{ background:#fff; border-color:rgba(15,23,42,.1); }}
-  .wt-admin-nav a {{ display:block; padding:10px 14px; border-radius:8px; color:#9ca3af; text-decoration:none; font-size:.9rem; }}
-  .wt-admin-nav a:hover {{ background:rgba(255,255,255,.05); color:#fff; }}
-  .wt-admin-nav a.active {{ background:rgba(79,70,229,.15); color:#818cf8; font-weight:600; }}
-  .wt-main {{ flex:1; padding:32px clamp(16px,4vw,40px) 80px; max-width:900px; margin-inline:auto; width:100%; min-width:0; }}
-  .wt-toolbar-r {{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:20px; }}
-  .wt-btn {{ display:inline-flex; align-items:center; gap:8px; padding:10px 18px; border-radius:8px; background:#4F46E5; color:#fff; font-weight:600; text-decoration:none; border:none; cursor:pointer; font-size:.9rem; }}
-  .wt-btn:hover {{ filter:brightness(1.05); }}
-  .wt-btn:disabled {{ opacity:.55; cursor:not-allowed; }}
-  .wt-preview {{ border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:clamp(16px,3vw,28px); background:#111827; margin-top:16px; max-width:min(900px,100%); margin-inline:auto; box-sizing:border-box; }}
-  [data-theme="light"] .wt-preview {{ background:#fff; border-color:rgba(15,23,42,.1); }}
-  .wt-meta {{ color:#94a3b8; font-size:.88rem; margin:8px 0 0; }}
-  .wt-metrics {{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:16px; }}
-  @media(max-width:700px){{ .wt-metrics{{ grid-template-columns:1fr 1fr; }} }}
-  .wt-mc {{ background:rgba(79,70,229,.08); border-radius:10px; padding:10px 12px; font-size:.85rem; }}
-  .wt-mc span {{ display:block; color:#64748b; font-size:.72rem; }}
-  .wt-err {{ color:#f87171; margin-top:8px; }}
-  .wt-pill {{ font-size:.75rem; padding:4px 10px; border-radius:99px; }}
-  </style>
-</head>
-<body>
-  {admin_top_nav_html("writter")}
-  <div class="wt-layout">
-    <aside class="wt-side">
-      <div style="margin-bottom:16px;"><a href="/admin/writter">← All articles</a></div>
-      {_admin_shell_nav("writter")}
-    </aside>
-    <main class="wt-main">
-      <div class="wt-toolbar-r">
-        <a href="/admin/writter" style="color:#94a3b8;">Writter</a>
-        <span>/</span>
-        <span>Review</span>
-        {status_badge}
-      </div>
-      <h1 style="font-size:1.5rem;margin:0 0 8px;">{title_esc}</h1>
-      <p class="wt-meta">Slug: <code>{slug_esc}</code> · Keywords: {kw_esc}</p>
-      <p class="wt-meta">Topic: {topic_esc}</p>
-      <div class="wt-metrics">
-        <div class="wt-mc"><span>Est. impressions</span><strong>{m_imp}</strong></div>
-        <div class="wt-mc"><span>Est. CTR</span><strong>{m_ctr_s}</strong></div>
-        <div class="wt-mc"><span>Est. clicks</span><strong>{m_clk}</strong></div>
-        <div class="wt-mc"><span>Potential conversions</span><strong>{m_conv}</strong></div>
-      </div>
-      {plan_block}
-      {seo_block}
-      {gsc_panel}
-      {ctr_panel}
-      {toolbox}
-      <div class="wt-toolbar-r" style="margin-top:20px;">
-        {live_block}
-        {publish_block}
-      </div>
-      <p class="wt-err" id="wtPubErr"></p>
-      <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Preview</h2>
-      <div class="wt-preview"><div class="content writter-article">"""
-        + _body_html
-        + f"""</div></div>
-    </main>
-  </div>
-  <script>
-  {ADMIN_THEME_SCRIPT.strip()}
-  {ADMIN_MERCHANT_SCRIPT.strip()}
-  (function() {{
-    var aid = {article_id};
-    function toolErr(t) {{ var e = document.getElementById('wtToolErr'); if (e) e.textContent = t || ''; }}
-    var ctrB = document.getElementById('wtCtrBtn');
-    if (ctrB) ctrB.onclick = function() {{
-      toolErr(''); ctrB.disabled = true;
-      fetch('/api/admin/writter/articles/' + aid + '/ctr-variants', {{ method: 'POST', credentials: 'same-origin' }})
-        .then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t); }}); return r.json(); }})
-        .then(function() {{ location.reload(); }})
-        .catch(function(e) {{ toolErr(e.message || 'Failed'); ctrB.disabled = false; }});
-    }};
-    var convB = document.getElementById('wtConvBtn');
-    if (convB) convB.onclick = function() {{
-      toolErr(''); convB.disabled = true;
-      fetch('/api/admin/writter/articles/' + aid + '/conversion-blocks', {{ method: 'POST', credentials: 'same-origin' }})
-        .then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t); }}); return r.json(); }})
-        .then(function() {{ location.reload(); }})
-        .catch(function(e) {{ toolErr(e.message || 'Failed'); convB.disabled = false; }});
-    }};
-    var rfGo = document.getElementById('wtRefreshGo');
-    if (rfGo) rfGo.onclick = function() {{
-      var sel = document.getElementById('wtRefreshSel');
-      var a = sel && sel.value;
-      if (!a) return;
-      toolErr(''); rfGo.disabled = true;
-      fetch('/api/admin/writter/articles/' + aid + '/refresh', {{
-        method: 'POST', credentials: 'same-origin',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify({{ action: a }})
-      }}).then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t); }}); return r.json(); }})
-        .then(function() {{ location.reload(); }})
-        .catch(function(e) {{ toolErr(e.message || 'Failed'); rfGo.disabled = false; }});
-    }};
-    var gscB = document.getElementById('wtGscBtn');
-    if (gscB) gscB.onclick = function() {{
-      toolErr(''); var raw = document.getElementById('wtGscJson').value;
-      var j; try {{ j = JSON.parse(raw); }} catch(e) {{ toolErr('Invalid JSON'); return; }}
-      gscB.disabled = true;
-      fetch('/api/admin/writter/articles/' + aid + '/gsc', {{
-        method: 'POST', credentials: 'same-origin',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify(j)
-      }}).then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t); }}); return r.json(); }})
-        .then(function() {{ location.reload(); }})
-        .catch(function(e) {{ toolErr(e.message || 'Failed'); gscB.disabled = false; }});
-    }};
-    var vLoad = document.getElementById('wtVerLoad');
-    if (vLoad) vLoad.onclick = function() {{
-      fetch('/api/admin/writter/articles/' + aid + '/versions', {{ credentials: 'same-origin' }})
-        .then(function(r) {{ return r.json(); }})
-        .then(function(d) {{
-          var el = document.getElementById('wtVerOut');
-          el.style.display = 'block';
-          el.textContent = JSON.stringify(d.versions || [], null, 2);
-        }});
-    }};
-  }})();
-  (function() {{
-    var btn = document.getElementById('wtPublishBtn');
-    if (!btn) return;
-    btn.onclick = function() {{
-      var err = document.getElementById('wtPubErr');
-      if (err) err.textContent = '';
-      btn.disabled = true;
-      btn.textContent = 'Publishing…';
-      fetch('/api/admin/writter/articles/{article_id}', {{
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify({{ status: 'published' }})
-      }}).then(function(r) {{
-        if (!r.ok) return r.text().then(function(t) {{ throw new Error(t); }});
-        return r.json();
-      }}).then(function() {{ location.reload(); }})
-      .catch(function(e) {{
-        if (err) err.textContent = e.message || 'Failed';
-        btn.disabled = false;
-        btn.textContent = 'Publish';
-      }});
-    }};
-  }})();
-  </script>
-</body>
-</html>"""
-    )
-    return HTMLResponse(content=html)
+      <script>
+      {ADMIN_THEME_SCRIPT.strip()}
+      {ADMIN_MERCHANT_SCRIPT.strip()}
+      (function() {{
+        var aid = {article_id};
+        function toolErr(t) {{ var e = document.getElementById('wtToolErr'); if (e) e.textContent = t || ''; }}
+        var ctrB = document.getElementById('wtCtrBtn');
+        if (ctrB) ctrB.onclick = function() {{
+          toolErr(''); ctrB.disabled = true;
+          fetch('/api/admin/writter/articles/' + aid + '/ctr-variants', {{ method: 'POST', credentials: 'same-origin' }})
+            .then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t); }}); return r.json(); }})
+            .then(function() {{ location.reload(); }})
+            .catch(function(e) {{ toolErr(e.message || 'Failed'); ctrB.disabled = false; }});
+        }};
+        var convB = document.getElementById('wtConvBtn');
+        if (convB) convB.onclick = function() {{
+          toolErr(''); convB.disabled = true;
+          fetch('/api/admin/writter/articles/' + aid + '/conversion-blocks', {{ method: 'POST', credentials: 'same-origin' }})
+            .then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t); }}); return r.json(); }})
+            .then(function() {{ location.reload(); }})
+            .catch(function(e) {{ toolErr(e.message || 'Failed'); convB.disabled = false; }});
+        }};
+        var rfGo = document.getElementById('wtRefreshGo');
+        if (rfGo) rfGo.onclick = function() {{
+          var sel = document.getElementById('wtRefreshSel');
+          var a = sel && sel.value;
+          if (!a) return;
+          toolErr(''); rfGo.disabled = true;
+          fetch('/api/admin/writter/articles/' + aid + '/refresh', {{
+            method: 'POST', credentials: 'same-origin',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ action: a }})
+          }}).then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t); }}); return r.json(); }})
+            .then(function() {{ location.reload(); }})
+            .catch(function(e) {{ toolErr(e.message || 'Failed'); rfGo.disabled = false; }});
+        }};
+        var gscB = document.getElementById('wtGscBtn');
+        if (gscB) gscB.onclick = function() {{
+          toolErr(''); var raw = document.getElementById('wtGscJson').value;
+          var j; try {{ j = JSON.parse(raw); }} catch(e) {{ toolErr('Invalid JSON'); return; }}
+          gscB.disabled = true;
+          fetch('/api/admin/writter/articles/' + aid + '/gsc', {{
+            method: 'POST', credentials: 'same-origin',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify(j)
+          }}).then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t); }}); return r.json(); }})
+            .then(function() {{ location.reload(); }})
+            .catch(function(e) {{ toolErr(e.message || 'Failed'); gscB.disabled = false; }});
+        }};
+        var vLoad = document.getElementById('wtVerLoad');
+        if (vLoad) vLoad.onclick = function() {{
+          fetch('/api/admin/writter/articles/' + aid + '/versions', {{ credentials: 'same-origin' }})
+            .then(function(r) {{ return r.json(); }})
+            .then(function(d) {{
+              var el = document.getElementById('wtVerOut');
+              el.style.display = 'block';
+              el.textContent = JSON.stringify(d.versions || [], null, 2);
+            }});
+        }};
+      }})();
+      (function() {{
+        var btn = document.getElementById('wtPublishBtn');
+        if (!btn) return;
+        btn.onclick = function() {{
+          var err = document.getElementById('wtPubErr');
+          if (err) err.textContent = '';
+          btn.disabled = true;
+          btn.textContent = 'Publishing…';
+          fetch('/api/admin/writter/articles/{article_id}', {{
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ status: 'published' }})
+          }}).then(function(r) {{
+            if (!r.ok) return r.text().then(function(t) {{ throw new Error(t); }});
+            return r.json();
+          }}).then(function() {{ location.reload(); }})
+          .catch(function(e) {{
+            if (err) err.textContent = e.message || 'Failed';
+            btn.disabled = false;
+            btn.textContent = 'Publish';
+          }});
+        }};
+      }})();
+      </script>
+    </body>
+    </html>"""
+        )
+        return HTMLResponse(content=html)
+    except Exception as e:
+        u = get_current_user(request)
+        em = (u or {}).get("email") or ""
+        _log.exception(
+            "writter review FAILED article_id=%s req_id=%s email=%s path=%s",
+            article_id,
+            req_id,
+            em,
+            request.url.path,
+        )
+        return _writter_review_error_html(request, article_id, e, req_id)
 
 
 class RuleItem(BaseModel):
@@ -2319,11 +2482,12 @@ async def writter_article_editor(request: Request, article_id: int):
         return redir
     with get_db() as db:
         row = repo.get_blog_article_by_id(db, article_id)
-    if not row:
-        raise HTTPException(404, detail="Not found")
-    title_esc = html_module.escape(row.title or "")
-    meta_esc = html_module.escape(row.meta_description or "")
-    content_json = json.dumps(row.content_html or "", ensure_ascii=False)
+        if not row:
+            return _writter_article_missing_html(article_id)
+        art = repo.blog_article_to_dict(row)
+    title_esc = html_module.escape(art.get("title") or "")
+    meta_esc = html_module.escape(art.get("meta_description") or "")
+    content_json = _json_literal_for_script(art.get("content_html") or "")
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>

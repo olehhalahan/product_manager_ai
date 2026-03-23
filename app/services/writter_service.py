@@ -4,6 +4,7 @@ Writter: SEO article generation, slugging, visual templates (no image LLM), inte
 from __future__ import annotations
 
 import hashlib
+import html as html_module
 import json
 import re
 from datetime import datetime, timezone
@@ -640,6 +641,73 @@ def build_article_plan(
     }
 
 
+def _collect_screenshot_rows(evidence: Optional[Dict[str, Any]], *, max_items: int = 40) -> List[Tuple[str, str]]:
+    """Normalize evidence into (url, placement_caption) pairs (order preserved)."""
+    shot_rows: List[Tuple[str, str]] = []
+    if not evidence or not isinstance(evidence, dict):
+        return shot_rows
+    raw_shots = evidence.get("screenshots")
+    if isinstance(raw_shots, list):
+        for item in raw_shots:
+            if not isinstance(item, dict):
+                continue
+            u = (item.get("url") or "").strip()
+            if not u:
+                continue
+            cap = (item.get("caption") or "").strip()
+            shot_rows.append((u[:900], cap[:2000]))
+    if not shot_rows:
+        for u in (evidence.get("screenshot_urls") or []):
+            if u:
+                shot_rows.append((str(u).strip()[:900], ""))
+    return shot_rows[:max_items]
+
+
+def _screenshot_url_in_html(url: str, html: str) -> bool:
+    """True if this exact screenshot URL appears in HTML (handles & vs &amp; in attributes)."""
+    if not url or not html:
+        return False
+    if url in html:
+        return True
+    amp = url.replace("&", "&amp;")
+    if amp in html:
+        return True
+    return False
+
+
+def _ensure_screenshot_figures_in_html(content_html: str, shot_rows: List[Tuple[str, str]]) -> str:
+    """Append any uploaded screenshot URLs the model omitted (truncation or oversight)."""
+    if not shot_rows:
+        return content_html or ""
+    out = content_html or ""
+    missing: List[Tuple[str, str]] = []
+    for u, cap in shot_rows:
+        if not u:
+            continue
+        if _screenshot_url_in_html(u, out):
+            continue
+        missing.append((u, cap))
+    if not missing:
+        return out
+    parts: List[str] = [
+        '<section class="writter-screenshot-append" aria-label="Additional flow steps">',
+        "<h2>Walkthrough</h2>",
+        "<p>The following screens complete the flow step by step.</p>",
+    ]
+    for u, cap in missing:
+        alt = (cap[:200] + "…") if len(cap) > 200 else (cap or "Product screenshot")
+        cap_body = cap if cap else "Screenshot"
+        u_e = html_module.escape(u)
+        alt_e = html_module.escape(alt)
+        cap_e = html_module.escape(cap_body)
+        parts.append(
+            f'<figure class="writter-flow-shot"><img src="{u_e}" alt="{alt_e}" loading="lazy" />'
+            f"<figcaption>{cap_e}</figcaption></figure>"
+        )
+    parts.append("</section>")
+    return out + "\n" + "".join(parts)
+
+
 def evidence_to_prompt_fragment(evidence: Optional[Dict[str, Any]]) -> str:
     """Turn admin evidence payload into prompt instructions (mandatory proof layer)."""
     if not evidence or not isinstance(evidence, dict):
@@ -657,28 +725,17 @@ def evidence_to_prompt_fragment(evidence: Optional[Dict[str, Any]]) -> str:
     add_met = bool(evidence.get("add_metrics"))
     add_uc = bool(evidence.get("add_use_case"))
 
-    shot_rows: List[Tuple[str, str]] = []
-    raw_shots = evidence.get("screenshots")
-    if isinstance(raw_shots, list):
-        for item in raw_shots:
-            if not isinstance(item, dict):
-                continue
-            u = (item.get("url") or "").strip()
-            if not u:
-                continue
-            cap = (item.get("caption") or "").strip()
-            shot_rows.append((u[:900], cap[:2000]))
-    if not shot_rows:
-        for u in (evidence.get("screenshot_urls") or []):
-            if u:
-                shot_rows.append((str(u).strip()[:900], ""))
+    shot_rows = _collect_screenshot_rows(evidence)
+    n_shots = len(shot_rows)
     if shot_rows:
         lines.append(
-            "Uploaded screenshots (MANDATORY placement rules): embed each with "
+            f"The user uploaded EXACTLY {n_shots} screenshot(s). You MUST embed ALL {n_shots} in content_html — "
+            "omitting any image is unacceptable. Structure the article as a flow: short explanatory text, then each figure in order. "
+            "Use each URL exactly once with "
             '<figure><img src="EXACT_URL" alt="descriptive alt text"/><figcaption>short label</figcaption></figure>. '
-            "Use each URL exactly once. Follow the editor's placement note so images appear next to the relevant section — not in random order."
+            "Follow each editor placement note; add bridging paragraphs so the story matches the screenshots."
         )
-        for u, cap in shot_rows[:12]:
+        for u, cap in shot_rows:
             if cap:
                 lines.append(f'  - Image URL: {u}\n    Editor placement / context (follow this): {cap}')
             else:
@@ -1025,25 +1082,55 @@ Business goal: {business_goal or "(not specified)"}
             "or a labeled figure description (not generic filler)."
         )
 
+    shot_rows = _collect_screenshot_rows(evidence)
+    shot_n = len(shot_rows)
+
     mode = GENERATION_MODE_PARAMS.get(generation_mode, GENERATION_MODE_PARAMS["standard"])
     max_tokens = int(mode.get("max_tokens", 4096))
     temperature = float(mode.get("temperature", 0.65))
+    # Many screenshots need a much larger completion budget or JSON truncates mid-article.
+    if shot_n > 0:
+        max_tokens = min(16384, max_tokens + shot_n * 520)
 
     mode_extra = ""
     if generation_mode == "fast":
-        mode_extra = "Mode: FAST — shorter sections, fewer words, still structured and on-topic."
+        if shot_n > 0:
+            mode_extra = (
+                f"Mode: FAST — keep prose tight, but you MUST still embed all {shot_n} screenshot URL(s) from EVIDENCE in content_html "
+                "(one <figure> per URL, exact src). Do not omit images to save length."
+            )
+        else:
+            mode_extra = "Mode: FAST — shorter sections, fewer words, still structured and on-topic."
     elif generation_mode == "authority":
         mode_extra = (
             "Mode: AUTHORITY — longer, denser sections; include FAQ or objection handling where natural; "
             "strong internal links; clear expert tone. Suggest JSON-LD types in the metrics JSON field schema_hints only as hints."
         )
+        if shot_n > 0:
+            mode_extra += f" Include all {shot_n} user screenshots with full context."
     else:
         mode_extra = "Mode: STANDARD — balanced SEO article length and structure."
+        if shot_n > 0:
+            mode_extra += f" The article must be long enough to place all {shot_n} screenshots with surrounding copy."
+
+    shot_flow_block = ""
+    if shot_n > 0:
+        shot_flow_block = f"""
+NON-NEGOTIABLE — USER SCREENSHOTS ({shot_n}):
+- content_html MUST embed every one of the {shot_n} image URL(s) listed under EVIDENCE below: use <figure><img src=\"EXACT_URL\" alt=\"...\"/><figcaption>...</figcaption></figure> for each, exact src string.
+- Do not skip, merge, or substitute images. If space is tight, shorten filler text — never drop a provided URL.
+- Order and sectioning should follow the editor's placement notes; add short paragraphs before/after each figure so the article reads as a walkthrough.
+"""
 
     system = """You are an expert SEO content writer for Cartozo.ai (e-commerce product feed optimization).
 Write in English unless the topic clearly requires another language.
 Return ONLY valid JSON, no markdown. All HTML must be safe semantic tags: section, h2, h3, p, ul, li, strong, a (href only relative /blog/... or https://).
 You MUST respect the user's topic, keywords, editor rules, evidence, and visual description — never ignore them in favor of generic filler."""
+    if shot_n > 0:
+        system += (
+            f"\n\nThe user supplied {shot_n} product screenshot URL(s). "
+            "Your JSON content_html must include an <img> with that exact src for every URL — no exceptions."
+        )
 
     user = f"""Create one blog article.
 
@@ -1069,6 +1156,7 @@ Visual placed in article (describe near top; align copy with this diagram): {vis
 {type_extra_block}
 
 {evidence_block}
+{shot_flow_block}
 
 {mode_extra}
 
@@ -1126,12 +1214,15 @@ The "metrics" object must be analytically reasoned from: the topic and search in
         if isinstance(m.get("schema_hints"), list):
             metrics["schema_hints"] = m["schema_hints"][:12]
 
+    raw_html = data.get("content_html") or ""
+    merged_html = _ensure_screenshot_figures_in_html(raw_html, shot_rows)
+
     payload = {
         "seo_title": (data.get("seo_title") or topic)[:200],
         "meta_description": (data.get("meta_description") or "")[:320],
         "h1": data.get("h1") or topic,
         "structure_outline": data.get("structure_outline"),
-        "content_html": data.get("content_html") or "",
+        "content_html": merged_html,
         "cta_html": data.get("cta_html") or "",
         "internal_links": [],
     }
