@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import html as html_module
 import json
+import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -48,6 +50,16 @@ from .services.writter_service import (
 )
 
 router = APIRouter(tags=["writter"])
+
+_WRITTER_SCREENSHOT_DIR = Path(__file__).resolve().parent.parent / "static" / "uploads" / "writter"
+_WRITTER_SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024
+_WRITTER_SCREENSHOT_TYPES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
 
 
 def _merge_refresh_html(action: str, html: str, patches: Dict[str, str]) -> str:
@@ -777,6 +789,34 @@ async def api_article_plan(request: Request, body: ArticlePlanBody):
     return JSONResponse(plan)
 
 
+@router.post("/api/admin/writter/upload-screenshots")
+async def api_upload_writter_screenshots(request: Request, files: List[UploadFile] = File(...)):
+    """Admin-only: save product screenshots under /static/uploads/writter/ and return public URLs for evidence."""
+    require_admin_http(request)
+    if not files:
+        raise HTTPException(400, detail="No files uploaded.")
+    if len(files) > 20:
+        raise HTTPException(400, detail="Too many files (max 20 per request).")
+    _WRITTER_SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    urls: List[str] = []
+    for up in files:
+        ct = ((up.content_type or "").split(";")[0]).strip().lower()
+        if ct not in _WRITTER_SCREENSHOT_TYPES:
+            raise HTTPException(
+                400,
+                detail=f"Unsupported image type: {ct or 'unknown'}. Use PNG, JPEG, WebP, or GIF.",
+            )
+        raw = await up.read()
+        if len(raw) > _WRITTER_SCREENSHOT_MAX_BYTES:
+            raise HTTPException(400, detail="Each image must be 5 MB or smaller.")
+        ext = _WRITTER_SCREENSHOT_TYPES[ct]
+        fname = f"{uuid.uuid4().hex}{ext}"
+        out_path = _WRITTER_SCREENSHOT_DIR / fname
+        out_path.write_bytes(raw)
+        urls.append(f"/static/uploads/writter/{fname}")
+    return JSONResponse({"urls": urls})
+
+
 def _create_article_from_body(body: CreateArticleBody, author_email: str) -> Dict[str, Any]:
     at = body.article_type
     if at not in VALID_ARTICLE_TYPES:
@@ -1252,6 +1292,155 @@ async def api_public_article_json(slug: str):
     return JSONResponse(data)
 
 
+def _blog_index_page_html(rows: List[Dict[str, Any]], q_raw: str) -> str:
+    """Public blog listing with keyword search (matches title, topic, keywords, meta)."""
+    q_esc = html_module.escape(q_raw)
+    cards: List[str] = []
+    for r in rows:
+        slug = html_module.escape((r.get("slug") or "").strip())
+        title = html_module.escape((r.get("title") or "Untitled").strip())
+        meta = (r.get("meta_description") or "").strip()
+        if len(meta) > 180:
+            meta = meta[:177] + "…"
+        meta_esc = html_module.escape(meta) if meta else ""
+        kw = html_module.escape((r.get("keywords") or "").strip())
+        pub = r.get("published_at") or r.get("created_at") or ""
+        if isinstance(pub, str) and len(pub) > 10:
+            date_esc = html_module.escape(pub[:10])
+        else:
+            date_esc = ""
+        kw_line = f'<p class="blog-idx-card-kw">{kw}</p>' if kw else ""
+        meta_line = f'<p class="blog-idx-card-meta">{meta_esc}</p>' if meta_esc else ""
+        date_line = f'<time class="blog-idx-card-date" datetime="{date_esc}">{date_esc}</time>' if date_esc else ""
+        cards.append(
+            f"""<li class="blog-idx-card"><a class="blog-idx-card-link" href="/blog/{slug}">
+  <h2 class="blog-idx-card-title">{title}</h2>
+  {date_line}
+  {meta_line}
+  {kw_line}
+</a></li>"""
+        )
+    if cards:
+        cards_html = "\n".join(cards)
+    elif q_raw.strip():
+        cards_html = '<li class="blog-idx-empty">No articles match your search. <a href="/blog">Clear search</a></li>'
+    else:
+        cards_html = '<li class="blog-idx-empty">No published articles yet. Check back soon.</li>'
+    title_page = "Blog — Cartozo.ai"
+    if q_raw.strip():
+        title_page = f"Search: {q_raw[:40]}{'…' if len(q_raw) > 40 else ''} — Cartozo.ai"
+    title_esc = html_module.escape(title_page)
+    return f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title_esc}</title>
+  <meta name="description" content="Articles and guides from Cartozo — product feed optimization, Google Merchant Center, and e-commerce SEO." />
+  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <style>
+  body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
+  [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
+  .blog-idx-nav {{ position:sticky; top:0; z-index:50; border-bottom:1px solid rgba(255,255,255,.08); background:rgba(11,15,25,.94); backdrop-filter:blur(14px); }}
+  [data-theme="light"] .blog-idx-nav {{ background:rgba(248,250,252,.94); border-color:rgba(15,23,42,.1); }}
+  .blog-idx-nav-inner {{ max-width:1100px; margin:0 auto; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }}
+  .blog-idx-nav-logo img {{ height:32px; width:auto; }}
+  .blog-idx-nav-logo .logo-light {{ display:block; }}
+  .blog-idx-nav-logo .logo-dark {{ display:none; }}
+  [data-theme="light"] .blog-idx-nav-logo .logo-light {{ display:none; }}
+  [data-theme="light"] .blog-idx-nav-logo .logo-dark {{ display:block; }}
+  .visually-hidden {{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }}
+  .blog-idx-nav-links {{ display:flex; align-items:center; gap:22px; flex-wrap:wrap; }}
+  .blog-idx-nav-links a {{ color:#94a3b8; font-size:.9rem; text-decoration:none; font-weight:500; }}
+  .blog-idx-nav-links a:hover {{ color:#E5E7EB; }}
+  [data-theme="light"] .blog-idx-nav-links a {{ color:#64748b; }}
+  [data-theme="light"] .blog-idx-nav-links a:hover {{ color:#0f172a; }}
+  .blog-idx-nav-links a.blog-idx-active {{ color:#818cf8; font-weight:600; }}
+  .blog-idx-nav-right {{ display:flex; align-items:center; gap:12px; }}
+  .blog-idx-theme {{ width:36px; height:36px; border-radius:50%; border:1px solid rgba(255,255,255,.15); background:transparent; color:#94a3b8; cursor:pointer; font-size:1rem; }}
+  .blog-idx-cta {{ padding:8px 16px; border-radius:8px; background:#4F46E5; color:#fff; font-weight:600; font-size:.9rem; text-decoration:none; }}
+  .blog-idx-cta:hover {{ filter:brightness(1.08); }}
+  .blog-idx-wrap {{ max-width:800px; margin:0 auto; padding:40px 24px 80px; }}
+  .blog-idx-hero h1 {{ font-size:2rem; font-weight:700; letter-spacing:-.03em; margin:0 0 8px; }}
+  .blog-idx-hero p {{ color:#94a3b8; margin:0 0 28px; font-size:1rem; line-height:1.5; }}
+  .blog-idx-search {{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:36px; }}
+  .blog-idx-search input[type="search"] {{ flex:1; min-width:200px; padding:12px 16px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:#111827; color:#E5E7EB; font-size:.95rem; box-sizing:border-box; }}
+  [data-theme="light"] .blog-idx-search input[type="search"] {{ background:#fff; border-color:rgba(15,23,42,.15); color:#0f172a; }}
+  .blog-idx-search button {{ padding:12px 22px; border-radius:10px; border:none; background:#4F46E5; color:#fff; font-weight:600; cursor:pointer; font-size:.95rem; }}
+  .blog-idx-search button:hover {{ filter:brightness(1.06); }}
+  .blog-idx-list {{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:14px; }}
+  .blog-idx-card {{ border-radius:14px; border:1px solid rgba(255,255,255,.08); background:rgba(17,24,39,.85); overflow:hidden; transition:border-color .15s, box-shadow .15s; }}
+  [data-theme="light"] .blog-idx-card {{ background:#fff; border-color:rgba(15,23,42,.1); }}
+  .blog-idx-card:hover {{ border-color:rgba(129,140,248,.35); box-shadow:0 8px 32px rgba(0,0,0,.2); }}
+  .blog-idx-card-link {{ display:block; padding:22px 24px; text-decoration:none; color:inherit; }}
+  .blog-idx-card-title {{ font-size:1.2rem; font-weight:600; margin:0 0 12px; line-height:1.35; color:#F1F5F9; }}
+  [data-theme="light"] .blog-idx-card-title {{ color:#0f172a; }}
+  .blog-idx-card-date {{ display:block; font-size:.78rem; color:#64748b; margin-bottom:10px; }}
+  .blog-idx-card-meta {{ font-size:.9rem; color:#94a3b8; line-height:1.55; margin:0 0 8px; }}
+  .blog-idx-card-kw {{ font-size:.78rem; color:#64748b; margin:0; }}
+  .blog-idx-empty {{ padding:48px 24px; text-align:center; color:#94a3b8; border-radius:14px; border:1px dashed rgba(255,255,255,.12); }}
+  .blog-idx-empty a {{ color:#818cf8; }}
+  @media (max-width:640px) {{ .blog-idx-nav-links {{ display:none; }} }}
+  </style>
+</head>
+<body>
+  <nav class="blog-idx-nav" aria-label="Main">
+    <div class="blog-idx-nav-inner">
+      <a href="/" class="blog-idx-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
+      <div class="blog-idx-nav-links">
+        <a href="/presentation">Features</a>
+        <a href="/#feed-structure">Feed</a>
+        <a href="/blog" class="blog-idx-active">Blog</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div class="blog-idx-nav-right">
+        <button type="button" class="blog-idx-theme" id="blogIdxTheme" title="Toggle theme" aria-label="Toggle theme">&#9728;</button>
+        <a href="/login" class="blog-idx-cta">Get Started</a>
+      </div>
+    </div>
+  </nav>
+  <main class="blog-idx-wrap">
+    <header class="blog-idx-hero">
+      <h1>Blog</h1>
+      <p>Guides and tips on product feeds, Google Merchant Center, and growing your catalog visibility.</p>
+      <form class="blog-idx-search" method="get" action="/blog" role="search">
+        <label for="blogq" class="visually-hidden">Search articles by keywords</label>
+        <input type="search" id="blogq" name="q" value="{q_esc}" placeholder="Search by keywords (title, topic, tags…)" autocomplete="off" />
+        <button type="submit">Search</button>
+      </form>
+    </header>
+    <ul class="blog-idx-list">{cards_html}</ul>
+  </main>
+  <script>
+  (function(){{
+    var t = document.getElementById('blogIdxTheme');
+    if (!t) return;
+    var k = 'hp-theme';
+    function g() {{ return localStorage.getItem(k) || 'dark'; }}
+    function s(v) {{
+      document.documentElement.setAttribute('data-theme', v);
+      localStorage.setItem(k, v);
+      t.textContent = v === 'dark' ? '\\u2600' : '\\u263E';
+    }}
+    t.onclick = function() {{ s(g() === 'dark' ? 'light' : 'dark'); }};
+    s(g());
+  }})();
+  </script>
+</body>
+</html>"""
+
+
+@router.get("/blog", response_class=HTMLResponse)
+async def blog_index_page(q: str = Query("", max_length=500)):
+    """Public blog index: all published articles, optional keyword search."""
+    q_clean = (q or "").strip()
+    with get_db() as db:
+        rows = repo.list_blog_articles_published_search(db, search=q_clean, limit=300)
+    html = _blog_index_page_html(rows, q_clean)
+    return HTMLResponse(content=html)
+
+
 @router.get("/blog/{slug}", response_class=HTMLResponse)
 async def blog_public_page(request: Request, slug: str):
     """Public SEO article. Right-hand analytics panel only for logged-in admin."""
@@ -1546,8 +1735,8 @@ async def blog_public_page(request: Request, slug: str):
 <body>
   <div class="blog-layout">
     <aside class="blog-side">
-      <div style="margin-bottom:20px;"><a href="/" style="color:#94a3b8;">← Home</a></div>
-      <h2>Articles</h2>
+      <div style="margin-bottom:20px;font-size:.88rem;"><a href="/blog" style="color:#94a3b8;">Blog</a> <span style="color:#475569">·</span> <a href="/" style="color:#94a3b8;">Home</a></div>
+      <h2 style="font-size:.75rem;"><a href="/blog" style="color:inherit;text-decoration:none;">Articles</a></h2>
       <ul>{nav_li}</ul>
     </aside>
     <article class="blog-main blog-center">

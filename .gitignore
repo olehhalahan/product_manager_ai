@@ -31,3 +31,7 @@ Thumbs.db
 
 # Persisted app data
 data/
+
+# Admin-uploaded Writter screenshots (keep folder via .gitkeep)
+static/uploads/writter/*
+!static/uploads/writter/.gitkeep

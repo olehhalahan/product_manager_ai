@@ -4,11 +4,18 @@ Shared admin top navigation (matches Upload page header: brand, tagline, links, 
 from __future__ import annotations
 
 
-def admin_top_nav_html(active: str = "writter") -> str:
-    """Full-width sticky header. `active` is one of: dashboard, writter, settings."""
+def admin_top_nav_html(active: str = "writter", *, show_admin_links: bool = True) -> str:
+    """Full-width sticky header. `active` is one of: upload, dashboard, writter, settings."""
 
     def _cls(name: str) -> str:
         return "nav-link active" if active == name else "nav-link"
+
+    admin_block = ""
+    if show_admin_links:
+        admin_block = f"""
+    <a href="/admin/onboarding-analytics" class="{_cls('dashboard')}">Dashboard</a>
+    <a href="/admin/writter" class="{_cls('writter')}">Writter</a>
+    <a href="/settings" class="{_cls('settings')}">Settings</a>"""
 
     return f"""<nav class="nav" aria-label="Main">
   <a href="/" class="nav-brand">
@@ -20,9 +27,7 @@ def admin_top_nav_html(active: str = "writter") -> str:
   </a>
   <div class="nav-links">
     <a href="/batches/history" class="nav-link">Batch history</a>
-    <a href="/admin/onboarding-analytics" class="{_cls('dashboard')}">Dashboard</a>
-    <a href="/admin/writter" class="{_cls('writter')}">Writter</a>
-    <a href="/settings" class="{_cls('settings')}">Settings</a>
+    <a href="/upload" class="{_cls('upload')}">Upload</a>{admin_block}
     <div class="nav-merchant" id="navMerchantWrap">
       <a href="/merchant/google/connect" class="nav-merchant-connect" id="merchantConnectBtn">Connect Merchant Center</a>
       <div class="nav-merchant-connected" id="navMerchantConnected">

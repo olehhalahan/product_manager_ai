@@ -761,6 +761,34 @@ def list_blog_articles_published(db: Session, limit: int = 200) -> List[Dict[str
     return [blog_article_to_dict(r) for r in rows]
 
 
+def list_blog_articles_published_search(db: Session, *, search: str = "", limit: int = 200) -> List[Dict[str, Any]]:
+    """
+    Published articles only. Optional search: whitespace-separated terms; each term must match
+    title, topic, keywords, or meta description (case-insensitive).
+    """
+    lim = min(max(1, limit), 500)
+    stmt = select(BlogArticle).where(BlogArticle.status == "published")
+    raw = (search or "").strip()
+    if raw:
+        terms = [t.strip() for t in raw.split() if t.strip()][:24]
+        for term in terms:
+            safe = term.replace("%", "").replace("_", "").replace("\\", "")
+            if not safe:
+                continue
+            pat = f"%{safe}%"
+            stmt = stmt.where(
+                or_(
+                    BlogArticle.title.ilike(pat),
+                    BlogArticle.topic.ilike(pat),
+                    BlogArticle.keywords.ilike(pat),
+                    BlogArticle.meta_description.ilike(pat),
+                )
+            )
+    stmt = stmt.order_by(BlogArticle.created_at.desc()).limit(lim)
+    rows = db.execute(stmt).scalars().all()
+    return [blog_article_to_dict(r) for r in rows]
+
+
 def get_blog_article_by_slug(db: Session, slug: str) -> Optional[BlogArticle]:
     return db.execute(select(BlogArticle).where(BlogArticle.slug == slug)).scalars().one_or_none()
 

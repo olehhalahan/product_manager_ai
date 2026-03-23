@@ -91,6 +91,16 @@ PAGE = r"""<!DOCTYPE html>
   .wt-inline-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; }
   .wt-inline-row label { margin:0; text-transform:none; letter-spacing:0; font-size:.88rem; }
   .wt-nav-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:16px; }
+  .wt-sh-upload { margin-top:8px; }
+  .wt-sh-input { width:auto !important; max-width:100%; padding:8px; font-size:.88rem; cursor:pointer; }
+  .wt-sh-hint { font-size:.78rem; color:#64748b; margin:6px 0 10px; text-transform:none; letter-spacing:0; line-height:1.45; }
+  .wt-sh-preview { display:flex; flex-wrap:wrap; gap:12px; margin-top:12px; }
+  .wt-sh-card { position:relative; width:128px; border-radius:10px; overflow:hidden; border:1px solid rgba(255,255,255,.12); background:#111827; }
+  [data-theme="light"] .wt-sh-card { background:#fff; border-color:rgba(15,23,42,.12); }
+  .wt-sh-card img { display:block; width:100%; height:92px; object-fit:cover; }
+  .wt-sh-remove { position:absolute; top:4px; right:4px; width:26px; height:26px; border-radius:6px; border:none; background:rgba(0,0,0,.55); color:#fff; cursor:pointer; font-size:16px; line-height:1; padding:0; }
+  .wt-sh-remove:hover { background:rgba(239,68,68,.92); }
+  .wt-sh-status { font-size:.78rem; color:#94a3b8; margin-top:8px; min-height:1.2em; }
   </style>
 </head>
 <body>
@@ -151,8 +161,13 @@ PAGE = r"""<!DOCTYPE html>
             <label><input type="checkbox" id="ev_add_uc" /> Add use-case example</label>
           </div>
           <div id="evBlockSh" class="wt-ev-block">
-            <label>Screenshot URLs (one per line)</label>
-            <textarea id="screenshot_urls" placeholder="https://…"></textarea>
+            <label>Product screenshots</label>
+            <p class="wt-sh-hint">Upload images (PNG, JPEG, WebP, or GIF — max 5 MB each, up to 20 per upload). Files are saved on the server; URLs are passed to the article generator.</p>
+            <div class="wt-sh-upload">
+              <input type="file" id="screenshot_files" class="wt-sh-input" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif" multiple />
+            </div>
+            <p class="wt-sh-status" id="screenshot_upload_status" aria-live="polite"></p>
+            <div class="wt-sh-preview" id="screenshot_preview"></div>
           </div>
           <div id="evBlockDia" class="wt-ev-block">
             <label>Diagram / workflow note</label>
@@ -255,6 +270,61 @@ PAGE = r"""<!DOCTYPE html>
   var articlePlan = null;
   var oppTimer = null;
   var ruleIdx = 0;
+  var screenshotUrls = [];
+
+  function renderScreenshotPreview() {
+    var el = document.getElementById('screenshot_preview');
+    if (!el) return;
+    el.innerHTML = '';
+    screenshotUrls.forEach(function(url, idx) {
+      var card = document.createElement('div');
+      card.className = 'wt-sh-card';
+      card.innerHTML = '<img src="' + url.replace(/"/g, '') + '" alt="" loading="lazy" /><button type="button" class="wt-sh-remove" data-idx="' + idx + '" title="Remove">×</button>';
+      el.appendChild(card);
+    });
+    el.querySelectorAll('.wt-sh-remove').forEach(function(btn) {
+      btn.onclick = function() {
+        var i = parseInt(btn.getAttribute('data-idx'), 10);
+        if (!isNaN(i)) {
+          screenshotUrls.splice(i, 1);
+          renderScreenshotPreview();
+        }
+      };
+    });
+  }
+
+  var screenshotFilesEl = document.getElementById('screenshot_files');
+  if (screenshotFilesEl) {
+    screenshotFilesEl.addEventListener('change', function() {
+      var inp = this;
+      var files = inp.files;
+      if (!files || !files.length) return;
+      var st = document.getElementById('screenshot_upload_status');
+      if (st) st.textContent = 'Uploading…';
+      var fd = new FormData();
+      for (var i = 0; i < files.length; i++) {
+        fd.append('files', files[i]);
+      }
+      fetch('/api/admin/writter/upload-screenshots', { method: 'POST', body: fd, credentials: 'same-origin' })
+        .then(function(r) {
+          if (!r.ok) return r.text().then(function(t) { throw new Error(t || 'Upload failed'); });
+          return r.json();
+        })
+        .then(function(data) {
+          var urls = data.urls || [];
+          urls.forEach(function(u) { screenshotUrls.push(u); });
+          renderScreenshotPreview();
+          var evSh = document.getElementById('ev_use_sh');
+          if (evSh) { evSh.checked = true; syncEvBlocks(); }
+          if (st) st.textContent = urls.length ? ('Uploaded ' + urls.length + ' image(s).') : '';
+          inp.value = '';
+        })
+        .catch(function(e) {
+          if (st) st.textContent = e.message || 'Upload failed';
+          inp.value = '';
+        });
+    });
+  }
 
   function setStep(n) {
     currentStep = n;
@@ -518,7 +588,7 @@ PAGE = r"""<!DOCTYPE html>
         add_diagram: document.getElementById('ev_add_dia').checked,
         add_metrics: document.getElementById('ev_add_met').checked,
         add_use_case: document.getElementById('ev_add_uc').checked,
-        screenshot_urls: (document.getElementById('screenshot_urls').value || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean),
+        screenshot_urls: screenshotUrls.slice(),
         product_screen_ids: (document.getElementById('product_screen_ids').value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
         metrics_manual: document.getElementById('metrics_manual').value,
         customer_scenario: document.getElementById('customer_scenario').value,

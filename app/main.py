@@ -1435,6 +1435,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         <a href="/" class="hp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="hp-nav-links">
             <a href="/presentation" class="hp-nav-link">Features</a>
+            <a href="/blog" class="hp-nav-link">Blog</a>
             <a href="#feed-structure" class="hp-nav-link">Feed Structure</a>
             <a href="#how-it-works" class="hp-nav-link">How it works</a>
             <a href="/contact" class="hp-nav-link">Contact us</a>
@@ -2199,6 +2200,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Upload feed &mdash; Cartozo.ai</title>
+    <link rel="stylesheet" href="/static/styles.css" />
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
@@ -2221,54 +2223,6 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     [data-theme="light"] select option { background: #fff; color: #0f172a; }
     [data-theme="light"] .btn-primary { background: #0f172a; color: #fff; }
     [data-theme="light"] .btn-primary:hover { background: #1e293b; }
-    [data-theme="light"] .nav-cta { background: #0f172a; color: #fff; }
-    [data-theme="light"] .nav-cta:hover { background: #1e293b; }
-    [data-theme="light"] .nav-link { color: rgba(15,23,42,0.6); }
-    [data-theme="light"] .nav-link:hover, [data-theme="light"] .nav-link.active { color: #0f172a; }
-
-    .nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-    [data-theme="light"] .nav { border-bottom-color: rgba(15,23,42,0.08); }
-    .nav-logo img { height: 32px; }
-    .nav-logo .logo-light { display: block; filter: brightness(0) invert(1); }
-    .nav-logo .logo-dark { display: none; }
-    [data-theme="light"] .nav-logo .logo-light { display: none; }
-    [data-theme="light"] .nav-logo .logo-dark { display: block; filter: none; }
-    .theme-btn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }
-    .theme-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
-    [data-theme="light"] .theme-btn { border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }
-    [data-theme="light"] .theme-btn:hover { color: #0f172a; background: rgba(15,23,42,0.06); }
-    .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; justify-content: flex-end; }
-    .nav-link { color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }
-    .nav-link:hover, .nav-link.active { color: #fff; }
-    .nav-cta { background: #fff; color: #000; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; }
-    .nav-merchant { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .nav-merchant-connect { display: inline-flex; align-items: center; justify-content: center; padding: 10px 18px; font-size: 0.85rem; font-weight: 600; border-radius: 8px; text-decoration: none; border: none; cursor: pointer; background: linear-gradient(135deg, #22D3EE 0%, #06b6d4 100%); color: #0a0a0a; box-shadow: 0 2px 12px rgba(34, 211, 238, 0.35); transition: transform 0.15s, filter 0.15s, box-shadow 0.15s; white-space: nowrap; }
-    .nav-merchant-connect:hover { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(34, 211, 238, 0.45); }
-    .nav-merchant-connected { display: none; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .nav-merchant-connected.visible { display: flex; }
-    button.nav-merchant-pill { font: inherit; font-family: inherit; font-size: 0.8rem; font-weight: 600; padding: 8px 14px; border-radius: 999px; background: rgba(34, 211, 238, 0.15); color: #22D3EE; border: 1px solid rgba(34, 211, 238, 0.35); cursor: pointer; }
-    button.nav-merchant-pill:hover { filter: brightness(1.08); }
-    [data-theme="light"] button.nav-merchant-pill { color: #0e7490; border-color: rgba(14, 116, 144, 0.35); background: rgba(34, 211, 238, 0.12); }
-    .mc-confirm-row { display: flex; gap: 12px; margin-top: 8px; justify-content: stretch; }
-    .mc-confirm-no { flex: 1; padding: 12px 14px; font-size: 0.9rem; font-weight: 600; border-radius: 10px; border: 1px solid rgba(255,255,255,0.25); background: transparent; color: rgba(255,255,255,0.9); cursor: pointer; }
-    .mc-confirm-no:hover { background: rgba(255,255,255,0.06); }
-    .mc-confirm-yes { flex: 1; padding: 12px 14px; font-size: 0.9rem; font-weight: 600; border-radius: 10px; border: none; cursor: pointer; background: linear-gradient(135deg, #22D3EE 0%, #06b6d4 100%); color: #0a0a0a; }
-    .mc-confirm-yes:hover { filter: brightness(1.05); }
-    [data-theme="light"] .mc-confirm-no { border-color: rgba(15,23,42,0.2); color: #0f172a; }
-    [data-theme="light"] .mc-confirm-no:hover { background: rgba(15,23,42,0.06); }
-    [data-theme="light"] .nav-merchant-connect { box-shadow: 0 2px 12px rgba(6, 182, 212, 0.3); }
-
-    .mc-success-overlay { position: fixed; inset: 0; background: rgba(5, 8, 15, 0.72); backdrop-filter: blur(6px); z-index: 10000; display: none; align-items: center; justify-content: center; padding: 24px; opacity: 0; transition: opacity 0.28s ease; }
-    .mc-success-overlay.visible { display: flex; opacity: 1; }
-    .mc-success-modal { background: rgba(18, 22, 32, 0.96); border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; padding: 36px 32px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 24px 64px rgba(0,0,0,0.45); }
-    [data-theme="light"] .mc-success-modal { background: #fff; border-color: rgba(15,23,42,0.1); }
-    .mc-success-icon { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 50%; background: linear-gradient(135deg, #22D3EE, #06b6d4); color: #0a0a0a; font-size: 28px; line-height: 56px; font-weight: 700; }
-    .mc-success-modal h3 { font-size: 1.15rem; font-weight: 600; color: #fff; margin-bottom: 8px; }
-    [data-theme="light"] .mc-success-modal h3 { color: #0f172a; }
-    .mc-success-modal p { font-size: 0.9rem; color: rgba(255,255,255,0.6); line-height: 1.5; margin-bottom: 20px; }
-    [data-theme="light"] .mc-success-modal p { color: rgba(15,23,42,0.6); }
-    .mc-success-gotit { width: 100%; padding: 12px 18px; font-size: 0.95rem; font-weight: 600; border-radius: 10px; border: none; cursor: pointer; background: linear-gradient(135deg, #22D3EE 0%, #06b6d4 100%); color: #0a0a0a; }
-    .mc-success-gotit:hover { filter: brightness(1.05); }
 
     .container { max-width: 600px; margin: 80px auto; padding: 0 24px; }
     .title { font-size: 2rem; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; }
@@ -2339,47 +2293,13 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     [data-theme="light"] .combo-list li.selected { background: rgba(15,23,42,0.04); }
     [data-theme="light"] .combo-desc { color: rgba(15,23,42,0.4); }
 
-    @media (max-width: 768px) { .nav { padding: 16px 24px; } .nav-link { display: none; } .container { margin: 40px auto; } }
+    @media (max-width: 768px) { .container { margin: 40px auto; } }
     </style>
 </head>
 <!-- cartozo-upload-ui:3 merchant-in-nav -->
 <body data-upload-ui="3">
 {GTM_BODY}
-    <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-        <div class="nav-links">
-            <a href="/batches/history" class="nav-link">Batch history</a>
-            <!-- ADMIN_NAV -->
-            <div class="nav-merchant" id="navMerchantWrap">
-                <a href="/merchant/google/connect" class="nav-merchant-connect" id="merchantConnectBtn">Connect Merchant Center</a>
-                <div class="nav-merchant-connected" id="navMerchantConnected">
-                    <button type="button" class="nav-merchant-pill" id="merchantConnectedLabel" aria-haspopup="dialog" title="Disconnect Merchant Center">Connected</button>
-                </div>
-            </div>
-            <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-            <a href="/logout" class="nav-link">Log out</a>
-        </div>
-    </nav>
-
-    <div id="mcConnectSuccessOverlay" class="mc-success-overlay" aria-hidden="true">
-        <div class="mc-success-modal" role="dialog" aria-modal="true" aria-labelledby="mcSuccessTitle" onclick="event.stopPropagation()">
-            <div class="mc-success-icon" aria-hidden="true">&#10003;</div>
-            <h3 id="mcSuccessTitle">Merchant Center connected</h3>
-            <p>Cartozo can upload products to your Google Merchant account on your behalf.</p>
-            <button type="button" class="mc-success-gotit" id="mcConnectSuccessGotIt">Got it</button>
-        </div>
-    </div>
-
-    <div id="merchantDisconnectOverlay" class="mc-success-overlay" aria-hidden="true">
-        <div class="mc-success-modal" role="dialog" aria-modal="true" aria-labelledby="mcDiscTitle" onclick="event.stopPropagation()">
-            <h3 id="mcDiscTitle">Disconnect Merchant Center?</h3>
-            <p>Cartozo will stop uploading products to your Google Merchant account until you connect again.</p>
-            <div class="mc-confirm-row">
-                <button type="button" class="mc-confirm-no" id="merchantDisconnectCancel">No</button>
-                <button type="button" class="mc-confirm-yes" id="merchantDisconnectConfirm">Yes, disconnect</button>
-            </div>
-        </div>
-    </div>
+{ADMIN_TOP_NAV}
 
     <div class="container">
         <h1 class="title">Optimize your product catalog</h1>
@@ -2486,73 +2406,6 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
                 }
             }
         } catch (e) {}
-        var mConn = document.getElementById("merchantConnectBtn");
-        var navConnected = document.getElementById("navMerchantConnected");
-        var merchantConnectedLabel = document.getElementById("merchantConnectedLabel");
-        var mcSuccessOv = document.getElementById("mcConnectSuccessOverlay");
-        var mcSuccessOk = document.getElementById("mcConnectSuccessGotIt");
-        var discOv = document.getElementById("merchantDisconnectOverlay");
-        var discCancel = document.getElementById("merchantDisconnectCancel");
-        var discConfirm = document.getElementById("merchantDisconnectConfirm");
-        function refreshMerchantUi(s) {
-            if (!mConn || !navConnected) return;
-            if (!s || !s.connected) {
-                mConn.style.display = "inline-flex";
-                navConnected.classList.remove("visible");
-                return;
-            }
-            mConn.style.display = "none";
-            navConnected.classList.add("visible");
-            if (merchantConnectedLabel) {
-                merchantConnectedLabel.textContent = s.merchant_id ? "Connected · ID " + s.merchant_id : "Connected";
-            }
-        }
-        try {
-            var spMc = new URLSearchParams(location.search);
-            if (spMc.get("merchant") === "connected" && mcSuccessOv) {
-                mcSuccessOv.classList.add("visible");
-                mcSuccessOv.setAttribute("aria-hidden", "false");
-                spMc.delete("merchant");
-                var qMc = spMc.toString();
-                history.replaceState({}, "", location.pathname + (qMc ? "?" + qMc : "") + location.hash);
-            }
-        } catch (e) {}
-        if (mcSuccessOk && mcSuccessOv) {
-            function closeMcSuccess() {
-                mcSuccessOv.classList.remove("visible");
-                mcSuccessOv.setAttribute("aria-hidden", "true");
-            }
-            mcSuccessOk.addEventListener("click", closeMcSuccess);
-            mcSuccessOv.addEventListener("click", function(e) { if (e.target === mcSuccessOv) closeMcSuccess(); });
-        }
-        fetch("/api/merchant/status", { credentials: "same-origin" }).then(function(r) { return r.ok ? r.json() : null; }).then(refreshMerchantUi).catch(function() {});
-        function merchantDiscOpen() {
-            if (!discOv) return;
-            discOv.classList.add("visible");
-            discOv.setAttribute("aria-hidden", "false");
-        }
-        function merchantDiscClose() {
-            if (!discOv) return;
-            discOv.classList.remove("visible");
-            discOv.setAttribute("aria-hidden", "true");
-        }
-        if (merchantConnectedLabel) {
-            merchantConnectedLabel.addEventListener("click", function(e) {
-                if (!navConnected || !navConnected.classList.contains("visible")) return;
-                e.preventDefault();
-                merchantDiscOpen();
-            });
-        }
-        if (discCancel) discCancel.addEventListener("click", merchantDiscClose);
-        if (discOv) discOv.addEventListener("click", function(e) { if (e.target === discOv) merchantDiscClose(); });
-        if (discConfirm) {
-            discConfirm.addEventListener("click", function() {
-                merchantDiscClose();
-                fetch("/api/merchant/disconnect", { method: "POST", credentials: "same-origin" }).then(function(r) {
-                    if (r.ok) { refreshMerchantUi({ connected: false }); location.reload(); }
-                });
-            });
-        }
     })();
     (function(){
         const zone=document.getElementById("dropzone"),inp=document.getElementById("file"),nameEl=document.getElementById("filename"),errEl=document.getElementById("file-error");
@@ -2640,10 +2493,13 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
             }
             if(e.key==="Escape")cWrap.classList.remove("open");
         });
-
-        const themeToggle=document.getElementById("themeToggle");
-        if(themeToggle){const THEME_KEY="hp-theme";function getT(){return localStorage.getItem(THEME_KEY)||"dark";}function setT(t){document.documentElement.setAttribute("data-theme",t);localStorage.setItem(THEME_KEY,t);themeToggle.textContent=t==="dark"?"\u2600":"\u263E";}themeToggle.onclick=()=>setT(getT()==="dark"?"light":"dark");setT(getT());}
     })();
+    </script>
+    <script>
+{ADMIN_THEME_SCRIPT}
+    </script>
+    <script>
+{ADMIN_MERCHANT_SCRIPT}
     </script>
     <script src="/static/page-transition.js"></script>
 </body>
@@ -2651,8 +2507,17 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
 
 
 def _build_upload_page(user_role: str = "customer") -> str:
-    admin_nav = _admin_nav_links(active="", user_role=user_role)
-    return _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", GTM_HEAD).replace("{GTM_BODY}", GTM_BODY).replace("<!-- ADMIN_NAV -->", admin_nav)
+    nav = admin_top_nav_html(
+        active="upload",
+        show_admin_links=(user_role == "admin"),
+    )
+    return (
+        _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", GTM_HEAD)
+        .replace("{GTM_BODY}", GTM_BODY)
+        .replace("{ADMIN_TOP_NAV}", nav)
+        .replace("{ADMIN_THEME_SCRIPT}", ADMIN_THEME_SCRIPT.strip())
+        .replace("{ADMIN_MERCHANT_SCRIPT}", ADMIN_MERCHANT_SCRIPT.strip())
+    )
 
 
 def _build_contact_page() -> str:
@@ -2788,6 +2653,7 @@ def _build_contact_page() -> str:
         <a href="/" class="cp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="cp-nav-links">
             <a href="/#features" class="cp-nav-link">Features</a>
+            <a href="/blog" class="cp-nav-link">Blog</a>
             <a href="/#feed-structure" class="cp-nav-link">Feed Structure</a>
             <a href="/#how-it-works" class="cp-nav-link">How it works</a>
             <a href="/contact" class="cp-nav-link">Contact us</a>
@@ -2963,7 +2829,10 @@ def _build_presentation_page() -> str:
     </div>
     <nav class="pp-nav" id="ppNav">
         <a href="/" class="pp-nav-logo">Cartozo.ai</a>
-        <a href="/" class="pp-nav-close">Close</a>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <a href="/blog" class="pp-nav-close">Blog</a>
+            <a href="/" class="pp-nav-close">Close</a>
+        </div>
     </nav>
     <div class="pp-slides">
         <div class="pp-slide active" data-slide="0">
