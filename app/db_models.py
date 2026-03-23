@@ -120,3 +120,62 @@ class OnboardingSession(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime, nullable=True)
     duration_seconds = Column(Integer, nullable=True)
+
+
+class ContentCluster(Base):
+    """Topical cluster (pillar + supporting articles) for Writter SEO strategy."""
+    __tablename__ = "content_clusters"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slug = Column(String(128), unique=True, nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class BlogArticle(Base):
+    """SEO blog articles (Writter admin + public /blog/{slug})."""
+    __tablename__ = "blog_articles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slug = Column(String(255), unique=True, nullable=False, index=True)
+    title = Column(String(500), nullable=False)
+    article_type = Column(String(64), nullable=False)
+    topic = Column(Text, nullable=True)
+    keywords = Column(Text, nullable=True)
+    rules_json = Column(JSON, nullable=True)
+    content_html = Column(Text, nullable=False, default="")
+    meta_description = Column(Text, nullable=True)
+    structure_json = Column(JSON, nullable=True)
+    visual_html = Column(Text, nullable=True)
+    metrics_json = Column(JSON, nullable=True)
+    planning_json = Column(JSON, nullable=True)
+    internal_links_json = Column(JSON, nullable=True)
+    status = Column(String(32), default="draft")
+    published_at = Column(DateTime, nullable=True)
+    views = Column(Integer, default=0)
+    cta_clicks = Column(Integer, default=0)
+    analytics_sessions = Column(Integer, default=0)
+    total_time_ms = Column(Integer, default=0)
+    total_scroll_pct = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    author_email = Column(String(255), nullable=True)
+    cluster_id = Column(Integer, ForeignKey("content_clusters.id"), nullable=True)
+    cluster_role = Column(String(32), nullable=True)
+    writter_refresh_status = Column(String(64), nullable=True)
+
+
+class BlogArticleVersion(Base):
+    """Snapshot of article HTML/title/meta for version history."""
+    __tablename__ = "blog_article_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    article_id = Column(Integer, ForeignKey("blog_articles.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(500), nullable=False)
+    content_html = Column(Text, nullable=False, default="")
+    meta_description = Column(Text, nullable=True)
+    author_email = Column(String(255), nullable=True)
+    note = Column(Text, nullable=True)
+    change_summary = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -1,14 +1,27 @@
 """
 Database repository for settings, users, feedback, pending uploads.
 """
-from datetime import datetime, timezone
-from typing import Optional, Dict, List, Any
+from datetime import datetime, timezone, timedelta
+from typing import Any, Optional, Dict, List
 import uuid
 
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, or_, and_, delete, update
 
-from ..db_models import Setting, User, Feedback, PendingUpload, ChatSession, ContactSubmission, OnboardingSession
+_UNSET = object()
+
+from ..db_models import (
+    Setting,
+    User,
+    Feedback,
+    PendingUpload,
+    ChatSession,
+    ContactSubmission,
+    OnboardingSession,
+    BlogArticle,
+    BlogArticleVersion,
+    ContentCluster,
+)
 
 
 # ─── Settings ────────────────────────────────────────────────────────────────
@@ -62,6 +75,24 @@ def get_settings(db: Session) -> Dict[str, str]:
         settings["seo_og_image"] = ""
     if "seo_og_site_name" not in settings:
         settings["seo_og_site_name"] = "Cartozo.ai"
+    # Blog / Writter: optional extra instructions per article type (empty = use defaults only)
+    for _wk in (
+        "writter_prompt_problem_solving",
+        "writter_prompt_feature_presentation",
+        "writter_prompt_informational",
+        "writter_prompt_use_cases",
+        "writter_prompt_comparison",
+        "writter_prompt_checklist_template",
+    ):
+        if _wk not in settings:
+            settings[_wk] = ""
+    # Writter workspace defaults (optional — used when admin leaves fields blank)
+    if "writter_default_country_language" not in settings:
+        settings["writter_default_country_language"] = "US / English"
+    if "writter_default_audience" not in settings:
+        settings["writter_default_audience"] = "SMB e-commerce merchants and catalog managers"
+    if "writter_default_cta" not in settings:
+        settings["writter_default_cta"] = "Try Cartozo on your product feed"
     return settings
 
 
@@ -670,3 +701,391 @@ def get_onboarding_source_filter_options(db: Session) -> List[str]:
         ).all()
         if r[0]
     ]
+
+
+# ─── Blog articles (Writter) ───────────────────────────────────────────────────
+
+
+def blog_article_to_dict(row: BlogArticle) -> Dict[str, Any]:
+    return {
+        "id": row.id,
+        "slug": row.slug,
+        "title": row.title,
+        "article_type": row.article_type,
+        "topic": row.topic or "",
+        "keywords": row.keywords or "",
+        "rules_json": row.rules_json,
+        "content_html": row.content_html or "",
+        "meta_description": row.meta_description or "",
+        "structure_json": row.structure_json,
+        "visual_html": row.visual_html,
+        "metrics_json": row.metrics_json,
+        "planning_json": row.planning_json,
+        "internal_links_json": row.internal_links_json,
+        "status": row.status or "draft",
+        "published_at": row.published_at.isoformat() if row.published_at else None,
+        "views": row.views or 0,
+        "cta_clicks": row.cta_clicks or 0,
+        "analytics_sessions": row.analytics_sessions or 0,
+        "total_time_ms": row.total_time_ms or 0,
+        "total_scroll_pct": float(row.total_scroll_pct or 0),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "author_email": row.author_email or "",
+        "cluster_id": row.cluster_id,
+        "cluster_role": row.cluster_role or "",
+        "writter_refresh_status": row.writter_refresh_status or "",
+    }
+
+
+def list_blog_articles_admin(db: Session, limit: int = 500) -> List[Dict[str, Any]]:
+    rows = (
+        db.execute(select(BlogArticle).order_by(BlogArticle.created_at.desc()).limit(min(max(1, limit), 2000)))
+        .scalars()
+        .all()
+    )
+    return [blog_article_to_dict(r) for r in rows]
+
+
+def list_blog_articles_published(db: Session, limit: int = 200) -> List[Dict[str, Any]]:
+    rows = (
+        db.execute(
+            select(BlogArticle)
+            .where(BlogArticle.status == "published")
+            .order_by(BlogArticle.created_at.desc())
+            .limit(min(max(1, limit), 500))
+        )
+        .scalars()
+        .all()
+    )
+    return [blog_article_to_dict(r) for r in rows]
+
+
+def get_blog_article_by_slug(db: Session, slug: str) -> Optional[BlogArticle]:
+    return db.execute(select(BlogArticle).where(BlogArticle.slug == slug)).scalars().one_or_none()
+
+
+def get_blog_article_by_id(db: Session, article_id: int) -> Optional[BlogArticle]:
+    return db.execute(select(BlogArticle).where(BlogArticle.id == article_id)).scalars().one_or_none()
+
+
+def get_published_slugs_titles_excluding(
+    db: Session, exclude_slug: Optional[str] = None, limit: int = 50
+) -> List[Dict[str, str]]:
+    """For internal linking prompts."""
+    q = select(BlogArticle.slug, BlogArticle.title).where(BlogArticle.status == "published")
+    if exclude_slug:
+        q = q.where(BlogArticle.slug != exclude_slug)
+    rows = db.execute(q.order_by(BlogArticle.published_at.desc()).limit(limit)).all()
+    return [{"slug": r[0], "title": r[1]} for r in rows]
+
+
+def count_blog_articles_same_topic(db: Session, topic: str) -> int:
+    """Scaled-content guard: count articles with identical topic (case-insensitive trim)."""
+    t = (topic or "").strip().lower()
+    if not t:
+        return 0
+    n = db.execute(
+        select(func.count()).select_from(BlogArticle).where(func.lower(BlogArticle.topic) == t)
+    ).scalar_one_or_none()
+    return int(n or 0)
+
+
+def create_blog_article(
+    db: Session,
+    *,
+    slug: str,
+    title: str,
+    article_type: str,
+    topic: str,
+    keywords: str,
+    rules_json: Optional[List[Dict[str, Any]]],
+    content_html: str,
+    meta_description: str,
+    structure_json: Optional[Any],
+    visual_html: Optional[str],
+    metrics_json: Optional[Dict[str, Any]],
+    planning_json: Optional[Dict[str, Any]],
+    internal_links_json: Optional[List[Dict[str, str]]],
+    status: str,
+    author_email: str,
+    published_at: Optional[datetime],
+    cluster_id: Optional[int] = None,
+    cluster_role: Optional[str] = None,
+    writter_refresh_status: Optional[str] = None,
+) -> BlogArticle:
+    row = BlogArticle(
+        slug=slug,
+        title=title,
+        article_type=article_type,
+        topic=topic,
+        keywords=keywords,
+        rules_json=rules_json,
+        content_html=content_html,
+        meta_description=meta_description,
+        structure_json=structure_json,
+        visual_html=visual_html,
+        metrics_json=metrics_json,
+        planning_json=planning_json,
+        internal_links_json=internal_links_json,
+        status=status,
+        published_at=published_at,
+        author_email=author_email or None,
+        cluster_id=cluster_id,
+        cluster_role=cluster_role,
+        writter_refresh_status=writter_refresh_status,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def update_blog_article(
+    db: Session,
+    row: BlogArticle,
+    *,
+    title: Optional[str] = None,
+    content_html: Optional[str] = None,
+    meta_description: Optional[str] = None,
+    structure_json: Optional[Any] = None,
+    visual_html: Optional[str] = None,
+    metrics_json: Optional[Dict[str, Any]] = None,
+    planning_json: Optional[Dict[str, Any]] = None,
+    internal_links_json: Optional[List[Dict[str, str]]] = None,
+    status: Optional[str] = None,
+    published_at: Optional[datetime] = None,
+    cluster_id: Any = _UNSET,
+    cluster_role: Any = _UNSET,
+    writter_refresh_status: Any = _UNSET,
+) -> None:
+    now = datetime.now(timezone.utc)
+    if title is not None:
+        row.title = title
+    if content_html is not None:
+        row.content_html = content_html
+    if meta_description is not None:
+        row.meta_description = meta_description
+    if structure_json is not None:
+        row.structure_json = structure_json
+    if visual_html is not None:
+        row.visual_html = visual_html
+    if metrics_json is not None:
+        row.metrics_json = metrics_json
+    if planning_json is not None:
+        row.planning_json = planning_json
+    if internal_links_json is not None:
+        row.internal_links_json = internal_links_json
+    if cluster_id is not _UNSET:
+        row.cluster_id = cluster_id
+    if cluster_role is not _UNSET:
+        row.cluster_role = cluster_role
+    if writter_refresh_status is not _UNSET:
+        row.writter_refresh_status = writter_refresh_status
+    if status is not None:
+        row.status = status
+        if status == "draft":
+            row.published_at = None
+        elif status == "published" and row.published_at is None:
+            row.published_at = now
+    if published_at is not None:
+        row.published_at = published_at
+    row.updated_at = now
+
+
+def increment_blog_views(db: Session, slug: str) -> None:
+    row = get_blog_article_by_slug(db, slug)
+    if not row or row.status != "published":
+        return
+    row.views = (row.views or 0) + 1
+    row.updated_at = datetime.now(timezone.utc)
+
+
+def record_blog_analytics(
+    db: Session,
+    slug: str,
+    *,
+    time_ms: Optional[int] = None,
+    scroll_pct: Optional[float] = None,
+    cta_click: bool = False,
+) -> None:
+    row = get_blog_article_by_slug(db, slug)
+    if not row or row.status != "published":
+        return
+    now = datetime.now(timezone.utc)
+    row.analytics_sessions = (row.analytics_sessions or 0) + 1
+    if time_ms is not None and time_ms > 0:
+        row.total_time_ms = (row.total_time_ms or 0) + int(min(time_ms, 3_600_000))
+    if scroll_pct is not None and scroll_pct >= 0:
+        row.total_scroll_pct = float(row.total_scroll_pct or 0) + min(float(scroll_pct), 100.0)
+    if cta_click:
+        row.cta_clicks = (row.cta_clicks or 0) + 1
+    row.updated_at = now
+
+
+def slug_exists(db: Session, slug: str, exclude_id: Optional[int] = None) -> bool:
+    q = select(BlogArticle.id).where(BlogArticle.slug == slug)
+    if exclude_id is not None:
+        q = q.where(BlogArticle.id != exclude_id)
+    return db.execute(q).scalar_one_or_none() is not None
+
+
+def delete_blog_article(db: Session, article_id: int) -> bool:
+    row = get_blog_article_by_id(db, article_id)
+    if not row:
+        return False
+    db.execute(delete(BlogArticleVersion).where(BlogArticleVersion.article_id == article_id))
+    db.delete(row)
+    return True
+
+
+def count_articles_sharing_primary_keyword(db: Session, keywords: str) -> int:
+    parts = [x.strip().lower() for x in (keywords or "").split(",") if len(x.strip()) > 2]
+    if not parts:
+        return 0
+    pk = parts[0]
+    n = db.execute(
+        select(func.count()).select_from(BlogArticle).where(func.lower(BlogArticle.keywords).like(f"%{pk}%"))
+    ).scalar_one_or_none()
+    return int(n or 0)
+
+
+def count_articles_by_author_since(db: Session, email: str, hours: int = 24) -> int:
+    if not (email or "").strip():
+        return 0
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    n = db.execute(
+        select(func.count())
+        .select_from(BlogArticle)
+        .where(BlogArticle.author_email == email.strip(), BlogArticle.created_at >= cutoff)
+    ).scalar_one_or_none()
+    return int(n or 0)
+
+
+def count_near_duplicate_titles(db: Session, title: str) -> int:
+    """Rough guard: same normalized prefix (first 48 chars) as existing titles."""
+    t = (title or "").strip().lower()[:48]
+    if len(t) < 12:
+        return 0
+    n = db.execute(
+        select(func.count()).select_from(BlogArticle).where(func.lower(BlogArticle.title).like(f"{t}%"))
+    ).scalar_one_or_none()
+    return int(n or 0)
+
+
+def list_content_clusters(db: Session) -> List[Dict[str, Any]]:
+    rows = (
+        db.execute(select(ContentCluster).order_by(ContentCluster.name.asc())).scalars().all()
+    )
+    out = []
+    for r in rows:
+        out.append(
+            {
+                "id": r.id,
+                "slug": r.slug,
+                "name": r.name,
+                "description": r.description or "",
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+        )
+    return out
+
+
+def get_content_cluster_by_id(db: Session, cluster_id: int) -> Optional[ContentCluster]:
+    return db.execute(select(ContentCluster).where(ContentCluster.id == cluster_id)).scalars().one_or_none()
+
+
+def get_content_cluster_by_slug(db: Session, slug: str) -> Optional[ContentCluster]:
+    return db.execute(select(ContentCluster).where(ContentCluster.slug == slug)).scalars().one_or_none()
+
+
+def create_content_cluster(
+    db: Session,
+    *,
+    slug: str,
+    name: str,
+    description: str = "",
+) -> ContentCluster:
+    import re
+
+    s = re.sub(r"[^a-z0-9]+", "-", (slug or "").lower()).strip("-")[:120] or "cluster"
+    base = s
+    n = 2
+    while get_content_cluster_by_slug(db, s):
+        s = f"{base[:100]}-{n}"
+        n += 1
+    row = ContentCluster(slug=s, name=name[:255], description=description or None)
+    db.add(row)
+    db.flush()
+    return row
+
+
+def list_blog_article_versions(db: Session, article_id: int, limit: int = 80) -> List[Dict[str, Any]]:
+    rows = (
+        db.execute(
+            select(BlogArticleVersion)
+            .where(BlogArticleVersion.article_id == article_id)
+            .order_by(BlogArticleVersion.created_at.desc())
+            .limit(min(max(1, limit), 500))
+        )
+        .scalars()
+        .all()
+    )
+    out = []
+    for r in rows:
+        out.append(
+            {
+                "id": r.id,
+                "article_id": r.article_id,
+                "title": r.title,
+                "meta_description": r.meta_description or "",
+                "content_html": (r.content_html or "")[:400] + ("…" if len(r.content_html or "") > 400 else ""),
+                "content_len": len(r.content_html or ""),
+                "author_email": r.author_email or "",
+                "note": r.note or "",
+                "change_summary": r.change_summary or "",
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+        )
+    return out
+
+
+def get_blog_article_version_full(db: Session, version_id: int) -> Optional[BlogArticleVersion]:
+    return db.execute(select(BlogArticleVersion).where(BlogArticleVersion.id == version_id)).scalars().one_or_none()
+
+
+def add_blog_article_version(
+    db: Session,
+    *,
+    article_id: int,
+    title: str,
+    content_html: str,
+    meta_description: str,
+    author_email: str,
+    note: str = "",
+    change_summary: str = "",
+) -> BlogArticleVersion:
+    row = BlogArticleVersion(
+        article_id=article_id,
+        title=title[:500],
+        content_html=content_html or "",
+        meta_description=meta_description or None,
+        author_email=author_email or None,
+        note=note or None,
+        change_summary=(change_summary or None)[:255],
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def list_articles_in_cluster(db: Session, cluster_id: int) -> List[Dict[str, Any]]:
+    rows = (
+        db.execute(
+            select(BlogArticle)
+            .where(BlogArticle.cluster_id == cluster_id)
+            .order_by(BlogArticle.updated_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return [blog_article_to_dict(r) for r in rows]

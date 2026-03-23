@@ -115,4 +115,42 @@ def init_db():
                 else:
                     conn.execute(text("ALTER TABLE batches ADD COLUMN closed_at TIMESTAMP WITH TIME ZONE"))
 
+    # Migration: blog_articles.planning_json (Writter opportunity + evidence inputs)
+    if "blog_articles" in inspector.get_table_names():
+        from sqlalchemy import text
+
+        bcols = {c["name"] for c in inspector.get_columns("blog_articles")}
+        dialect = engine.dialect.name
+        with engine.begin() as conn:
+            if "planning_json" not in bcols:
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE blog_articles ADD COLUMN planning_json TEXT"))
+                else:
+                    conn.execute(text("ALTER TABLE blog_articles ADD COLUMN planning_json JSONB"))
+
+    # Migration: content clusters + article versions + cluster columns on blog_articles
+    if "blog_articles" in inspector.get_table_names():
+        from sqlalchemy import text
+
+        bcols = {c["name"] for c in inspector.get_columns("blog_articles")}
+        dialect = engine.dialect.name
+        with engine.begin() as conn:
+            if "cluster_id" not in bcols:
+                conn.execute(text("ALTER TABLE blog_articles ADD COLUMN cluster_id INTEGER"))
+            if "cluster_role" not in bcols:
+                conn.execute(text("ALTER TABLE blog_articles ADD COLUMN cluster_role VARCHAR(32)"))
+            if "writter_refresh_status" not in bcols:
+                conn.execute(text("ALTER TABLE blog_articles ADD COLUMN writter_refresh_status VARCHAR(64)"))
+
+    inspector = inspect(engine)
+    if "content_clusters" not in inspector.get_table_names():
+        from .db_models import ContentCluster
+
+        ContentCluster.__table__.create(bind=engine, checkfirst=True)
+    inspector = inspect(engine)
+    if "blog_article_versions" not in inspector.get_table_names():
+        from .db_models import BlogArticleVersion
+
+        BlogArticleVersion.__table__.create(bind=engine, checkfirst=True)
+
     Base.metadata.create_all(bind=engine)

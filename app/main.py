@@ -35,6 +35,8 @@ from .auth import (
 import json
 from datetime import datetime, timezone
 
+from .writter_routes import register_writter_routes
+from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
 
 app = FastAPI(title="Product Content Optimizer", docs_url=None)
 
@@ -948,6 +950,7 @@ def _admin_nav_links(active: str = "", user_role: str = "customer") -> str:
         return ""
     links = [
         f'<a href="/admin/onboarding-analytics" class="nav-link{" active" if active == "onboarding-analytics" else ""}">Dashboard</a>',
+        f'<a href="/admin/writter" class="nav-link{" active" if active == "writter" else ""}">Writter</a>',
         f'<a href="/settings" class="nav-link{" active" if active == "settings" else ""}">Settings</a>',
     ]
     return "".join(links)
@@ -3518,19 +3521,6 @@ def _build_mapping_page(
     [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
     [data-theme="light"] .nav-link:hover, [data-theme="light"] .nav-link.active {{ color: #0f172a; }}
     [data-theme="light"] .nav-cta {{ background: #0f172a; color: #fff; }}
-    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
-    .nav-logo img {{ height: 32px; }}
-    .nav-logo .logo-light {{ display: block; filter: brightness(0) invert(1); }}
-    .nav-logo .logo-dark {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-light {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-dark {{ display: block; filter: none; }}
-    .theme-btn {{ display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
-    .theme-btn:hover {{ color: #fff; background: rgba(255,255,255,0.08); }}
-    [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .theme-btn:hover {{ color: #0f172a; background: rgba(15,23,42,0.06); }}
-    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
-    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
-    .nav-link:hover, .nav-link.active {{ color: #fff; }}
     .nav-cta {{ background: #fff; color: #000; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; }}
 
     .container {{ max-width: 900px; margin: 40px auto; padding: 0 24px; }}
@@ -5180,6 +5170,19 @@ async def settings_page(request: Request):
     tab_param = request.query_params.get("tab", "prompts")
     if tab_param not in ("prompts", "api", "seo", "users", "feedback", "chats"):
         tab_param = "prompts"
+    prompt_sub_param = request.query_params.get("sub", "products")
+    if prompt_sub_param not in ("products", "writter"):
+        prompt_sub_param = "products"
+
+    def _tx_esc(val: str) -> str:
+        return (val or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    wp_ps = _tx_esc(s.get("writter_prompt_problem_solving", ""))
+    wp_fp = _tx_esc(s.get("writter_prompt_feature_presentation", ""))
+    wp_inf = _tx_esc(s.get("writter_prompt_informational", ""))
+    wp_uc = _tx_esc(s.get("writter_prompt_use_cases", ""))
+    wp_cmp = _tx_esc(s.get("writter_prompt_comparison", ""))
+    wp_chk = _tx_esc(s.get("writter_prompt_checklist_template", ""))
 
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -5189,14 +5192,12 @@ async def settings_page(request: Request):
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Settings &mdash; Cartozo.ai</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+    <link rel="stylesheet" href="/static/styles.css" />
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
-    [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
-    [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .nav-link:hover, [data-theme="light"] .nav-link.active {{ color: #0f172a; }}
     [data-theme="light"] .tabs {{ border-bottom-color: rgba(15,23,42,0.1); }}
     [data-theme="light"] .tab {{ color: rgba(15,23,42,0.5); }}
     [data-theme="light"] .tab:hover {{ color: rgba(15,23,42,0.8); }}
@@ -5214,20 +5215,6 @@ async def settings_page(request: Request):
     [data-theme="light"] .note-box {{ background: rgba(255,255,255,0.8); border-color: rgba(15,23,42,0.1); }}
     [data-theme="light"] .note-box p {{ color: rgba(15,23,42,0.7); }}
     [data-theme="light"] .note-box strong {{ color: #0f172a; }}
-    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
-    .nav-logo img {{ height: 32px; }}
-    .nav-logo .logo-light {{ display: block; filter: brightness(0) invert(1); }}
-    .nav-logo .logo-dark {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-light {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-dark {{ display: block; filter: none; }}
-    .theme-btn {{ display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
-    .theme-btn:hover {{ color: #fff; background: rgba(255,255,255,0.08); }}
-    [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .theme-btn:hover {{ color: #0f172a; background: rgba(15,23,42,0.06); }}
-    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
-    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
-    .nav-link:hover {{ color: #fff; }}
-    .nav-link.active {{ color: #fff; }}
 
     .container {{ max-width: 1100px; margin: 48px auto; padding: 0 24px; }}
     .title {{ font-size: 1.75rem; font-weight: 600; margin-bottom: 32px; letter-spacing: -0.02em; }}
@@ -5239,6 +5226,16 @@ async def settings_page(request: Request):
     .tab.active::after {{ content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: #fff; }}
     .tab-content {{ display: none; }}
     .tab-content.active {{ display: block; }}
+
+    .prompt-subtabs {{ display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }}
+    .prompt-subtab {{ padding: 8px 16px; font-size: 0.85rem; font-weight: 500; color: rgba(255,255,255,0.55); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s; }}
+    .prompt-subtab:hover {{ color: rgba(255,255,255,0.85); background: rgba(255,255,255,0.07); }}
+    .prompt-subtab.active {{ color: #fff; background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.22); }}
+    [data-theme="light"] .prompt-subtab {{ color: rgba(15,23,42,0.55); background: rgba(15,23,42,0.04); border-color: rgba(15,23,42,0.12); }}
+    [data-theme="light"] .prompt-subtab:hover {{ color: rgba(15,23,42,0.85); }}
+    [data-theme="light"] .prompt-subtab.active {{ color: #0f172a; background: rgba(15,23,42,0.08); border-color: rgba(15,23,42,0.18); }}
+    .prompt-subpanel {{ display: none; }}
+    .prompt-subpanel.active {{ display: block; }}
 
     .group {{ margin-bottom: 28px; }}
     .group-title {{ font-weight: 600; font-size: 1rem; margin-bottom: 8px; }}
@@ -5309,15 +5306,7 @@ async def settings_page(request: Request):
 </head>
 <body>
 {GTM_BODY}
-    <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-        <div class="nav-links">
-            <a href="/batches/history" class="nav-link">Batch history</a>
-            {_admin_nav_links(active="settings", user_role="admin")}
-            <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-            <a href="/logout" class="nav-link">Log out</a>
-        </div>
-    </nav>
+    {admin_top_nav_html('settings')}
 
     <div class="container">
         <h1 class="title">Settings</h1>
@@ -5332,6 +5321,12 @@ async def settings_page(request: Request):
         </div>
 
         <div id="tab-prompts" class="tab-content{' active' if tab_param == 'prompts' else ''}">
+            <div class="prompt-subtabs">
+                <button type="button" class="prompt-subtab{' active' if prompt_sub_param == 'products' else ''}" data-sub="products" onclick="switchPromptSub('products')">Product feed</button>
+                <button type="button" class="prompt-subtab{' active' if prompt_sub_param == 'writter' else ''}" data-sub="writter" onclick="switchPromptSub('writter')">Blog article types</button>
+            </div>
+
+            <div id="prompt-sub-products" class="prompt-subpanel{' active' if prompt_sub_param == 'products' else ''}">
             <div class="group">
                 <div class="group-title">Title Optimization Prompt</div>
                 <p class="group-desc">
@@ -5353,6 +5348,45 @@ async def settings_page(request: Request):
             <div style="display:flex;align-items:center;">
                 <button class="btn btn-primary" onclick="savePrompts()">Save prompts</button>
                 <span id="prompts-status" class="save-msg">&#10003; Saved</span>
+            </div>
+            </div>
+
+            <div id="prompt-sub-writter" class="prompt-subpanel{' active' if prompt_sub_param == 'writter' else ''}">
+            <p class="group-desc" style="margin-bottom:18px;">Extra instructions for each <strong>article type</strong> in the Writter. They are combined with topic, keywords, rules, and the selected visual — those fields are never ignored.</p>
+            <div class="group">
+                <div class="group-title">Problem Solving</div>
+                <p class="group-desc">Optional. Applied when the article type is Problem Solving.</p>
+                <textarea id="writter_prompt_problem_solving" style="min-height:120px;">{wp_ps}</textarea>
+            </div>
+            <div class="group">
+                <div class="group-title">Feature Presentation</div>
+                <p class="group-desc">Optional. Applied when the article type is Feature Presentation.</p>
+                <textarea id="writter_prompt_feature_presentation" style="min-height:120px;">{wp_fp}</textarea>
+            </div>
+            <div class="group">
+                <div class="group-title">Informational</div>
+                <p class="group-desc">Optional. Applied when the article type is Informational.</p>
+                <textarea id="writter_prompt_informational" style="min-height:120px;">{wp_inf}</textarea>
+            </div>
+            <div class="group">
+                <div class="group-title">Use Cases</div>
+                <p class="group-desc">Optional. Applied when the article type is Use Cases.</p>
+                <textarea id="writter_prompt_use_cases" style="min-height:120px;">{wp_uc}</textarea>
+            </div>
+            <div class="group">
+                <div class="group-title">Comparison</div>
+                <p class="group-desc">Optional. Applied when the article type is Comparison.</p>
+                <textarea id="writter_prompt_comparison" style="min-height:120px;">{wp_cmp}</textarea>
+            </div>
+            <div class="group">
+                <div class="group-title">Checklist / template</div>
+                <p class="group-desc">Optional. Applied when the article type is Checklist / template.</p>
+                <textarea id="writter_prompt_checklist_template" style="min-height:120px;">{wp_chk}</textarea>
+            </div>
+            <div style="display:flex;align-items:center;">
+                <button class="btn btn-primary" onclick="saveWritterPrompts()">Save article-type prompts</button>
+                <span id="writter-prompts-status" class="save-msg">&#10003; Saved</span>
+            </div>
             </div>
         </div>
 
@@ -5472,7 +5506,20 @@ async def settings_page(request: Request):
         document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
         document.querySelector('[data-tab="'+tabId+'"]').classList.add('active');
         document.getElementById(tabId).classList.add('active');
-        if(tabName) history.replaceState(null,'','/settings?tab='+tabName);
+        if(tabName){{
+            let q='?tab='+tabName;
+            if(tabName==='prompts'){{
+                const active=document.querySelector('.prompt-subtab.active');
+                const sub=active&&active.getAttribute('data-sub')?active.getAttribute('data-sub'):'products';
+                q+='&sub='+sub;
+            }}
+            history.replaceState(null,'','/settings'+q);
+        }}
+    }}
+    function switchPromptSub(name){{
+        document.querySelectorAll('.prompt-subtab').forEach(b=>b.classList.toggle('active', b.getAttribute('data-sub')===name));
+        document.querySelectorAll('.prompt-subpanel').forEach(p=>p.classList.toggle('active', p.id==='prompt-sub-'+name));
+        history.replaceState(null,'','/settings?tab=prompts&sub='+name);
     }}
     async function saveSeo(){{
         const data={{seo_meta_title:document.getElementById('seo_meta_title').value,seo_meta_description:document.getElementById('seo_meta_description').value,seo_og_title:document.getElementById('seo_og_title').value,seo_og_description:document.getElementById('seo_og_description').value,seo_og_image:document.getElementById('seo_og_image').value,seo_og_site_name:document.getElementById('seo_og_site_name').value}};
@@ -5482,6 +5529,18 @@ async def settings_page(request: Request):
     async function savePrompts(){{
         const resp=await fetch('/api/settings/prompts',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{prompt_title:document.getElementById('prompt_title').value,prompt_description:document.getElementById('prompt_description').value}})}});
         if(resp.ok)showSaved('prompts-status');
+    }}
+    async function saveWritterPrompts(){{
+        const body={{
+            writter_prompt_problem_solving:document.getElementById('writter_prompt_problem_solving').value,
+            writter_prompt_feature_presentation:document.getElementById('writter_prompt_feature_presentation').value,
+            writter_prompt_informational:document.getElementById('writter_prompt_informational').value,
+            writter_prompt_use_cases:document.getElementById('writter_prompt_use_cases').value,
+            writter_prompt_comparison:document.getElementById('writter_prompt_comparison').value,
+            writter_prompt_checklist_template:document.getElementById('writter_prompt_checklist_template').value
+        }};
+        const resp=await fetch('/api/settings/writter-prompts',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(body)}});
+        if(resp.ok)showSaved('writter-prompts-status');
     }}
     async function saveApiKey(){{
         const key=document.getElementById('openai_key').value;
@@ -5503,10 +5562,8 @@ async def settings_page(request: Request):
             document.getElementById('chatModal').style.display='flex';
         }}catch(e){{}}
     }}
-    (function(){{
-        const t=document.getElementById("themeToggle");
-        if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\u2600":"\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
-    }})();
+    {ADMIN_THEME_SCRIPT}
+    {ADMIN_MERCHANT_SCRIPT}
     </script>
     <script src="/static/page-transition.js"></script>
 </body>
@@ -5602,6 +5659,30 @@ async def save_prompts(request: Request):
             set_setting(db, "prompt_description", str(data["prompt_description"]))
     s = _get_settings()
     storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
+    return JSONResponse({"ok": True})
+
+
+_WRITTER_PROMPT_KEYS = (
+    "writter_prompt_problem_solving",
+    "writter_prompt_feature_presentation",
+    "writter_prompt_informational",
+    "writter_prompt_use_cases",
+    "writter_prompt_comparison",
+    "writter_prompt_checklist_template",
+)
+
+
+@app.post("/api/settings/writter-prompts")
+async def save_writter_prompts(request: Request):
+    require_admin_http(request)
+
+    data = await request.json()
+    from .db import get_db
+    from .services.db_repository import set_setting
+    with get_db() as db:
+        for key in _WRITTER_PROMPT_KEYS:
+            if key in data:
+                set_setting(db, key, str(data[key]))
     return JSONResponse({"ok": True})
 
 
@@ -5740,6 +5821,7 @@ async def admin_contact_results_page(request: Request):
         <div class="nav-links">
             <a href="/batches/history" class="nav-link">Batch history</a>
             <a href="/admin/onboarding-analytics" class="nav-link">Dashboard</a>
+            <a href="/admin/writter" class="nav-link">Writter</a>
             <a href="/settings" class="nav-link">Settings</a>
             <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">&#9728;</button>
             <a href="/logout" class="nav-link">Log out</a>
@@ -6140,8 +6222,8 @@ async def admin_onboarding_analytics_page(
       --oa-muted: #64748b;
     }}
     * {{ box-sizing: border-box; }}
-    body {{ margin: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--oa-bg); color: var(--oa-text); min-height: 100vh; }}
-    .oa-layout {{ display: flex; min-height: 100vh; }}
+    body {{ margin: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--oa-bg); color: var(--oa-text); min-height: 100vh; display: flex; flex-direction: column; }}
+    .oa-layout {{ display: flex; flex: 1; min-height: 0; }}
     .oa-sidebar {{
       width: 260px; flex-shrink: 0; background: #0a0e18; border-right: 1px solid var(--oa-border);
       display: flex; flex-direction: column; padding: 24px 16px;
@@ -6235,11 +6317,11 @@ async def admin_onboarding_analytics_page(
     .oa-badge-warn {{ background: rgba(251,191,36,0.2); color: #fbbf24; }}
     .oa-badge-muted {{ background: rgba(148,163,184,0.15); color: #94a3b8; }}
     .oa-empty {{ text-align: center; padding: 24px; color: var(--oa-muted); }}
-    .oa-theme {{ width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--oa-border); background: transparent; cursor: pointer; }}
     </style>
 </head>
 <body>
 {GTM_BODY}
+    {admin_top_nav_html('dashboard')}
     <div class="oa-layout">
       <aside class="oa-sidebar">
         <div class="oa-brand">
@@ -6248,6 +6330,7 @@ async def admin_onboarding_analytics_page(
         <span class="oa-admin-badge">ADMIN</span>
         <nav class="oa-nav">
           <a href="/admin/onboarding-analytics" class="active">Dashboard</a>
+          <a href="/admin/writter">Writter</a>
           <a href="/admin/contact-results">Contact results</a>
           <a href="/settings">Settings</a>
         </nav>
@@ -6262,7 +6345,6 @@ async def admin_onboarding_analytics_page(
             <p class="oa-sub">{started} users started onboarding</p>
           </div>
           <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-            <button type="button" class="oa-theme" id="oaTheme" aria-label="Toggle theme">&#9728;</button>
             <a class="oa-btn-export" href="{_html.escape(export_href)}">Export CSV</a>
             <button type="button" class="oa-btn-danger" id="oaClearAll">Clear all data</button>
           </div>
@@ -6319,7 +6401,8 @@ async def admin_onboarding_analytics_page(
       </main>
     </div>
     <script>
-    (function(){{const t=document.getElementById('oaTheme');if(t){{const k='hp-theme';function g(){{return localStorage.getItem(k)||'dark';}}function s(v){{document.documentElement.setAttribute('data-theme',v);localStorage.setItem(k,v);t.textContent=v==='dark'?'\u2600':'\u263E';}}t.onclick=()=>s(g()==='dark'?'light':'dark');s(g());}}}})();
+    {ADMIN_THEME_SCRIPT}
+    {ADMIN_MERCHANT_SCRIPT}
     (function(){{var b=document.getElementById('oaClearAll');if(!b)return;b.onclick=function(){{if(!confirm('Delete all onboarding rows in this database? Cannot be undone.'))return;b.disabled=true;fetch('/api/admin/onboarding-analytics/clear',{{method:'POST',credentials:'same-origin'}}).then(function(r){{if(r.ok)location.reload();else r.text().then(function(t){{alert('Failed: '+t);b.disabled=false;}});}}).catch(function(e){{alert(e);b.disabled=false;}});}};}})();
     </script>
     <script src="/static/page-transition.js"></script>
@@ -6327,3 +6410,5 @@ async def admin_onboarding_analytics_page(
 </html>"""
     return HTMLResponse(content=html)
 
+
+register_writter_routes(app)
