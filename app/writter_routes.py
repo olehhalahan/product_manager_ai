@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import html as html_module
 import json
+import math
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,6 +61,140 @@ _WRITTER_SCREENSHOT_TYPES = {
     "image/webp": ".webp",
     "image/gif": ".gif",
 }
+
+
+def _public_hp_nav_html() -> str:
+    """Marketing header (homepage parity) for public blog listing + article pages."""
+    return """<nav class="hp-nav" aria-label="Main">
+  <div class="hp-nav-inner">
+    <a href="/" class="hp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
+    <div class="hp-nav-links">
+      <a href="/presentation" class="hp-nav-link">Features</a>
+      <a href="/blog" class="hp-nav-link">Blog</a>
+      <a href="/#feed-structure" class="hp-nav-link">Feed Structure</a>
+      <a href="/#how-it-works" class="hp-nav-link">How it works</a>
+      <a href="/contact" class="hp-nav-link">Contact us</a>
+    </div>
+    <div class="hp-nav-right">
+      <button type="button" class="hp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
+      <a href="/login" class="hp-nav-cta">Get Started</a>
+    </div>
+  </div>
+</nav>"""
+
+
+def _blog_article_end_cta_html() -> str:
+    """Default CTA block at the end of every public article (links to upload)."""
+    return """<section class="blog-article-end-cta writter-cta" aria-labelledby="blog-end-cta-title">
+  <h2 id="blog-end-cta-title" class="blog-article-end-cta-title">Ready to optimize your feed?</h2>
+  <p class="blog-article-end-cta-sub">Upload your product catalog and improve titles, descriptions, and visibility with AI.</p>
+  <a href="/upload" class="blog-article-end-cta-btn">Get Started Now</a>
+</section>"""
+
+
+def _blog_public_subtitle_html(meta_plain: str, title_plain: str) -> str:
+    """Secondary line under H1 from meta description (premium blog layout)."""
+    m = (meta_plain or "").strip()
+    t = (title_plain or "").strip()
+    if not m or m.lower() == t.lower():
+        return ""
+    if len(m) > 200:
+        m = m[:197] + "…"
+    return f'<p class="blog-article-subtitle">{html_module.escape(m)}</p>'
+
+
+def _strip_trailing_writter_cta_block(html: str) -> str:
+    """Drop trailing writter-cta block so the page template end CTA is not duplicated."""
+    if not html:
+        return ""
+    s = html.rstrip()
+    pat = re.compile(
+        r"(?is)(?:"
+        r"<section\b[^>]*\bwritter-cta\b[^>]*>.*?</section>"
+        r"|<div\b[^>]*\bwritter-cta\b[^>]*>.*?</div>"
+        r"|<p\b[^>]*\bwritter-cta\b[^>]*>.*?</p>"
+        r")\s*$"
+    )
+    return pat.sub("", s).rstrip()
+
+
+def _admin_ai_insights_valid(ins: Any) -> bool:
+    if not isinstance(ins, dict):
+        return False
+    try:
+        qs = int(ins.get("quality_score", -1))
+    except (TypeError, ValueError):
+        return False
+    return 0 <= qs <= 100
+
+
+def _merge_metrics_with_admin_ai_insights(
+    metrics: Dict[str, Any],
+    *,
+    api_key: Optional[str],
+    title: str,
+    meta_description: str,
+    topic: str,
+    keywords: str,
+    article_type: str,
+    content_html: str,
+    views: int,
+    sessions: int,
+    avg_time_s: float,
+    avg_scroll: float,
+    cta_clicks: int,
+    internal_links_n: int,
+) -> Dict[str, Any]:
+    """Persist OpenAI admin sidebar narrative; call only after full article generation/regeneration."""
+    m = dict(metrics) if isinstance(metrics, dict) else {}
+    if not api_key:
+        return m
+    ins = generate_admin_blog_insights(
+        api_key,
+        title=title,
+        meta_description=meta_description,
+        topic=topic,
+        keywords=keywords,
+        article_type=article_type,
+        content_html=content_html,
+        metrics_json=m,
+        views=views,
+        sessions=sessions,
+        avg_time_s=avg_time_s,
+        avg_scroll=avg_scroll,
+        cta_clicks=cta_clicks,
+        internal_links_n=internal_links_n,
+    )
+    if ins:
+        m["admin_ai_insights"] = ins
+    return m
+
+
+def _only_dict(v: Any) -> dict:
+    """JSON columns may deserialize to list/str; review UI must not crash on .get()."""
+    return v if isinstance(v, dict) else {}
+
+
+def _sanitize_for_json(obj: Any) -> Any:
+    """Replace nan/inf and walk nested structures so json.dumps never raises."""
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return str(obj)
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
+
+
+def _json_snippet_for_pre(obj: Any, limit: int) -> str:
+    try:
+        clean = _sanitize_for_json(obj)
+        s = json.dumps(clean, ensure_ascii=False, indent=2, default=str)
+    except (TypeError, ValueError, OverflowError):
+        s = repr(obj)
+    return html_module.escape(s[:limit])
 
 
 def _merge_refresh_html(action: str, html: str, patches: Dict[str, str]) -> str:
@@ -351,21 +486,27 @@ async def writter_article_review(request: Request, article_id: int):
     kw_esc = html_module.escape(row.keywords or "")
     topic_esc = html_module.escape(row.topic or "")
     content = row.content_html or ""
-    metrics = row.metrics_json or {}
+    metrics = _only_dict(row.metrics_json or {})
     m_imp = html_module.escape(str(metrics.get("estimated_impressions", "—")))
     m_ctr = metrics.get("estimated_ctr")
-    m_ctr_s = html_module.escape(str(round(float(m_ctr), 4)) if m_ctr is not None else "—")
+    if m_ctr is not None:
+        try:
+            m_ctr_s = html_module.escape(str(round(float(m_ctr), 4)))
+        except (TypeError, ValueError):
+            m_ctr_s = html_module.escape(str(m_ctr))
+    else:
+        m_ctr_s = "—"
     m_clk = html_module.escape(str(metrics.get("estimated_clicks", "—")))
     m_conv = html_module.escape(str(metrics.get("potential_conversions", "—")))
-    seo = metrics.get("seo_qa") if isinstance(metrics, dict) else {}
-    scores = (seo.get("scores") or {}) if isinstance(seo, dict) else {}
-    verdict_esc = html_module.escape(str(seo.get("verdict") or "—")) if isinstance(seo, dict) else "—"
-    plan = row.planning_json if isinstance(row.planning_json, dict) else {}
-    opp = plan.get("opportunity") if isinstance(plan, dict) else {}
+    seo = _only_dict(metrics.get("seo_qa"))
+    scores = _only_dict(seo.get("scores"))
+    verdict_esc = html_module.escape(str(seo.get("verdict") or "—"))
+    plan = _only_dict(row.planning_json)
+    opp = plan.get("opportunity")
     val_sc = opp.get("estimated_value_score") if isinstance(opp, dict) else None
     val_cell = html_module.escape(str(val_sc)) if val_sc is not None else "—"
     seo_block = ""
-    if isinstance(seo, dict) and scores:
+    if scores:
         seo_block = f"""
       <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">SEO QA</h2>
       <p class="wt-meta">Verdict: <strong style="color:#e5e7eb;">{verdict_esc}</strong></p>
@@ -381,7 +522,7 @@ async def writter_article_review(request: Request, article_id: int):
         plan_block = f"""
       <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Opportunity (pre-generation)</h2>
       <p class="wt-meta">Estimated value score: <strong>{val_cell}</strong> · Difficulty: {html_module.escape(str(opp.get("estimated_difficulty", "—")))}</p>
-      <pre style="font-size:.78rem;background:#111827;padding:14px;border-radius:10px;overflow:auto;max-height:200px;color:#cbd5e1;">{html_module.escape(json.dumps(opp, ensure_ascii=False, indent=2)[:6000])}</pre>"""
+      <pre style="font-size:.78rem;background:#111827;padding:14px;border-radius:10px;overflow:auto;max-height:200px;color:#cbd5e1;">{_json_snippet_for_pre(opp, 6000)}</pre>"""
 
     is_draft = status == "draft"
     publish_block = ""
@@ -396,20 +537,22 @@ async def writter_article_review(request: Request, article_id: int):
 
     status_badge = f'<span class="wt-pill" style="background:rgba(251,191,36,.15);color:#fbbf24;">Draft</span>' if is_draft else '<span class="wt-pill" style="background:rgba(74,222,128,.15);color:#4ade80;">Published</span>'
 
-    gsc = metrics.get("gsc") if isinstance(metrics, dict) else {}
-    gsc_sug = metrics.get("gsc_suggestions") if isinstance(metrics, dict) else {}
-    ctr_v = metrics.get("ctr_variants") if isinstance(metrics, dict) else {}
+    gsc = _only_dict(metrics.get("gsc"))
+    gsc_sug = metrics.get("gsc_suggestions")
+    if gsc_sug is None:
+        gsc_sug = {}
+    ctr_v = _only_dict(metrics.get("ctr_variants"))
     gsc_panel = ""
     if isinstance(gsc, dict) and gsc:
         gsc_panel = f"""
       <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Search Console (imported)</h2>
       <p class="wt-meta">Impressions: {html_module.escape(str(gsc.get("impressions", "—")))} · Clicks: {html_module.escape(str(gsc.get("clicks", "—")))} · CTR: {html_module.escape(str(gsc.get("ctr", "—")))} · Avg pos: {html_module.escape(str(gsc.get("avg_position", "—")))}</p>
-      <pre style="font-size:.75rem;background:#111827;padding:12px;border-radius:8px;overflow:auto;max-height:120px;">{html_module.escape(json.dumps(gsc_sug, ensure_ascii=False, indent=2)[:4000])}</pre>"""
+      <pre style="font-size:.75rem;background:#111827;padding:12px;border-radius:8px;overflow:auto;max-height:120px;">{_json_snippet_for_pre(gsc_sug, 4000)}</pre>"""
     ctr_panel = ""
     if isinstance(ctr_v, dict) and ctr_v:
         ctr_panel = f"""
       <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">CTR variants (stored)</h2>
-      <pre style="font-size:.75rem;background:#111827;padding:12px;border-radius:8px;overflow:auto;max-height:180px;">{html_module.escape(json.dumps(ctr_v, ensure_ascii=False, indent=2)[:8000])}</pre>"""
+      <pre style="font-size:.75rem;background:#111827;padding:12px;border-radius:8px;overflow:auto;max-height:180px;">{_json_snippet_for_pre(ctr_v, 8000)}</pre>"""
 
     aid = int(article_id)
     toolbox = f"""
@@ -436,7 +579,10 @@ async def writter_article_review(request: Request, article_id: int):
       <pre id="wtVerOut" style="display:none;font-size:.72rem;background:#111827;padding:12px;border-radius:8px;max-height:160px;overflow:auto;"></pre>
       <p class="wt-err" id="wtToolErr" style="margin-top:8px;"></p>"""
 
-    html = f"""<!DOCTYPE html>
+    # Article HTML is concatenated, not f-interpolated: `{`/`}` in SVG/CSS/JS break f-string parsing.
+    _body_html = content if isinstance(content, str) else str(content or "")
+    html = (
+        f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
@@ -453,15 +599,13 @@ async def writter_article_review(request: Request, article_id: int):
   .wt-admin-nav a {{ display:block; padding:10px 14px; border-radius:8px; color:#9ca3af; text-decoration:none; font-size:.9rem; }}
   .wt-admin-nav a:hover {{ background:rgba(255,255,255,.05); color:#fff; }}
   .wt-admin-nav a.active {{ background:rgba(79,70,229,.15); color:#818cf8; font-weight:600; }}
-  .wt-main {{ flex:1; padding:32px 40px 80px; max-width:900px; }}
+  .wt-main {{ flex:1; padding:32px clamp(16px,4vw,40px) 80px; max-width:900px; margin-inline:auto; width:100%; min-width:0; }}
   .wt-toolbar-r {{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:20px; }}
   .wt-btn {{ display:inline-flex; align-items:center; gap:8px; padding:10px 18px; border-radius:8px; background:#4F46E5; color:#fff; font-weight:600; text-decoration:none; border:none; cursor:pointer; font-size:.9rem; }}
   .wt-btn:hover {{ filter:brightness(1.05); }}
   .wt-btn:disabled {{ opacity:.55; cursor:not-allowed; }}
-  .wt-preview {{ border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:24px; background:#111827; margin-top:16px; }}
+  .wt-preview {{ border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:clamp(16px,3vw,28px); background:#111827; margin-top:16px; max-width:min(900px,100%); margin-inline:auto; box-sizing:border-box; }}
   [data-theme="light"] .wt-preview {{ background:#fff; border-color:rgba(15,23,42,.1); }}
-  .wt-preview .content {{ line-height:1.7; }}
-  .wt-preview .content h2 {{ font-size:1.25rem; margin:20px 0 10px; }}
   .wt-meta {{ color:#94a3b8; font-size:.88rem; margin:8px 0 0; }}
   .wt-metrics {{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:16px; }}
   @media(max-width:700px){{ .wt-metrics{{ grid-template-columns:1fr 1fr; }} }}
@@ -505,7 +649,9 @@ async def writter_article_review(request: Request, article_id: int):
       </div>
       <p class="wt-err" id="wtPubErr"></p>
       <h2 style="font-size:1rem;color:#94a3b8;margin:24px 0 8px;">Preview</h2>
-      <div class="wt-preview"><div class="content">{content}</div></div>
+      <div class="wt-preview"><div class="content writter-article">"""
+        + _body_html
+        + f"""</div></div>
     </main>
   </div>
   <script>
@@ -595,6 +741,7 @@ async def writter_article_review(request: Request, article_id: int):
   </script>
 </body>
 </html>"""
+    )
     return HTMLResponse(content=html)
 
 
@@ -980,6 +1127,22 @@ def _create_article_from_body(body: CreateArticleBody, author_email: str) -> Dic
             h1=h1,
         )
         metrics["seo_qa"] = seo_qa
+        metrics = _merge_metrics_with_admin_ai_insights(
+            metrics,
+            api_key=_settings_openai_key(),
+            title=(payload.get("seo_title") or body.topic)[:500],
+            meta_description=payload.get("meta_description") or "",
+            topic=body.topic,
+            keywords=body.keywords,
+            article_type=at,
+            content_html=full_html,
+            views=0,
+            sessions=0,
+            avg_time_s=0.0,
+            avg_scroll=0.0,
+            cta_clicks=0,
+            internal_links_n=len(used_links) if isinstance(used_links, list) else 0,
+        )
 
         planning_json: Dict[str, Any] = {
             "inputs": {
@@ -1086,7 +1249,7 @@ async def api_update_article(request: Request, article_id: int, body: UpdateArti
         if not row:
             raise HTTPException(404, detail="Not found")
         if body.status == "published":
-            metrics = row.metrics_json or {}
+            metrics = _only_dict(row.metrics_json or {})
             blocked = publish_blocked_by_quality(metrics)
             if blocked:
                 raise HTTPException(400, detail=blocked)
@@ -1228,6 +1391,23 @@ def _regenerate_article_by_id(article_id: int) -> Dict[str, Any]:
             keywords=row.keywords or "",
             h1=h1,
         )
+        sess = int(row.analytics_sessions or 0)
+        metrics = _merge_metrics_with_admin_ai_insights(
+            metrics,
+            api_key=api_key,
+            title=(payload.get("seo_title") or row.title or "")[:500],
+            meta_description=payload.get("meta_description") or "",
+            topic=row.topic or "",
+            keywords=row.keywords or "",
+            article_type=at,
+            content_html=full_html,
+            views=int(row.views or 0),
+            sessions=sess,
+            avg_time_s=(row.total_time_ms or 0) / max(sess, 1) / 1000.0,
+            avg_scroll=(row.total_scroll_pct or 0.0) / max(sess, 1),
+            cta_clicks=int(row.cta_clicks or 0),
+            internal_links_n=len(used_links) if isinstance(used_links, list) else 0,
+        )
         new_title = (payload.get("seo_title") or row.title or "")[:500]
         planning_json: Dict[str, Any] = {
             "inputs": {
@@ -1342,25 +1522,7 @@ def _blog_index_page_html(rows: List[Dict[str, Any]], q_raw: str) -> str:
   <style>
   body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
   [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
-  .blog-idx-nav {{ position:sticky; top:0; z-index:50; border-bottom:1px solid rgba(255,255,255,.08); background:rgba(11,15,25,.94); backdrop-filter:blur(14px); }}
-  [data-theme="light"] .blog-idx-nav {{ background:rgba(248,250,252,.94); border-color:rgba(15,23,42,.1); }}
-  .blog-idx-nav-inner {{ max-width:1100px; margin:0 auto; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }}
-  .blog-idx-nav-logo img {{ height:32px; width:auto; }}
-  .blog-idx-nav-logo .logo-light {{ display:block; }}
-  .blog-idx-nav-logo .logo-dark {{ display:none; }}
-  [data-theme="light"] .blog-idx-nav-logo .logo-light {{ display:none; }}
-  [data-theme="light"] .blog-idx-nav-logo .logo-dark {{ display:block; }}
   .visually-hidden {{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }}
-  .blog-idx-nav-links {{ display:flex; align-items:center; gap:22px; flex-wrap:wrap; }}
-  .blog-idx-nav-links a {{ color:#94a3b8; font-size:.9rem; text-decoration:none; font-weight:500; }}
-  .blog-idx-nav-links a:hover {{ color:#E5E7EB; }}
-  [data-theme="light"] .blog-idx-nav-links a {{ color:#64748b; }}
-  [data-theme="light"] .blog-idx-nav-links a:hover {{ color:#0f172a; }}
-  .blog-idx-nav-links a.blog-idx-active {{ color:#818cf8; font-weight:600; }}
-  .blog-idx-nav-right {{ display:flex; align-items:center; gap:12px; }}
-  .blog-idx-theme {{ width:36px; height:36px; border-radius:50%; border:1px solid rgba(255,255,255,.15); background:transparent; color:#94a3b8; cursor:pointer; font-size:1rem; }}
-  .blog-idx-cta {{ padding:8px 16px; border-radius:8px; background:#4F46E5; color:#fff; font-weight:600; font-size:.9rem; text-decoration:none; }}
-  .blog-idx-cta:hover {{ filter:brightness(1.08); }}
   .blog-idx-wrap {{ max-width:800px; margin:0 auto; padding:40px 24px 80px; }}
   .blog-idx-hero h1 {{ font-size:2rem; font-weight:700; letter-spacing:-.03em; margin:0 0 8px; }}
   .blog-idx-hero p {{ color:#94a3b8; margin:0 0 28px; font-size:1rem; line-height:1.5; }}
@@ -1381,25 +1543,11 @@ def _blog_index_page_html(rows: List[Dict[str, Any]], q_raw: str) -> str:
   .blog-idx-card-kw {{ font-size:.78rem; color:#64748b; margin:0; }}
   .blog-idx-empty {{ padding:48px 24px; text-align:center; color:#94a3b8; border-radius:14px; border:1px dashed rgba(255,255,255,.12); }}
   .blog-idx-empty a {{ color:#818cf8; }}
-  @media (max-width:640px) {{ .blog-idx-nav-links {{ display:none; }} }}
   </style>
 </head>
 <body>
-  <nav class="blog-idx-nav" aria-label="Main">
-    <div class="blog-idx-nav-inner">
-      <a href="/" class="blog-idx-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-      <div class="blog-idx-nav-links">
-        <a href="/presentation">Features</a>
-        <a href="/#feed-structure">Feed</a>
-        <a href="/blog" class="blog-idx-active">Blog</a>
-        <a href="/contact">Contact</a>
-      </div>
-      <div class="blog-idx-nav-right">
-        <button type="button" class="blog-idx-theme" id="blogIdxTheme" title="Toggle theme" aria-label="Toggle theme">&#9728;</button>
-        <a href="/login" class="blog-idx-cta">Get Started</a>
-      </div>
-    </div>
-  </nav>
+  {_public_hp_nav_html()}
+  <div class="blog-page-with-nav">
   <main class="blog-idx-wrap">
     <header class="blog-idx-hero">
       <h1>Blog</h1>
@@ -1412,20 +1560,9 @@ def _blog_index_page_html(rows: List[Dict[str, Any]], q_raw: str) -> str:
     </header>
     <ul class="blog-idx-list">{cards_html}</ul>
   </main>
+  </div>
   <script>
-  (function(){{
-    var t = document.getElementById('blogIdxTheme');
-    if (!t) return;
-    var k = 'hp-theme';
-    function g() {{ return localStorage.getItem(k) || 'dark'; }}
-    function s(v) {{
-      document.documentElement.setAttribute('data-theme', v);
-      localStorage.setItem(k, v);
-      t.textContent = v === 'dark' ? '\\u2600' : '\\u263E';
-    }}
-    t.onclick = function() {{ s(g() === 'dark' ? 'light' : 'dark'); }};
-    s(g());
-  }})();
+  {ADMIN_THEME_SCRIPT.strip()}
   </script>
 </body>
 </html>"""
@@ -1456,7 +1593,7 @@ async def blog_public_page(request: Request, slug: str):
         meta_esc = html_module.escape((row.meta_description or "")[:300])
         content = row.content_html or ""
         views_ct = (row.views or 0) + 1
-        metrics = row.metrics_json or {}
+        metrics = _only_dict(row.metrics_json or {})
         m_imp = metrics.get("estimated_impressions", "—")
         m_ctr = metrics.get("estimated_ctr")
         m_clk = metrics.get("estimated_clicks", "—")
@@ -1477,35 +1614,21 @@ async def blog_public_page(request: Request, slug: str):
         kw_plain = row.keywords or ""
         at_plain = row.article_type or ""
         topic_plain = row.topic or ""
+        display_content = _strip_trailing_writter_cta_block(content)
 
     admin_aside = ""
     if show_admin:
         q = estimate_article_quality(
             title=title_plain,
             meta_description=meta_plain,
-            content_html=content,
+            content_html=display_content,
             keywords=kw_plain,
             internal_links_count=links_n,
         )
         insights = None
-        ak = _settings_openai_key()
-        if ak:
-            insights = generate_admin_blog_insights(
-                ak,
-                title=title_plain,
-                meta_description=meta_plain,
-                topic=topic_plain,
-                keywords=kw_plain,
-                article_type=at_plain,
-                content_html=content,
-                metrics_json=metrics if isinstance(metrics, dict) else {},
-                views=views_ct,
-                sessions=sessions,
-                avg_time_s=avg_time_s,
-                avg_scroll=avg_scroll,
-                cta_clicks=cta_n,
-                internal_links_n=links_n,
-            )
+        cached_ai = metrics.get("admin_ai_insights")
+        if _admin_ai_insights_valid(cached_ai):
+            insights = cached_ai
         if insights:
             q_score = int(insights["quality_score"])
             q_label = html_module.escape(insights["quality_label"])
@@ -1521,7 +1644,7 @@ async def blog_public_page(request: Request, slug: str):
             for h in insights.get("hints") or []:
                 if isinstance(h, str) and h.strip():
                     hint_ai += f"<li>{html_module.escape(h.strip())}</li>"
-            ai_note = '<p class="bar-ai-note">Analysis generated with OpenAI from your article data and metrics.</p>'
+            ai_note = '<p class="bar-ai-note">Stored from the last full generation or regenerate; refreshing this page does not call the model again.</p>'
             quality_block = f"""
       <div class="bar-card bar-quality" style="border-color:{q_color};">
         <div class="bar-quality-row">
@@ -1661,7 +1784,14 @@ async def blog_public_page(request: Request, slug: str):
       }};
     }}"""
 
-    html = f"""<!DOCTYPE html>
+    subtitle_block = _blog_public_subtitle_html(meta_plain, title_plain)
+    _bc = (title_plain or "").strip()
+    if len(_bc) > 72:
+        _bc = _bc[:69] + "…"
+    breadcrumb_title_esc = html_module.escape(_bc)
+    blog_body = display_content if isinstance(display_content, str) else str(display_content or "")
+    html = (
+        f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
@@ -1673,25 +1803,22 @@ async def blog_public_page(request: Request, slug: str):
   <style>
   body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
   [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
+  body.blog-article-body {{ color:#e2e8f0; }}
+  [data-theme="light"] body.blog-article-body {{ color:#0f172a; }}
   .blog-layout {{ display:flex; min-height:100vh; width:100%; }}
-  .blog-side {{ width:260px; flex-shrink:0; border-right:1px solid rgba(255,255,255,.08); padding:24px 16px; position:sticky; top:0; align-self:flex-start; max-height:100vh; overflow-y:auto; }}
+  .blog-side {{ width:260px; flex-shrink:0; border-right:1px solid rgba(255,255,255,.08); padding:24px 16px; position:sticky; top:80px; align-self:flex-start; max-height:calc(100vh - 80px); overflow-y:auto; }}
   [data-theme="light"] .blog-side {{ border-color:rgba(15,23,42,.1); }}
   .blog-side h2 {{ font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin:0 0 12px; }}
   .blog-side ul {{ list-style:none; padding:0; margin:0; }}
   .blog-side li {{ margin-bottom:6px; }}
-  .blog-side a {{ color:#94a3b8; text-decoration:none; font-size:.88rem; line-height:1.35; display:block; padding:6px 8px; border-radius:6px; }}
-  .blog-side a:hover {{ color:#E5E7EB; background:rgba(255,255,255,.05); }}
-  .blog-side li.wt-sb-active a {{ color:#818cf8; font-weight:600; background:rgba(79,70,229,.12); }}
+  .blog-side a {{ color:#94a3b8; text-decoration:none; font-size:.88rem; line-height:1.35; display:block; padding:8px 10px; border-radius:8px; transition:color .15s, background .15s, transform .12s; }}
+  .blog-side a:hover {{ color:#E5E7EB; background:rgba(255,255,255,.08); transform:translateX(2px); }}
+  .blog-side li.wt-sb-active a {{ color:#a5b4fc; font-weight:600; background:rgba(79,70,229,.18); border:1px solid rgba(129,140,248,.25); }}
   [data-theme="light"] .blog-side a {{ color:#475569; }}
-  .blog-center {{ flex:1; min-width:0; padding:40px 40px 80px; max-width:780px; }}
-  .blog-main h1 {{ font-size:2rem; font-weight:700; letter-spacing:-.02em; margin:0 0 20px; line-height:1.2; }}
-  .blog-main .content {{ line-height:1.75; font-size:1.05rem; }}
-  .blog-main .content h2 {{ font-size:1.35rem; margin:28px 0 12px; }}
-  .blog-main .content h3 {{ font-size:1.1rem; margin:20px 0 8px; }}
-  .blog-main .content p {{ margin:0 0 16px; }}
-  .blog-main .content a {{ color:#22D3EE; }}
+  [data-theme="light"] .blog-side li.wt-sb-active a {{ color:#4338ca; background:rgba(79,70,229,.1); border-color:rgba(79,70,229,.2); }}
+  .blog-center {{ flex:1; min-width:0; padding:clamp(20px,4vw,40px) clamp(16px,4vw,40px) 80px; margin-inline:auto; }}
   .writter-cta a, .blog-main .writter-cta a {{ color:#4F46E5; font-weight:600; }}
-  .blog-admin-r {{ width:320px; flex-shrink:0; padding:24px 20px 48px; border-left:1px solid rgba(255,255,255,.08); position:sticky; top:0; align-self:flex-start; max-height:100vh; overflow-y:auto; background:linear-gradient(180deg, rgba(79,70,229,.06) 0%, transparent 120px); }}
+  .blog-admin-r {{ width:320px; flex-shrink:0; padding:24px 20px 48px; border-left:1px solid rgba(255,255,255,.08); position:sticky; top:80px; align-self:flex-start; max-height:calc(100vh - 80px); overflow-y:auto; background:linear-gradient(180deg, rgba(79,70,229,.06) 0%, transparent 120px); }}
   [data-theme="light"] .blog-admin-r {{ border-color:rgba(15,23,42,.1); background:linear-gradient(180deg, rgba(79,70,229,.04) 0%, transparent 120px); }}
   .bar-card {{ background:rgba(17,24,39,.85); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:16px 18px; margin-bottom:14px; }}
   [data-theme="light"] .bar-card {{ background:#fff; border-color:rgba(15,23,42,.1); }}
@@ -1732,20 +1859,61 @@ async def blog_public_page(request: Request, slug: str):
   }}
   </style>
 </head>
-<body>
+<body class="blog-article-body">
+  {_public_hp_nav_html()}
+  <div class="blog-page-with-nav">
   <div class="blog-layout">
     <aside class="blog-side">
-      <div style="margin-bottom:20px;font-size:.88rem;"><a href="/blog" style="color:#94a3b8;">Blog</a> <span style="color:#475569">·</span> <a href="/" style="color:#94a3b8;">Home</a></div>
       <h2 style="font-size:.75rem;"><a href="/blog" style="color:inherit;text-decoration:none;">Articles</a></h2>
       <ul>{nav_li}</ul>
     </aside>
-    <article class="blog-main blog-center">
-      <h1>{title_esc}</h1>
-      <div class="content">{content}</div>
+    <article class="blog-main blog-center blog-article-page">
+      <nav class="blog-breadcrumbs" aria-label="Breadcrumb">
+        <ol class="blog-breadcrumbs-list">
+          <li class="blog-breadcrumbs-item"><a href="/">Home</a></li>
+          <li class="blog-breadcrumbs-sep" aria-hidden="true">/</li>
+          <li class="blog-breadcrumbs-item"><a href="/blog">Blog</a></li>
+          <li class="blog-breadcrumbs-sep" aria-hidden="true">/</li>
+          <li class="blog-breadcrumbs-item blog-breadcrumbs-current" aria-current="page">{breadcrumb_title_esc}</li>
+        </ol>
+      </nav>
+      <header class="blog-article-header">
+        <h1 class="blog-article-title">{title_esc}</h1>
+        {subtitle_block}
+      </header>
+      <div class="blog-article-body-row">
+        <nav class="blog-toc" id="blogToc" aria-label="On this page">
+          <p class="blog-toc-label">On this page</p>
+          <ol class="blog-toc-list" id="blogTocList"></ol>
+        </nav>
+        <div class="blog-article-primary">
+          <template id="blog-mid-cta-template">
+            <section class="blog-article-mid-cta writter-cta" aria-labelledby="blog-mid-cta-title">
+              <div class="blog-article-mid-cta-inner">
+                <h3 id="blog-mid-cta-title" class="blog-article-mid-cta-head">Fix your product feed automatically</h3>
+                <p class="blog-article-mid-cta-lead">From raw CSV to a cleaner Merchant Center listing—without manual spreadsheet triage.</p>
+                <ol class="blog-article-mid-cta-steps" aria-label="How it works">
+                  <li>Upload your CSV</li>
+                  <li>Detect feed issues</li>
+                  <li>Optimize titles &amp; attributes</li>
+                  <li>Push to Google Merchant Center</li>
+                </ol>
+                <a href="/upload" class="blog-article-mid-cta-btn"><span class="blog-article-mid-cta-btn-label">Upload your feed</span></a>
+              </div>
+            </section>
+          </template>
+          <div class="article-content content writter-article" id="blogArticleContent">"""
+        + blog_body
+        + f"""</div>
+          {_blog_article_end_cta_html()}
+        </div>
+      </div>
     </article>
     {admin_aside}
   </div>
+  </div>
   <script>
+  {ADMIN_THEME_SCRIPT.strip()}
   (function(){{
     var start = Date.now();
     var maxScroll = 0;
@@ -1757,21 +1925,67 @@ async def blog_public_page(request: Request, slug: str):
       var t = Date.now() - start;
       navigator.sendBeacon('/api/blog/{html_module.escape(slug)}/analytics', new Blob([JSON.stringify({{ time_ms: t, scroll_pct: maxScroll, cta_click: false }})], {{ type: 'application/json' }}));
     }});
-    document.querySelectorAll('.writter-cta a, .content .writter-cta a').forEach(function(a) {{
-      a.addEventListener('click', function() {{
-        fetch('/api/blog/{html_module.escape(slug)}/analytics', {{
-          method: 'POST',
-          headers: {{ 'Content-Type': 'application/json' }},
-          credentials: 'same-origin',
-          body: JSON.stringify({{ cta_click: true }})
-        }});
+    document.addEventListener('click', function(ev) {{
+      var a = ev.target && ev.target.closest && ev.target.closest('.writter-cta a[href]');
+      if (!a) return;
+      fetch('/api/blog/{html_module.escape(slug)}/analytics', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        credentials: 'same-origin',
+        body: JSON.stringify({{ cta_click: true }})
       }});
-    }});
+    }}, false);
+  }})();
+  (function(){{
+    var root = document.getElementById('blogArticleContent');
+    if (!root) return;
+    function slugify(t) {{
+      var s = (t || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      return s || 'section';
+    }}
+    var h2s = root.querySelectorAll('h2');
+    var tocNav = document.getElementById('blogToc');
+    var tocList = document.getElementById('blogTocList');
+    if (tocList && h2s.length) {{
+      h2s.forEach(function(h, i) {{
+        var id = h.id || ('blog-h-' + i + '-' + slugify(h.textContent));
+        if (!h.id) h.id = id;
+        var li = document.createElement('li');
+        var a = document.createElement('a');
+        a.href = '#' + id;
+        a.textContent = h.textContent.trim();
+        li.appendChild(a);
+        tocList.appendChild(li);
+      }});
+      var links = tocList.querySelectorAll('a');
+      function pickActive() {{
+        var y = window.scrollY + 110;
+        var cur = null;
+        h2s.forEach(function(h) {{
+          var top = h.getBoundingClientRect().top + window.scrollY;
+          if (top <= y) cur = h.id;
+        }});
+        if (!cur && h2s.length) cur = h2s[0].id;
+        links.forEach(function(a) {{
+          a.classList.toggle('blog-toc-active', (a.getAttribute('href') || '') === '#' + cur);
+        }});
+      }}
+      window.addEventListener('scroll', pickActive, {{ passive: true }});
+      pickActive();
+    }} else if (tocNav) {{
+      tocNav.setAttribute('hidden', '');
+    }}
+    var tmpl = document.getElementById('blog-mid-cta-template');
+    if (tmpl && h2s.length >= 2) {{
+      var ins = tmpl.content.cloneNode(true);
+      h2s[1].parentNode.insertBefore(ins, h2s[1]);
+    }}
   }})();
   {regen_script}
   </script>
 </body>
 </html>"""
+    )
     return HTMLResponse(content=html)
 
 
@@ -2021,19 +2235,18 @@ async def api_refresh_article(request: Request, article_id: int, body: RefreshAc
             new_html = _merge_refresh_html(action, new_html, patches)
         repo.update_blog_article(db, row, title=new_title, content_html=new_html, meta_description=new_meta)
         if row.status == "published":
-            metrics = row.metrics_json or {}
-            if isinstance(metrics, dict):
-                seo_qa = run_seo_quality_audit(
-                    content_html=new_html,
-                    title=new_title,
-                    meta_description=new_meta,
-                    slug=row.slug or "",
-                    keywords=row.keywords or "",
-                    h1=new_title,
-                )
-                m2 = dict(metrics)
-                m2["seo_qa"] = seo_qa
-                repo.update_blog_article(db, row, metrics_json=m2)
+            metrics = _only_dict(row.metrics_json or {})
+            seo_qa = run_seo_quality_audit(
+                content_html=new_html,
+                title=new_title,
+                meta_description=new_meta,
+                slug=row.slug or "",
+                keywords=row.keywords or "",
+                h1=new_title,
+            )
+            m2 = dict(metrics)
+            m2["seo_qa"] = seo_qa
+            repo.update_blog_article(db, row, metrics_json=m2)
         out = repo.blog_article_to_dict(row)
     return JSONResponse({"article": out, "patches": patches})
 

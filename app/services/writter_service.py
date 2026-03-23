@@ -1056,7 +1056,7 @@ JSON schema:
   "meta_description": "150-160 chars, compelling",
   "h1": "main heading",
   "structure_outline": [{{"level": 2, "title": "..."}}, ...],
-  "content_html": "full HTML body (no html/head/body wrapper). Include sections matching the structure. Add a clear CTA paragraph with class=writter-cta linking to / or /upload.",
+  "content_html": "full HTML body (no html/head/body wrapper). Include sections matching the structure. Add one CTA with class=writter-cta linking to / or /upload in the body (e.g. mid-article). The public blog page already appends a large end-of-article CTA — do NOT end content_html with another writter-cta block or repeat the same primary button text (e.g. Get Started Now) as the last element.",
   "cta_html": "optional short CTA block HTML",
   "metrics": {{
     "estimated_impressions": <integer>,
