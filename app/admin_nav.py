@@ -23,7 +23,6 @@ def admin_top_nav_html(active: str = "writter", *, show_admin_links: bool = True
       <img class="logo-light nav-logo-img" src="/assets/logo-light.png" alt="Cartozo.ai" />
       <img class="logo-dark nav-logo-img" src="/assets/logo-dark.png" alt="Cartozo.ai" />
     </span>
-    <span class="nav-tagline">Optimize your product feed</span>
   </a>
   <div class="nav-links">
     <a href="/batches/history" class="nav-link">Batch history</a>
