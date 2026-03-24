@@ -5,11 +5,18 @@ load_dotenv(_root / ".env")
 load_dotenv(_root / ".env.local", override=True)  # local overrides (gitignored); must override .env
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Query, Request
-from fastapi.responses import StreamingResponse, HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import (
+    StreamingResponse,
+    HTMLResponse,
+    RedirectResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.docs import get_swagger_ui_html
 from starlette.middleware.sessions import SessionMiddleware
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import io
 import csv
 import uuid
@@ -34,6 +41,8 @@ from .auth import (
 )
 import json
 from datetime import datetime, timezone
+from urllib.parse import quote
+from xml.sax.saxutils import escape as _xml_escape
 
 from .writter_routes import register_writter_routes
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
@@ -5079,6 +5088,13 @@ async def settings_page(request: Request):
     wp_cmp = _tx_esc(s.get("writter_prompt_comparison", ""))
     wp_chk = _tx_esc(s.get("writter_prompt_checklist_template", ""))
 
+    _gen_at_raw = (s.get("sitemap_robots_generated_at") or "").strip()
+    _gen_at_disp = (
+        _html.escape(_gen_at_raw[:19].replace("T", " "))
+        if len(_gen_at_raw) >= 10
+        else "—"
+    )
+
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -5357,6 +5373,22 @@ async def settings_page(request: Request):
                 <button class="btn btn-primary" onclick="saveSeo()">Save SEO settings</button>
                 <span id="seo-status" class="save-msg">&#10003; Saved</span>
             </div>
+
+            <div class="group" style="margin-top:32px;padding-top:28px;border-top:1px solid rgba(255,255,255,0.1);">
+                <div class="group-title">Sitemap &amp; robots.txt</div>
+                <p class="group-desc">
+                    Rebuild <code>sitemap.xml</code> and <code>robots.txt</code> from the canonical base URL (<code>DEPLOY_URL</code> when set, otherwise this server&apos;s URL) and current published blog posts. After regeneration, visitors and crawlers receive this saved snapshot until you run it again.
+                </p>
+                <p class="group-desc" style="margin-bottom:14px;">
+                    Last generated: <strong id="sitemap-gen-at">{_gen_at_disp}</strong>
+                </p>
+                <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;">
+                    <button type="button" class="btn btn-primary" id="btn-regen-sitemap" onclick="regenerateSitemapRobots(this)">Regenerate sitemap &amp; robots.txt</button>
+                    <span id="sitemap-regen-status" class="save-msg">&#10003; Done</span>
+                    <a href="/sitemap.xml" target="_blank" rel="noopener" style="font-size:0.85rem;color:#4F46E5;">View sitemap.xml</a>
+                    <a href="/robots.txt" target="_blank" rel="noopener" style="font-size:0.85rem;color:#4F46E5;">View robots.txt</a>
+                </div>
+            </div>
         </div>
 
         <div id="tab-users" class="tab-content{' active' if tab_param == 'users' else ''}">
@@ -5420,6 +5452,21 @@ async def settings_page(request: Request):
         const data={{seo_meta_title:document.getElementById('seo_meta_title').value,seo_meta_description:document.getElementById('seo_meta_description').value,seo_og_title:document.getElementById('seo_og_title').value,seo_og_description:document.getElementById('seo_og_description').value,seo_og_image:document.getElementById('seo_og_image').value,seo_og_site_name:document.getElementById('seo_og_site_name').value}};
         const resp=await fetch('/api/admin/seo',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});
         if(resp.ok)showSaved('seo-status');
+    }}
+    async function regenerateSitemapRobots(btn){{
+        const b=btn||document.getElementById('btn-regen-sitemap');
+        if(b)b.disabled=true;
+        try{{
+            const resp=await fetch('/api/admin/regenerate-sitemap-robots',{{method:'POST',headers:{{'Content-Type':'application/json'}},credentials:'same-origin',body:'{{}}'}});
+            let j={{}};try{{j=await resp.json();}}catch(e){{}}
+            if(resp.ok&&j.generated_at){{
+                const el=document.getElementById('sitemap-gen-at');
+                if(el)el.textContent=(j.generated_at||'').substring(0,19).replace('T',' ');
+                showSaved('sitemap-regen-status');
+            }}else{{
+                alert((j&&j.detail)?j.detail:'Regeneration failed');
+            }}
+        }}finally{{if(b)b.disabled=false;}}
     }}
     async function savePrompts(){{
         const resp=await fetch('/api/settings/prompts',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{prompt_title:document.getElementById('prompt_title').value,prompt_description:document.getElementById('prompt_description').value}})}});
@@ -5799,6 +5846,24 @@ async def api_admin_seo_save(request: Request):
         if "seo_og_site_name" in data:
             set_setting(db, "seo_og_site_name", str(data["seo_og_site_name"]))
     return JSONResponse({"ok": True})
+
+
+@app.post("/api/admin/regenerate-sitemap-robots")
+async def api_admin_regenerate_sitemap_robots(request: Request):
+    """Admin: snapshot sitemap.xml and robots.txt into settings (served to crawlers until next regen)."""
+    require_admin_http(request)
+    from .db import get_db
+    from .services.db_repository import set_setting
+
+    base = _public_site_base(request)
+    with get_db() as db:
+        sm = _build_sitemap_xml_body(base, db)
+        rb = _build_robots_txt_body(base)
+        ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        set_setting(db, "cached_sitemap_xml", sm)
+        set_setting(db, "cached_robots_txt", rb)
+        set_setting(db, "sitemap_robots_generated_at", ts)
+    return JSONResponse({"ok": True, "generated_at": ts})
 
 
 @app.get("/admin/seo", response_class=HTMLResponse)
@@ -6304,6 +6369,114 @@ async def admin_onboarding_analytics_page(
 </body>
 </html>"""
     return HTMLResponse(content=html)
+
+
+def _public_site_base(request: Request) -> str:
+    """Canonical site URL for sitemap/robots (production: set DEPLOY_URL)."""
+    u = (_os.getenv("DEPLOY_URL") or "").strip().rstrip("/")
+    if u:
+        return u
+    return str(request.base_url).rstrip("/")
+
+
+def _sitemap_url_block(loc: str, *, priority: str, changefreq: str, lastmod: Optional[str] = None) -> str:
+    lines = [
+        "  <url>",
+        f"    <loc>{_xml_escape(loc)}</loc>",
+    ]
+    if lastmod and len(lastmod) >= 10 and lastmod[4] == "-" and lastmod[7] == "-":
+        lines.append(f"    <lastmod>{_xml_escape(lastmod[:10])}</lastmod>")
+    lines.extend(
+        [
+            f"    <changefreq>{changefreq}</changefreq>",
+            f"    <priority>{priority}</priority>",
+            "  </url>",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _build_robots_txt_body(base: str) -> str:
+    return f"""User-agent: *
+Disallow: /admin
+Disallow: /api/
+Disallow: /batches/
+Disallow: /upload
+Disallow: /settings
+Disallow: /login
+Disallow: /auth/
+Disallow: /merchant/
+Disallow: /docs
+Disallow: /logout
+
+Sitemap: {base}/sitemap.xml
+"""
+
+
+def _build_sitemap_xml_body(base: str, db) -> str:
+    """Build sitemap XML from current DB (published blog URLs + static pages)."""
+    from .services import db_repository as repo
+
+    parts = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+    static: List[tuple[str, str, str]] = [
+        ("/", "1.0", "weekly"),
+        ("/contact", "0.8", "monthly"),
+        ("/presentation", "0.8", "monthly"),
+        ("/blog", "0.9", "daily"),
+    ]
+    for path, pri, cf in static:
+        parts.append(_sitemap_url_block(base + path, priority=pri, changefreq=cf))
+
+    articles: List[Dict[str, Any]] = repo.list_blog_articles_published(db, limit=500)
+    for a in articles:
+        slug = (a.get("slug") or "").strip()
+        if not slug:
+            continue
+        loc = f"{base}/blog/{quote(slug, safe='')}"
+        ts = a.get("updated_at") or a.get("published_at") or a.get("created_at")
+        lm: Optional[str] = ts[:10] if isinstance(ts, str) and len(ts) >= 10 else None
+        parts.append(_sitemap_url_block(loc, priority="0.7", changefreq="weekly", lastmod=lm))
+
+    parts.append("</urlset>")
+    return "\n".join(parts) + "\n"
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml(request: Request):
+    """
+    Public URLs only — no /admin, /batches, /upload, or authenticated flows.
+    If admin has saved a cached copy (Settings → regenerate), that snapshot is served.
+    """
+    s = _get_settings()
+    cached = (s.get("cached_sitemap_xml") or "").strip()
+    if cached:
+        return Response(content=cached, media_type="application/xml; charset=utf-8")
+
+    from .db import get_db
+
+    base = _public_site_base(request)
+    with get_db() as db:
+        body = _build_sitemap_xml_body(base, db)
+    return Response(content=body, media_type="application/xml; charset=utf-8")
+
+
+@app.get("/robots.txt")
+async def robots_txt(request: Request):
+    """
+    Block indexing of admin, batch review, APIs, and auth-gated app areas.
+    Cached copy from admin regeneration takes precedence when present.
+    """
+    s = _get_settings()
+    cached = (s.get("cached_robots_txt") or "").strip()
+    if cached:
+        return PlainTextResponse(cached, media_type="text/plain; charset=utf-8")
+
+    base = _public_site_base(request)
+    text = _build_robots_txt_body(base)
+    return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
 
 register_writter_routes(app)
