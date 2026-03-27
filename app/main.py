@@ -2559,7 +2559,7 @@ def _build_contact_page(request: Request) -> str:
     meta_line = f'    <meta name="description" content="{html_module.escape(desc, quote=True)}" />\n'
     contact_meta_seo = meta_line + seo
     _nav = public_site_nav_html(feed_structure_href="/#feed-structure")
-    return """<!DOCTYPE html>
+    _contact_html = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
 """ + GTM_HEAD + """
@@ -2568,7 +2568,7 @@ def _build_contact_page(request: Request) -> str:
     <title>Contact us &mdash; Cartozo.ai</title>
 __CONTACT_META_SEO__
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
-    <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
+    <style>body{opacity:0;transition:opacity .28s ease}body.loaded{opacity:1}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; overflow-x: hidden; position: relative; -webkit-font-smoothing: antialiased; }
@@ -2577,6 +2577,7 @@ __CONTACT_META_SEO__
     [data-theme="light"] input { border-color: rgba(15,23,42,0.15); background: rgba(255,255,255,0.9); color: #0f172a; }
     [data-theme="light"] input:focus { border-color: rgba(15,23,42,0.3); }
     [data-theme="light"] .contact-email { color: #4F46E5; }
+    @@HP_NAV_STYLES@@
     .cp-stars { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
     .cp-star { position: absolute; width: 2px; height: 2px; background: rgba(255,255,255,0.5); border-radius: 50%; animation: cp-starDrift 30s ease-in-out infinite; }
     [data-theme="light"] .cp-star { background: rgba(15,23,42,0.25); }
@@ -2620,7 +2621,6 @@ __CONTACT_META_SEO__
     .cp-crater-3 { width: 14px; height: 14px; top: 22%; left: 62%; }
     .cp-crater-4 { width: 8px; height: 8px; top: 55%; left: 55%; }
     .cp-crater-5 { width: 6px; height: 6px; top: 42%; left: 72%; }
-    @@HP_NAV_STYLES@@
     .cp-container { max-width: 480px; margin: 80px auto; padding: 0 24px; position: relative; z-index: 2; padding-top: 100px; }
     .title { font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; }
     .subtitle { color: rgba(255,255,255,0.6); font-size: 0.95rem; margin-bottom: 32px; line-height: 1.5; }
@@ -2639,11 +2639,11 @@ __CONTACT_META_SEO__
     .success-msg.show { display: block; }
     .error-msg { margin-top: 20px; padding: 16px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; color: #ef4444; font-size: 0.9rem; display: none; }
     .error-msg.show { display: block; }
-    .hp-footer { margin-top: 48px; }
+    .hp-footer { margin-top: 48px; position: relative; z-index: 2; }
     @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } .cp-moon-container { width: 220px; height: 220px; } .cp-moon-body { width: 90px; height: 90px; margin: -45px 0 0 -45px; } .cp-moon-glow { width: 150px; height: 150px; margin: -75px 0 0 -75px; } }
     </style>
 </head>
-<body>
+<body class="loaded">
 """ + GTM_BODY + """
     <div class="cp-stars">
         <div class="cp-star"></div><div class="cp-star"></div><div class="cp-star"></div>
@@ -2730,10 +2730,15 @@ __CONTACT_META_SEO__
     </script>
     <script src="/static/page-transition.js"></script>
 </body>
-</html>""".replace("__CONTACT_META_SEO__", contact_meta_seo).replace(
-        "@@HP_NAV_STYLES@@", HP_NAV_CSS + HP_FOOTER_CSS
-    ).replace("@@PUBLIC_HP_NAV@@", _nav).replace(
-        "@@PUBLIC_SITE_FOOTER@@", public_site_footer_html(feed_structure_href="/#feed-structure")
+</html>"""
+    return (
+        _contact_html.replace("__CONTACT_META_SEO__", contact_meta_seo)
+        .replace("@@HP_NAV_STYLES@@", HP_NAV_CSS + HP_FOOTER_CSS)
+        .replace("@@PUBLIC_HP_NAV@@", _nav)
+        .replace(
+            "@@PUBLIC_SITE_FOOTER@@",
+            public_site_footer_html(feed_structure_href="/#feed-structure"),
+        )
     )
 
 
