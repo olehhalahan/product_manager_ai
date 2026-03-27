@@ -46,6 +46,11 @@ from xml.sax.saxutils import escape as _xml_escape
 
 from .writter_routes import register_writter_routes
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
+from .how_it_works_page import build_how_it_works_html
+from .pricing_page import build_pricing_html
+from .privacy_pages import build_cookie_policy_html, build_privacy_policy_html
+from .terms_page import build_terms_html
+from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
 
 app = FastAPI(title="Product Content Optimizer", docs_url=None)
 
@@ -414,14 +419,9 @@ def _build_error_page(status_code: int = 404, message: str = "Page not found") -
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; }}
+    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; padding: 96px 24px 48px; box-sizing: border-box; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
-    .err-nav {{ position: fixed; top: 0; left: 0; right: 0; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.9); backdrop-filter: blur(12px); }}
-    [data-theme="light"] .err-nav {{ background: rgba(248,250,252,0.95); border-color: rgba(15,23,42,0.08); }}
-    .err-nav-logo img {{ height: 32px; filter: brightness(0) invert(1); }}
-    [data-theme="light"] .err-nav-logo img {{ filter: none; }}
-    .err-nav-cta {{ background: #fff; color: #0B0F19; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; }}
-    [data-theme="light"] .err-nav-cta {{ background: #0f172a; color: #fff; }}
+    @@ERR_HP_NAV_STYLES@@
     .err-box {{ text-align: center; padding: 48px 24px; max-width: 480px; }}
     .err-code {{ font-size: 4rem; font-weight: 800; color: #22D3EE; letter-spacing: -0.04em; margin-bottom: 16px; }}
     .err-title {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 12px; }}
@@ -433,18 +433,18 @@ def _build_error_page(status_code: int = 404, message: str = "Page not found") -
 </head>
 <body>
 {GTM_BODY}
-    <nav class="err-nav">
-        <a href="/" class="err-nav-logo"><img src="/assets/logo-light.png" alt="Cartozo.ai" /></a>
-        <a href="/" class="err-nav-cta">Go to homepage</a>
-    </nav>
+    @@ERR_PUBLIC_NAV@@
     <div class="err-box">
         <div class="err-code">{status_code}</div>
         <h1 class="err-title">{title}</h1>
         <p class="err-msg">{safe_msg}</p>
         <a href="/" class="err-btn">Back to homepage</a>
     </div>
+    <script>__ERR_THEME__</script>
 </body>
-</html>"""
+</html>""".replace("@@ERR_HP_NAV_STYLES@@", HP_NAV_CSS).replace(
+        "@@ERR_PUBLIC_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
+    ).replace("__ERR_THEME__", public_site_theme_toggle_script().strip())
 
 
 app.mount("/static", StaticFiles(directory=_os.path.join(_PROJECT_ROOT, "static")), name="static")
@@ -886,6 +886,7 @@ async def api_merchant_select_account(request: Request):
     mid = gmc.normalize_merchant_id(raw)
     if not mid:
         raise HTTPException(status_code=400, detail="merchant_id must be a numeric Merchant Center account id.")
+    mid = gmc.canonical_merchant_id(mid) or mid
 
     with get_db() as db:
         save_google_merchant_oauth(db, email, None, mid)
@@ -933,6 +934,7 @@ async def api_batch_merchant_push(request: Request, batch_id: str):
             )
         refresh_token = row.merchant_refresh_token
         merchant_id = row.merchant_id
+        merchant_id = gmc.canonical_merchant_id(merchant_id) or merchant_id
 
     access_token = await gmc.get_access_token_from_refresh(refresh_token)
     if not access_token:
@@ -960,11 +962,16 @@ async def api_batch_merchant_push(request: Request, batch_id: str):
         with get_db() as db:
             save_google_merchant_oauth(db, email, None, merchant_id)
 
+    from .models import ProductAction as PA, ProductStatus as PS
+
     if product_ids is not None:
         wanted = {str(x).strip() for x in product_ids if str(x).strip()}
         products = [r for r in batch.products if str(r.product.id).strip() in wanted]
     else:
         products = list(batch.products)
+
+    # Inactive / skipped rows must not be pushed — same rule as GMC CSV export.
+    products = [r for r in products if r.status != PS.SKIPPED and r.action != PA.SKIP]
 
     if not products:
         raise HTTPException(
@@ -1054,7 +1061,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-bg-line-h { width: 300px; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent); }
     .hp-bg-glow { border-radius: 50%; background: radial-gradient(circle, rgba(79,70,229,0.12) 0%, transparent 70%); }
 
-    /* Navigation — full-width bar, content capped at 1200px (not ultra-wide stretch) */
+    /* Navigation тАФ full-width bar, content capped at 1200px (not ultra-wide stretch) */
     .hp-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; padding: 16px 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
     [data-theme="light"] .hp-nav { background: rgba(248,250,252,0.95); border-bottom-color: rgba(15,23,42,0.08); }
     .hp-nav-inner { max-width: 1200px; width: 100%; margin: 0 auto; padding: 0 40px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
@@ -1079,7 +1086,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .hp-nav-right { gap: 12px; }
     }
 
-    /* Hero — same max width as page content */
+    /* Hero тАФ same max width as page content */
     .hp-hero { text-align: center; padding: 160px 40px 120px; position: relative; min-height: 600px; max-width: 1200px; margin-left: auto; margin-right: auto; box-sizing: border-box; overflow: hidden; background: var(--hp-bg); }
     .hp-badge { display: inline-block; color: var(--hp-accent); font-size: 0.75rem; font-weight: 600; margin-bottom: 28px; letter-spacing: 0.18em; text-transform: uppercase; transition: font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
     .hp-title { font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 800; line-height: 1.05; margin-bottom: 24px; letter-spacing: -0.04em; position: relative; z-index: 2; transition: font-size 0.4s cubic-bezier(0.4, 0, 0.2, 1), margin 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -1213,7 +1220,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     [data-theme="light"] .hp-chat-msg.user { background: rgba(15,23,42,0.08); }
     [data-theme="light"] .hp-chat-msg.assistant { background: rgba(79,70,229,0.1); border-color: rgba(79,70,229,0.2); }
 
-    /* Hero: abstract AI — neural lines, data nodes, animated grid (no space/planets) */
+    /* Hero: abstract AI тАФ neural lines, data nodes, animated grid (no space/planets) */
     .hp-hero-ai { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
     .hp-hero-ai-grid {
       position: absolute; inset: -20%; width: 140%; height: 140%;
@@ -1260,7 +1267,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
       .hp-ai-node { animation: none; opacity: 0.7; }
     }
 
-    /* Features — premium glassmorphism design */
+    /* Features тАФ premium glassmorphism design */
     .hp-features { padding: 120px 0 140px; position: relative; overflow: hidden; background: linear-gradient(180deg, transparent 0%, rgba(79,70,229,0.02) 30%, rgba(167,139,250,0.02) 70%, transparent 100%); }
     .hp-features .hp-container { position: relative; z-index: 1; }
     .hp-features-bg { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -1383,7 +1390,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-feed-footer { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; padding: 20px 24px; background: rgba(0,0,0,0.2); border-top: 1px solid rgba(255,255,255,0.06); }
     [data-theme="light"] .hp-feed-footer { background: rgba(15,23,42,0.03); border-top-color: rgba(15,23,42,0.08); }
     .hp-feed-badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; font-size: 0.85rem; font-weight: 600; border-radius: 10px; background: linear-gradient(135deg, rgba(79,70,229,0.2), rgba(79,70,229,0.1)); color: #4F46E5; border: 1px solid rgba(79,70,229,0.3); }
-    .hp-feed-badge::before { content: '✓'; font-weight: 700; color: #34d399; }
+    .hp-feed-badge::before { content: 'тЬУ'; font-weight: 700; color: #34d399; }
     [data-theme="light"] .hp-feed-badge { background: linear-gradient(135deg, rgba(79,70,229,0.15), rgba(79,70,229,0.08)); color: #4338ca; border-color: rgba(79,70,229,0.25); }
     .hp-feed-meta { font-size: 0.78rem; color: var(--hp-muted); }
     @media (max-width: 768px) { .hp-feed-section { padding: 72px 0; } .hp-feed-table { font-size: 0.7rem; min-width: 750px; } .hp-feed-block::before { animation: none; } }
@@ -1416,9 +1423,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-cta-sub { color: var(--hp-muted); font-size: 1rem; margin-bottom: 32px; }
 
     /* Footer */
-    .hp-footer { max-width: 1200px; margin: 0 auto; padding: 28px 40px; text-align: center; font-size: 0.82rem; color: var(--hp-muted); border-top: 1px solid var(--hp-border); box-sizing: border-box; }
-    .hp-footer a { color: var(--hp-muted); text-decoration: none; }
-    .hp-footer a:hover { color: var(--hp-fg); text-decoration: underline; }
+    {HP_FOOTER_CSS}
 
     /* Back to top button */
     .back-to-top { position: fixed; bottom: 32px; right: 32px; width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: var(--hp-text); font-size: 1.2rem; cursor: pointer; opacity: 0; visibility: hidden; transform: translateY(20px); transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); z-index: 999; }
@@ -1451,7 +1456,6 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .hp-chat-messages { max-height: 200px; }
         .hp-container { padding: 0 24px; }
         .hp-features, .hp-steps, .hp-cta { padding: 56px 0; }
-        .hp-footer { padding: 24px 24px; }
     }
     </style>
 </head>
@@ -1465,22 +1469,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
         <div class="hp-star"></div><div class="hp-star"></div><div class="hp-star"></div>
     </div>
-    <nav class="hp-nav">
-        <div class="hp-nav-inner">
-        <a href="/" class="hp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-        <div class="hp-nav-links">
-            <a href="/presentation" class="hp-nav-link">Features</a>
-            <a href="/blog" class="hp-nav-link">Blog</a>
-            <a href="#feed-structure" class="hp-nav-link">Feed Structure</a>
-            <a href="#how-it-works" class="hp-nav-link">How it works</a>
-            <a href="/contact" class="hp-nav-link">Contact us</a>
-        </div>
-        <div class="hp-nav-right">
-            <button type="button" class="hp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-            <a href="/login" class="hp-nav-cta">Get Started</a>
-        </div>
-        </div>
-    </nav>
+    {PUBLIC_HP_NAV}
 
     <section class="hp-hero">
         <div class="hp-hero-ai" aria-hidden="true">
@@ -1589,7 +1578,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
                 </div>
                 <div class="hp-feature-title">Quality Scoring</div>
-                <div class="hp-feature-desc">Each optimization gets a quality score (1–100) so you see the improvement level.</div>
+                <div class="hp-feature-desc">Each optimization gets a quality score (1тАУ100) so you see the improvement level.</div>
             </div>
             <div class="hp-feature">
                 <div class="hp-feature-visual">
@@ -1722,14 +1711,12 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         </div>
         <div class="hp-container">
             <h2 class="hp-cta-title">Ready to optimize your product feed?</h2>
-            <p class="hp-cta-sub">Start with a free trial — no API key needed for demo mode.</p>
+            <p class="hp-cta-sub">Start with a free trial тАФ no API key needed for demo mode.</p>
             <a href="/login" class="hp-btn hp-btn-primary">Get Started Free</a>
         </div>
     </section>
 
-    <footer class="hp-footer">
-        &copy; 2026 Cartozo.ai - AI-powered product feed optimization &middot; Powered by <a href="https://zanzarra.com/" target="_blank" rel="noopener noreferrer">Zanzarra</a>
-    </footer>
+    {PUBLIC_SITE_FOOTER}
 
     <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">
         &#8593;
@@ -2179,8 +2166,9 @@ def _build_login_page(
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; }}
+    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; padding: 100px 24px 48px; box-sizing: border-box; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
+    @@LOGIN_HP_NAV_STYLES@@
     .login-box {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 48px 40px; max-width: 400px; width: 100%; text-align: center; }}
     [data-theme="light"] .login-box {{ background: #fff; border-color: rgba(15,23,42,0.1); box-shadow: 0 4px 24px rgba(0,0,0,0.06); }}
     .login-box h1 {{ font-size: 1.5rem; font-weight: 600; margin-bottom: 8px; }}
@@ -2193,39 +2181,31 @@ def _build_login_page(
     [data-theme="light"] .auth-apple {{ background: #1f1f1f; }}
     .auth-apple:hover {{ opacity: 0.9; }}
     .auth-no-providers {{ color: rgba(255,255,255,0.5); font-size: 0.85rem; }}
-    .nav {{ position: fixed; top: 0; left: 0; right: 0; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between; }}
-    [data-theme="light"] .nav {{ border-color: rgba(15,23,42,0.08); }}
-    .nav-logo img {{ height: 32px; filter: brightness(0) invert(1); }}
-    [data-theme="light"] .nav-logo img {{ filter: none; }}
-    .theme-btn {{ width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
-    [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
     [data-theme="light"] .auth-no-providers {{ color: rgba(15,23,42,0.5); }}
     .oauth-alert {{ text-align: left; font-size: 0.82rem; line-height: 1.45; color: #fecaca; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }}
     .oauth-alert code {{ font-size: 0.78rem; background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; }}
     [data-theme="light"] .oauth-alert {{ color: #991b1b; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); }}
+    __LOGIN_HP_FOOTER_STYLES__
     </style>
 </head>
 <body>
 {GTM_BODY}
-    <nav class="nav">
-        <a href="/" class="nav-logo"><img src="/assets/logo-light.png" alt="Cartozo.ai" /></a>
-        <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">&#9728;</button>
-    </nav>
+    @@LOGIN_PUBLIC_NAV@@
     <div class="login-box">
         <h1>Sign in to continue</h1>
         <p>Use your Google or Apple account to access the uploader. No registration required.</p>
         {oauth_alert_html}
         {providers_html}
     </div>
-    <script>
-    (function(){{
-        const t=document.getElementById("themeToggle");
-        if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\u2600":"\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
-    }})();
-    </script>
+    __LOGIN_PUBLIC_FOOTER__
+    <script>__LOGIN_THEME__</script>
     <script src="/static/page-transition.js"></script>
 </body>
-</html>"""
+</html>""".replace("@@LOGIN_HP_NAV_STYLES@@", HP_NAV_CSS).replace("__LOGIN_HP_FOOTER_STYLES__", HP_FOOTER_CSS).replace(
+        "@@LOGIN_PUBLIC_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
+    ).replace("__LOGIN_PUBLIC_FOOTER__", public_site_footer_html(feed_structure_href="/#feed-structure")).replace(
+        "__LOGIN_THEME__", public_site_theme_toggle_script().strip()
+    )
 
 
 _UPLOAD_TEMPLATE = """<!DOCTYPE html>
@@ -2556,6 +2536,7 @@ def _build_upload_page(user_role: str = "customer") -> str:
 
 
 def _build_contact_page() -> str:
+    _nav = public_site_nav_html(feed_structure_href="/#feed-structure")
     return """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -2616,26 +2597,7 @@ def _build_contact_page() -> str:
     .cp-crater-3 { width: 14px; height: 14px; top: 22%; left: 62%; }
     .cp-crater-4 { width: 8px; height: 8px; top: 55%; left: 55%; }
     .cp-crater-5 { width: 6px; height: 6px; top: 42%; left: 72%; }
-    :root, [data-theme="dark"] { --hp-bg: #0B0F19; --hp-text: #E5E7EB; --hp-muted: #9ca3af; --hp-accent: #4F46E5; --hp-border: rgba(255,255,255,0.1); }
-    [data-theme="light"] { --hp-bg: #f8fafc; --hp-text: #0f172a; --hp-muted: rgba(15,23,42,0.6); --hp-accent: #4F46E5; --hp-border: rgba(15,23,42,0.12); }
-    .cp-nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
-    [data-theme="light"] .cp-nav { background: rgba(248,250,252,0.95); border-bottom-color: rgba(15,23,42,0.08); }
-    .cp-nav-logo { flex-shrink: 0; }
-    .cp-nav-logo img { height: 32px; }
-    .cp-nav-logo .logo-light { display: block; filter: brightness(0) invert(1); }
-    .cp-nav-logo .logo-dark { display: none; }
-    [data-theme="light"] .cp-nav-logo .logo-light { display: none; }
-    [data-theme="light"] .cp-nav-logo .logo-dark { display: block; filter: none; }
-    .cp-nav-links { display: flex; align-items: center; justify-content: center; gap: 28px; flex: 1; }
-    .cp-nav-right { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
-    .cp-nav-link { color: var(--hp-muted); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }
-    .cp-nav-link:hover { color: var(--hp-text); }
-    .cp-theme-btn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--hp-border); background: transparent; color: var(--hp-muted); cursor: pointer; font-size: 1rem; transition: all 0.2s; }
-    .cp-theme-btn:hover { color: var(--hp-text); background: rgba(255,255,255,0.08); }
-    [data-theme="light"] .cp-theme-btn:hover { background: rgba(15,23,42,0.06); }
-    .cp-nav-cta { background: var(--hp-text); color: var(--hp-bg); padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; transition: opacity 0.2s; }
-    .cp-nav-cta:hover { opacity: 0.9; }
-    @media (max-width: 1024px) { .cp-nav-links { display: none; } .cp-nav-right { gap: 12px; } }
+    @@HP_NAV_STYLES@@
     .cp-container { max-width: 480px; margin: 80px auto; padding: 0 24px; position: relative; z-index: 2; padding-top: 100px; }
     .title { font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; }
     .subtitle { color: rgba(255,255,255,0.6); font-size: 0.95rem; margin-bottom: 32px; line-height: 1.5; }
@@ -2654,6 +2616,7 @@ def _build_contact_page() -> str:
     .success-msg.show { display: block; }
     .error-msg { margin-top: 20px; padding: 16px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; color: #ef4444; font-size: 0.9rem; display: none; }
     .error-msg.show { display: block; }
+    .hp-footer { margin-top: 48px; }
     @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } .cp-moon-container { width: 220px; height: 220px; } .cp-moon-body { width: 90px; height: 90px; margin: -45px 0 0 -45px; } .cp-moon-glow { width: 150px; height: 150px; margin: -75px 0 0 -75px; } }
     </style>
 </head>
@@ -2684,20 +2647,7 @@ def _build_contact_page() -> str:
             </div>
         </div>
     </div>
-    <nav class="cp-nav">
-        <a href="/" class="cp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-        <div class="cp-nav-links">
-            <a href="/#features" class="cp-nav-link">Features</a>
-            <a href="/blog" class="cp-nav-link">Blog</a>
-            <a href="/#feed-structure" class="cp-nav-link">Feed Structure</a>
-            <a href="/#how-it-works" class="cp-nav-link">How it works</a>
-            <a href="/contact" class="cp-nav-link">Contact us</a>
-        </div>
-        <div class="cp-nav-right">
-            <button type="button" class="cp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-            <a href="/login" class="cp-nav-cta">Get Started</a>
-        </div>
-    </nav>
+    @@PUBLIC_HP_NAV@@
     <div class="cp-container">
         <h1 class="title">Contact us</h1>
         <p class="subtitle">Have a question? Fill out the form below and we'll get back to you.</p>
@@ -2726,6 +2676,7 @@ def _build_contact_page() -> str:
         <div id="successMsg" class="success-msg">Thank you! We'll be in touch soon.</div>
         <div id="errorMsg" class="error-msg"></div>
     </div>
+    @@PUBLIC_SITE_FOOTER@@
     <script>
     (function(){
         const form=document.getElementById('contactForm');
@@ -2756,11 +2707,13 @@ def _build_contact_page() -> str:
     </script>
     <script src="/static/page-transition.js"></script>
 </body>
-</html>"""
+</html>""".replace("@@HP_NAV_STYLES@@", HP_NAV_CSS + HP_FOOTER_CSS).replace("@@PUBLIC_HP_NAV@@", _nav).replace(
+        "@@PUBLIC_SITE_FOOTER@@", public_site_footer_html(feed_structure_href="/#feed-structure")
+    )
 
 
 def _build_presentation_page() -> str:
-    return """<!DOCTYPE html>
+    _html = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
 """ + GTM_HEAD + """
@@ -2774,6 +2727,7 @@ def _build_presentation_page() -> str:
     body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     [data-theme="light"] body { background: linear-gradient(165deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); }
     :root { --pp-accent: #4F46E5; --pp-accent-soft: rgba(79,70,229,0.15); --pp-muted: #9ca3af; --pp-ease: cubic-bezier(0.22, 1, 0.36, 1); --pp-ease-out: cubic-bezier(0.16, 1, 0.3, 1); }
+    @@HP_NAV_STYLES@@
     .pp-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
     .pp-bg-gradient { position: absolute; inset: 0; background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(79,70,229,0.12) 0%, transparent 50%), radial-gradient(ellipse 80% 60% at 80% 80%, rgba(167,139,250,0.06) 0%, transparent 50%), radial-gradient(ellipse 60% 80% at 10% 50%, rgba(59,130,246,0.04) 0%, transparent 50%); }
     .pp-bg-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 60px 60px; mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 70%); }
@@ -2784,12 +2738,6 @@ def _build_presentation_page() -> str:
     .pp-star:nth-child(5){top:85%;left:25%;animation-delay:2s;}.pp-star:nth-child(6){top:15%;left:55%;animation-delay:0.3s;}
     .pp-star:nth-child(7){top:55%;left:85%;animation-delay:2.2s;}.pp-star:nth-child(8){top:35%;right:8%;animation-delay:0.8s;}
     @keyframes pp-twinkle { 0%,100%{opacity:0.4;transform:scale(1)} 50%{opacity:1;transform:scale(1.3)} }
-    .pp-nav { position: fixed; top: 0; left: 0; right: 0; padding: 20px 48px; z-index: 200; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(180deg, rgba(5,5,8,0.9) 0%, transparent 100%); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); transition: background 0.4s var(--pp-ease); }
-    .pp-nav.scrolled { background: rgba(5,5,8,0.85); }
-    .pp-nav-logo { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.02em; color: #fff; text-decoration: none; transition: opacity 0.2s; }
-    .pp-nav-logo:hover { opacity: 0.9; }
-    .pp-nav-close { font-size: 0.9rem; font-weight: 500; color: var(--pp-muted); text-decoration: none; padding: 10px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); transition: all 0.25s var(--pp-ease); }
-    .pp-nav-close:hover { color: #fff; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); }
     .pp-slides { position: relative; width: 100vw; height: 100vh; }
     .pp-slide { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 140px 48px 120px; opacity: 0; visibility: hidden; transform: scale(0.98); transition: opacity 0.7s var(--pp-ease), visibility 0.7s, transform 0.7s var(--pp-ease); z-index: 1; }
     .pp-slide.active { opacity: 1; visibility: visible; z-index: 2; transform: scale(1); }
@@ -2848,7 +2796,7 @@ def _build_presentation_page() -> str:
     .pp-arrow { width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s var(--pp-ease); pointer-events: auto; }
     .pp-arrow:hover { background: var(--pp-accent-soft); border-color: rgba(79,70,229,0.3); color: var(--pp-accent); transform: scale(1.05); }
     @media (max-width: 900px) { .pp-flow { flex-direction: column; align-items: center; gap: 32px; } .pp-flow-connector { width: 2px; height: 24px; margin: 0; background: linear-gradient(180deg, rgba(79,70,229,0.4), rgba(79,70,229,0.15)); } }
-    @media (max-width: 768px) { .pp-features { grid-template-columns: 1fr 1fr; gap: 16px; } .pp-arrows { padding: 0 12px; } .pp-arrow { width: 44px; height: 44px; } .pp-nav { padding: 16px 24px; } }
+    @media (max-width: 768px) { .pp-features { grid-template-columns: 1fr 1fr; gap: 16px; } .pp-arrows { padding: 0 12px; } .pp-arrow { width: 44px; height: 44px; } }
     </style>
 </head>
 <body>
@@ -2862,13 +2810,7 @@ def _build_presentation_page() -> str:
             <div class="pp-star"></div><div class="pp-star"></div>
         </div>
     </div>
-    <nav class="pp-nav" id="ppNav">
-        <a href="/" class="pp-nav-logo">Cartozo.ai</a>
-        <div style="display:flex;align-items:center;gap:10px;">
-            <a href="/blog" class="pp-nav-close">Blog</a>
-            <a href="/" class="pp-nav-close">Close</a>
-        </div>
-    </nav>
+    @@PUBLIC_HP_NAV@@
     <div class="pp-slides">
         <div class="pp-slide active" data-slide="0">
             <span class="pp-badge">AI-Powered E-commerce</span>
@@ -2945,9 +2887,18 @@ def _build_presentation_page() -> str:
         resetAuto();
     })();
     </script>
+    __THEME_INLINE__
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
+    return (
+        _html.replace("@@HP_NAV_STYLES@@", HP_NAV_CSS)
+        .replace("@@PUBLIC_HP_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure"))
+        .replace(
+            "__THEME_INLINE__",
+            "<script>" + public_site_theme_toggle_script().strip() + "</script>",
+        )
+    )
 
 
 def _build_homepage_html() -> str:
@@ -2961,6 +2912,9 @@ def _build_homepage_html() -> str:
     og_image = s.get("seo_og_image") or ""
     og_site = s.get("seo_og_site_name") or "Cartozo.ai"
     return HOMEPAGE_HTML.replace("{GTM_HEAD}", GTM_HEAD).replace(
+        "{PUBLIC_HP_NAV}", public_site_nav_html(feed_structure_href="#feed-structure")).replace(
+        "{HP_FOOTER_CSS}", HP_FOOTER_CSS).replace(
+        "{PUBLIC_SITE_FOOTER}", public_site_footer_html(feed_structure_href="#feed-structure")).replace(
         "{SEO_META_TITLE}", html_module.escape(meta_title)).replace(
         "{SEO_META_DESCRIPTION}", html_module.escape(meta_desc)).replace(
         "{SEO_OG_TITLE}", html_module.escape(og_title)).replace(
@@ -2982,6 +2936,91 @@ def contact_page():
 @app.get("/presentation", response_class=HTMLResponse)
 def presentation_page():
     return HTMLResponse(content=_build_presentation_page())
+
+
+def _terms_of_service_html_response() -> HTMLResponse:
+    title = "Terms of Service | Cartozo AI"
+    desc = "Terms of Service for Cartozo AI — product feed optimization SaaS. Last updated March 26, 2026."
+    return HTMLResponse(
+        content=build_terms_html(
+            meta_title=title,
+            meta_description=desc,
+            og_title=title,
+            og_description=desc,
+            gtm_head=GTM_HEAD,
+            gtm_body=GTM_BODY,
+        )
+    )
+
+
+def _privacy_policy_html_response() -> HTMLResponse:
+    title = "Privacy Policy | Cartozo AI"
+    desc = "How Cartozo AI collects, uses, and protects your data. Product feed optimization SaaS."
+    return HTMLResponse(
+        content=build_privacy_policy_html(
+            meta_title=title,
+            meta_description=desc,
+            og_title=title,
+            og_description=desc,
+            gtm_head=GTM_HEAD,
+            gtm_body=GTM_BODY,
+        )
+    )
+
+
+def _cookie_policy_html_response() -> HTMLResponse:
+    title = "Cookie Policy | Cartozo AI"
+    desc = "How Cartozo AI uses cookies and similar technologies on cartozo.ai."
+    return HTMLResponse(
+        content=build_cookie_policy_html(
+            meta_title=title,
+            meta_description=desc,
+            og_title=title,
+            og_description=desc,
+            gtm_head=GTM_HEAD,
+            gtm_body=GTM_BODY,
+        )
+    )
+
+
+@app.get("/pricing", response_class=HTMLResponse)
+def pricing_page():
+    """Monetization: plan tiers, add-ons, comparison — content from pricing_plans.json."""
+    title = "Pricing — Cartozo AI for Google Shopping feeds"
+    desc = (
+        "Simple plans from free to enterprise. Fix disapprovals, optimize titles, "
+        "push Merchant-ready feeds. Add-ons for extra products and regenerations."
+    )
+    return HTMLResponse(
+        content=build_pricing_html(
+            meta_title=title,
+            meta_description=desc,
+            og_title=title,
+            og_description=desc,
+            gtm_head=GTM_HEAD,
+            gtm_body=GTM_BODY,
+        )
+    )
+
+
+@app.get("/how-it-works", response_class=HTMLResponse)
+def how_it_works_page():
+    """EN performance landing: feed cleanup, AI optimization, Merchant (ads)."""
+    title = "Fix Google Shopping feed issues & boost Merchant performance | Cartozo.ai"
+    desc = (
+        "Up to 30% of products can fail in Merchant from feed issues. Get more clicks and sales from the same ad "
+        "budget—fix disapprovals, improve titles, push clean feeds. No setup: upload any CSV."
+    )
+    return HTMLResponse(
+        content=build_how_it_works_html(
+            meta_title=title,
+            meta_description=desc,
+            og_title=title,
+            og_description=desc,
+            gtm_head=GTM_HEAD,
+            gtm_body=GTM_BODY,
+        )
+    )
 
 
 @app.post("/api/contact")
@@ -3630,6 +3669,14 @@ async def export_batch(request: Request, batch_id: str):
     batch = storage.get_batch(batch_id)
     _ensure_batch_owner_from_batch(request, batch)
 
+    from .models import ProductAction as PA, ProductStatus as PS
+
+    if not any(r.status != PS.SKIPPED and r.action != PA.SKIP for r in batch.products):
+        raise HTTPException(
+            status_code=400,
+            detail="No products to export — all rows are skipped/inactive.",
+        )
+
     _onboarding_export_done(request)
 
     csv_buffer = io.StringIO()
@@ -3639,7 +3686,9 @@ async def export_batch(request: Request, batch_id: str):
     return StreamingResponse(
         iter([csv_buffer.getvalue().encode("utf-8")]),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="batch_{batch_id}.csv"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="merchant_feed_{batch_id}.csv"',
+        },
     )
 
 
@@ -3696,18 +3745,27 @@ async def export_selected_products(request: Request, batch_id: str, product_ids:
 
     # Filter to only selected products
     from .models import Batch as BatchModel
+    from .models import ProductAction as PA, ProductStatus as PS
+
     selected_products = [r for r in batch.products if r.product.id in product_ids]
-    
+
     if not selected_products:
         raise HTTPException(status_code=400, detail="No products selected.")
 
+    exportable = [r for r in selected_products if r.status != PS.SKIPPED and r.action != PA.SKIP]
+    if not exportable:
+        raise HTTPException(
+            status_code=400,
+            detail="Selected rows are skipped/inactive and cannot be included in a Merchant feed.",
+        )
+
     _onboarding_export_done(request)
 
-    # Create a temporary batch with only selected products
+    # Create a temporary batch with only selected, exportable products
     filtered_batch = BatchModel(
         id=batch.id,
         status=batch.status,
-        products=selected_products,
+        products=exportable,
     )
 
     csv_buffer = io.StringIO()
@@ -3717,7 +3775,9 @@ async def export_selected_products(request: Request, batch_id: str, product_ids:
     return StreamingResponse(
         iter([csv_buffer.getvalue().encode("utf-8")]),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="selected_{batch_id[:8]}.csv"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="merchant_feed_selected_{batch_id[:8]}.csv"',
+        },
     )
 
 
@@ -4754,7 +4814,7 @@ async def review_batch(request: Request, batch_id: str):
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'batch_{batch_id}.csv';
+            a.download = 'merchant_feed_{batch_id}.csv';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -4781,7 +4841,7 @@ async def review_batch(request: Request, batch_id: str):
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'selected_products_{batch_id[:8]}.csv';
+            a.download = 'merchant_feed_selected_{batch_id[:8]}.csv';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -6425,6 +6485,11 @@ def _build_sitemap_xml_body(base: str, db) -> str:
         ("/", "1.0", "weekly"),
         ("/contact", "0.8", "monthly"),
         ("/presentation", "0.8", "monthly"),
+        ("/how-it-works", "0.9", "monthly"),
+        ("/pricing", "0.9", "monthly"),
+        ("/terms", "0.5", "yearly"),
+        ("/privacy", "0.5", "yearly"),
+        ("/cookies", "0.5", "yearly"),
         ("/blog", "0.9", "daily"),
     ]
     for path, pri, cf in static:
@@ -6480,3 +6545,60 @@ async def robots_txt(request: Request):
 
 
 register_writter_routes(app)
+
+# Registered after all other routers so /terms is never shadowed by a catch-all elsewhere.
+app.add_api_route(
+    "/terms",
+    _terms_of_service_html_response,
+    methods=["GET"],
+    response_class=HTMLResponse,
+    name="terms_of_service_page",
+)
+app.add_api_route(
+    "/terms-of-service",
+    _terms_of_service_html_response,
+    methods=["GET"],
+    response_class=HTMLResponse,
+    name="terms_of_service_page_dash",
+)
+
+
+def _terms_trailing_slash_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/terms", status_code=308)
+
+
+app.add_api_route(
+    "/terms/",
+    _terms_trailing_slash_redirect,
+    methods=["GET"],
+)
+
+app.add_api_route(
+    "/privacy",
+    _privacy_policy_html_response,
+    methods=["GET"],
+    response_class=HTMLResponse,
+    name="privacy_policy_page",
+)
+app.add_api_route(
+    "/privacy-policy",
+    _privacy_policy_html_response,
+    methods=["GET"],
+    response_class=HTMLResponse,
+    name="privacy_policy_page_alt",
+)
+
+app.add_api_route(
+    "/cookies",
+    _cookie_policy_html_response,
+    methods=["GET"],
+    response_class=HTMLResponse,
+    name="cookie_policy_page",
+)
+app.add_api_route(
+    "/cookie-policy",
+    _cookie_policy_html_response,
+    methods=["GET"],
+    response_class=HTMLResponse,
+    name="cookie_policy_page_alt",
+)

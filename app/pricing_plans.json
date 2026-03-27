@@ -1,0 +1,180 @@
+{
+  "header": {
+    "title": "Simple pricing. Real results in your product feed.",
+    "subtitle": "Fix disapprovals, improve titles, and push optimized feeds to Google Merchant — in minutes."
+  },
+  "pain": {
+    "title": "Still editing product feeds manually?",
+    "bullets": [
+      "Fixing disapprovals takes hours",
+      "Titles don't convert",
+      "Feed errors kill your ads"
+    ],
+    "solution": "Cartozo automates feed cleanup, AI optimization, and Merchant-ready output — so you spend time on strategy, not spreadsheets."
+  },
+  "trust": {
+    "lines": [
+      "Used for optimizing thousands of products weekly",
+      "Reduce disapprovals and improve feed quality"
+    ]
+  },
+  "plans": [
+    {
+      "id": "free",
+      "name": "Free",
+      "price_display": "$0",
+      "price_period": "/month",
+      "highlighted": false,
+      "badge": null,
+      "paddle_price_id": null,
+      "paypro_plan_code": null,
+      "features": [
+        "50 products / month",
+        "Basic AI optimization (titles only)",
+        "CSV upload + export",
+        "Preview before download"
+      ],
+      "limitations": [
+        "No bulk regeneration",
+        "No Merchant integration",
+        "No history"
+      ],
+      "cta_label": "Start free",
+      "cta_href": "/login?next=/upload"
+    },
+    {
+      "id": "starter",
+      "name": "Starter",
+      "price_display": "$19",
+      "price_period": "/month",
+      "highlighted": false,
+      "badge": null,
+      "paddle_price_id": null,
+      "paypro_plan_code": null,
+      "features": [
+        "500 products / month",
+        "Titles + descriptions optimization",
+        "Bulk processing",
+        "Optimization history",
+        "Basic analytics (issues detection)"
+      ],
+      "limitations": [],
+      "cta_label": "Upgrade to Starter",
+      "cta_href": "/login?next=/upload&plan=starter"
+    },
+    {
+      "id": "growth",
+      "name": "Growth",
+      "price_display": "$49",
+      "price_period": "/month",
+      "highlighted": true,
+      "badge": "Most popular",
+      "paddle_price_id": null,
+      "paypro_plan_code": null,
+      "features": [
+        "2,000 products / month",
+        "Advanced AI optimization (SEO-focused)",
+        "Regenerate specific products",
+        "Feed issue detection (GMC-focused)",
+        "CSV + API export",
+        "Priority processing"
+      ],
+      "limitations": [],
+      "cta_label": "Get better results",
+      "cta_href": "/login?next=/upload&plan=growth"
+    },
+    {
+      "id": "pro",
+      "name": "Pro",
+      "price_display": "$99",
+      "price_period": "/month",
+      "highlighted": false,
+      "badge": null,
+      "paddle_price_id": null,
+      "paypro_plan_code": null,
+      "features": [
+        "6,000 products / month",
+        "Full feed optimization pipeline",
+        "Merchant-ready formatting",
+        "Advanced analytics (before/after impact)",
+        "AI chat assistant (upload → optimize flow)",
+        "Priority support"
+      ],
+      "limitations": [],
+      "cta_label": "Scale your feed",
+      "cta_href": "/login?next=/upload&plan=pro"
+    },
+    {
+      "id": "enterprise",
+      "name": "Enterprise",
+      "price_display": "Custom",
+      "price_period": "",
+      "highlighted": false,
+      "badge": null,
+      "paddle_price_id": null,
+      "paypro_plan_code": null,
+      "features": [
+        "Unlimited products",
+        "Custom AI prompts per brand",
+        "Direct Merchant integration (API push)",
+        "Dedicated support",
+        "SLA"
+      ],
+      "limitations": [],
+      "cta_label": "Contact us",
+      "cta_href": "/contact?topic=enterprise"
+    }
+  ],
+  "addons": [
+    {
+      "id": "extra_products_1k",
+      "title": "+1,000 products",
+      "price": "$10",
+      "note": "Add capacity when you outgrow your tier",
+      "paddle_price_id": null
+    },
+    {
+      "id": "ai_regen_500",
+      "title": "500 AI regenerations",
+      "price": "$5",
+      "note": "Extra regeneration packs",
+      "paddle_price_id": null
+    },
+    {
+      "id": "priority_monthly",
+      "title": "Priority processing",
+      "price": "$9",
+      "note": "/month",
+      "paddle_price_id": null
+    }
+  ],
+  "comparison": {
+    "column_plan_ids": ["free", "starter", "growth", "pro"],
+    "rows": [
+      {
+        "label": "Products / month",
+        "cells": ["50", "500", "2,000", "6,000"]
+      },
+      {
+        "label": "Titles optimization",
+        "cells": ["Basic", "Yes", "Advanced (SEO)", "Full pipeline"]
+      },
+      {
+        "label": "Descriptions optimization",
+        "cells": ["—", "Yes", "Yes", "Yes"]
+      },
+      {
+        "label": "Bulk processing",
+        "cells": ["—", "Yes", "Yes", "Yes"]
+      },
+      {
+        "label": "Analytics",
+        "cells": ["None", "Basic", "Advanced", "Full (+ impact)"]
+      },
+      {
+        "label": "AI chat (optimize flow)",
+        "cells": ["—", "—", "—", "Yes"]
+      }
+    ]
+  }
+}

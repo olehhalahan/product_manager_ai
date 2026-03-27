@@ -93,6 +93,15 @@ def init_db():
                     conn.execute(text("ALTER TABLE users ADD COLUMN merchant_connected_at TIMESTAMP"))
                 else:
                     conn.execute(text("ALTER TABLE users ADD COLUMN merchant_connected_at TIMESTAMP"))
+        ucols_after = {c["name"] for c in inspect(engine).get_columns("users")}
+        if "merchant_id" in ucols_after:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "UPDATE users SET merchant_id = :good WHERE merchant_id = :bad"
+                    ),
+                    {"good": "5750677992", "bad": "5635309342"},
+                )
 
     # Migration: batches — user ownership + Merchant push / closed timestamps
     if "batches" in inspector.get_table_names():

@@ -155,12 +155,17 @@ def get_user_by_email(db: Session, email: str) -> Optional[User]:
 
 
 def get_merchant_connection_status(db: Session, email: str) -> Dict[str, Any]:
+    from .google_merchant import canonical_merchant_id
+
     row = get_user_by_email(db, email)
     if not row:
         return {"connected": False, "merchant_id": None}
+    mid = row.merchant_id or None
+    if mid:
+        mid = canonical_merchant_id(mid) or mid
     return {
         "connected": bool(row.merchant_refresh_token),
-        "merchant_id": row.merchant_id or None,
+        "merchant_id": mid,
     }
 
 
@@ -178,7 +183,9 @@ def save_google_merchant_oauth(
     if refresh_token:
         row.merchant_refresh_token = refresh_token
     if merchant_id:
-        row.merchant_id = merchant_id
+        from .google_merchant import canonical_merchant_id
+
+        row.merchant_id = canonical_merchant_id(merchant_id) or merchant_id
     row.merchant_connected_at = now
 
 

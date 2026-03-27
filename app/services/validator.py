@@ -43,8 +43,8 @@ def validate_gmc(result: ProductResult, product_type: str = "standard") -> Tuple
     errors: List[str] = []
     warnings: List[str] = []
     p = result.product
-    title = result.optimized_title or p.title or ""
-    desc = result.optimized_description or p.description or ""
+    title = result.effective_title()
+    desc = result.effective_description()
     gtin_required = product_type not in GTIN_EXEMPT_TYPES
 
     # ── Required fields ──────────────────────────────────────────────

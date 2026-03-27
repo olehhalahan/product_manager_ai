@@ -24,6 +24,7 @@ from .db import get_db
 from .services import db_repository as repo
 from .services.db_repository import get_settings
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
+from .public_nav import public_site_nav_html
 from .writter_new_article_page import render_writter_new_article_html
 
 _log = logging.getLogger("uvicorn.error")
@@ -66,26 +67,6 @@ _WRITTER_SCREENSHOT_TYPES = {
     "image/webp": ".webp",
     "image/gif": ".gif",
 }
-
-
-def _public_hp_nav_html() -> str:
-    """Marketing header (homepage parity) for public blog listing + article pages."""
-    return """<nav class="hp-nav" aria-label="Main">
-  <div class="hp-nav-inner">
-    <a href="/" class="hp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-    <div class="hp-nav-links">
-      <a href="/presentation" class="hp-nav-link">Features</a>
-      <a href="/blog" class="hp-nav-link">Blog</a>
-      <a href="/#feed-structure" class="hp-nav-link">Feed Structure</a>
-      <a href="/#how-it-works" class="hp-nav-link">How it works</a>
-      <a href="/contact" class="hp-nav-link">Contact us</a>
-    </div>
-    <div class="hp-nav-right">
-      <button type="button" class="hp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-      <a href="/login" class="hp-nav-cta">Get Started</a>
-    </div>
-  </div>
-</nav>"""
 
 
 def _blog_article_end_cta_html() -> str:
@@ -1694,7 +1675,7 @@ def _blog_index_page_html(rows: List[Dict[str, Any]], q_raw: str) -> str:
   body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
   [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
   .visually-hidden {{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }}
-  .blog-idx-wrap {{ max-width:800px; margin:0 auto; padding:40px 24px 80px; }}
+  .blog-idx-wrap {{ max-width:800px; margin:0 auto; padding:88px 24px 80px; }}
   .blog-idx-hero h1 {{ font-size:2rem; font-weight:700; letter-spacing:-.03em; margin:0 0 8px; }}
   .blog-idx-hero p {{ color:#94a3b8; margin:0 0 28px; font-size:1rem; line-height:1.5; }}
   .blog-idx-search {{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:36px; }}
@@ -1717,7 +1698,7 @@ def _blog_index_page_html(rows: List[Dict[str, Any]], q_raw: str) -> str:
   </style>
 </head>
 <body>
-  {_public_hp_nav_html()}
+  {public_site_nav_html()}
   <div class="blog-page-with-nav">
   <main class="blog-idx-wrap">
     <header class="blog-idx-hero">
@@ -2031,7 +2012,7 @@ async def blog_public_page(request: Request, slug: str):
   </style>
 </head>
 <body class="blog-article-body">
-  {_public_hp_nav_html()}
+  {public_site_nav_html()}
   <div class="blog-page-with-nav">
   <div class="blog-layout">
     <aside class="blog-side">

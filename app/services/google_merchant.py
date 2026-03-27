@@ -9,6 +9,7 @@ GOOGLE_CLOUD_PROJECT_ID (see app/google_cloud.py).
 Merchant ID resolution:
 - GMC_MERCHANT_ID in .env overrides the built-in default account id.
 - If GMC_MERCHANT_ID is not present in the environment, the default id 5750677992 is used (single-store).
+- Legacy wrong account id 5635309342 is never used: remapped to 5750677992 everywhere (env, DB, API).
 - accounts.list returns accessible accounts; for each, listSubaccounts may return MCA clients.
 - If a provider has subaccounts, the first subaccount id is used (MCA / agency case).
 - Otherwise the first account from accounts.list is used.
@@ -42,12 +43,27 @@ MERCHANT_API_BASE = "https://merchantapi.googleapis.com"
 # Single Merchant Center account when GMC_MERCHANT_ID is not set in .env.
 # Set GMC_MERCHANT_ID= in .env (empty) to skip this and run API discovery instead.
 _DEFAULT_GMC_MERCHANT_ID = "5750677992"
+# Must not be used for product uploads; always remapped to _DEFAULT_GMC_MERCHANT_ID.
+_BLOCKED_LEGACY_MERCHANT_ID = "5635309342"
+
+
+def canonical_merchant_id(raw: Optional[str]) -> Optional[str]:
+    """Normalize Merchant Center account id; map deprecated wrong account to the canonical store id."""
+    n = _normalize_merchant_id_str(raw)
+    if not n:
+        return None
+    if n == _BLOCKED_LEGACY_MERCHANT_ID:
+        return _DEFAULT_GMC_MERCHANT_ID
+    return n
 
 
 def effective_gmc_merchant_id_override() -> str:
     """Numeric id from GMC_MERCHANT_ID, or built-in default when that env var is unset."""
     if "GMC_MERCHANT_ID" in os.environ:
-        return (os.getenv("GMC_MERCHANT_ID") or "").strip()
+        raw = (os.getenv("GMC_MERCHANT_ID") or "").strip()
+        if raw == _BLOCKED_LEGACY_MERCHANT_ID:
+            return _DEFAULT_GMC_MERCHANT_ID
+        return raw
     return _DEFAULT_GMC_MERCHANT_ID
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
@@ -259,8 +275,8 @@ def build_merchant_product_body(
     When content_language / feed_label are omitted, uses GMC_* env defaults.
     """
     p = result.product
-    title = (result.optimized_title or result.translated_title or p.title or "").strip()
-    desc = (result.optimized_description or result.translated_description or p.description or "").strip()
+    title = result.effective_title()
+    desc = result.effective_description()
     link = (p.url or "").strip()
     image = (p.image_url or "").strip()
     if not link:
@@ -488,7 +504,7 @@ async def all_accessible_numeric_merchant_ids(access_token: str) -> Tuple[Set[st
 
 async def merchant_id_is_accessible(access_token: str, merchant_id: str) -> Tuple[bool, Optional[str]]:
     """True if this id is one of the accounts reachable with the current OAuth token."""
-    want = _normalize_merchant_id_str(merchant_id)
+    want = canonical_merchant_id(merchant_id)
     if not want:
         return False, "merchant_id must be a numeric Merchant Center account id."
     ids, err = await all_accessible_numeric_merchant_ids(access_token)
@@ -519,7 +535,7 @@ async def resolve_merchant_account_id(
     if override.isdigit():
         return override, None
 
-    pref = _normalize_merchant_id_str(preferred_merchant_id)
+    pref = canonical_merchant_id(preferred_merchant_id)
     if pref:
         ok, _err = await merchant_id_is_accessible(access_token, pref)
         if ok:

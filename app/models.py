@@ -80,6 +80,19 @@ class ProductResult(BaseModel):
     total_tokens: int = 0
     cost_usd: float = 0.0
 
+    def effective_title(self) -> str:
+        """Title as sent to Merchant / export feed (optimized → translated → original)."""
+        return (
+            (self.optimized_title or self.translated_title or self.product.title or "") or ""
+        ).strip()
+
+    def effective_description(self) -> str:
+        """Description as sent to Merchant / export feed."""
+        return (
+            (self.optimized_description or self.translated_description or self.product.description or "")
+            or ""
+        ).strip()
+
 
 class Batch(BaseModel):
     id: str
