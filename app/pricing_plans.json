@@ -1,54 +1,83 @@
 {
+  "hero": {
+    "h1": "Fix your product feed. Increase your Google Shopping performance.",
+    "subheadline": "Cartozo automatically detects feed issues, fixes disapprovals, and optimizes your product data — so your products get seen and clicked.",
+    "cta_primary_label": "Start optimizing your feed",
+    "cta_primary_href": "/login?next=/upload",
+    "cta_secondary_label": "See how it works",
+    "cta_secondary_href": "/how-it-works",
+    "trust_line": "No setup. No spreadsheets. No guesswork."
+  },
   "header": {
-    "title": "Simple pricing. Real results in your product feed.",
-    "subtitle": "Fix disapprovals, improve titles, and push optimized feeds to Google Merchant — in minutes."
+    "title": "Fix your product feed. Increase your Google Shopping performance.",
+    "subtitle": "Cartozo automatically detects feed issues, fixes disapprovals, and optimizes your product data — so your products get seen and clicked."
   },
-  "pain": {
-    "title": "Still editing product feeds manually?",
-    "bullets": [
-      "Fixing disapprovals takes hours",
-      "Titles don't convert",
-      "Feed errors kill your ads"
+  "pain_solution": {
+    "title": "Your product feed is silently killing your performance",
+    "items": [
+      {
+        "label": "Disapprovals",
+        "text": "Products get rejected in Google Merchant — and you don't know why."
+      },
+      {
+        "label": "Low CTR",
+        "text": "Your titles don't attract clicks, even when your ads are running."
+      },
+      {
+        "label": "Manual work",
+        "text": "You spend hours fixing feeds in spreadsheets instead of growing your business."
+      }
     ],
-    "solution": "Cartozo automates feed cleanup, AI optimization, and Merchant-ready output — so you spend time on strategy, not spreadsheets."
+    "solution": "Cartozo fixes this automatically — in minutes, not days."
   },
-  "trust": {
-    "lines": [
-      "Used for optimizing thousands of products weekly",
-      "Reduce disapprovals and improve feed quality"
+  "how_it_works": {
+    "title": "How it works",
+    "steps": [
+      "Upload your product feed (CSV or API)",
+      "Cartozo detects issues and weak points",
+      "AI optimizes titles, descriptions, and structure",
+      "Export ready-to-use feed for Google Merchant"
     ]
+  },
+  "pricing_section": {
+    "title": "Simple pricing. Built for real growth.",
+    "subtitle": "Start small, scale as your product catalog grows."
   },
   "plans": [
     {
       "id": "free",
-      "name": "Free",
+      "name": "FREE",
+      "tier_emoji": "🟢",
       "price_display": "$0",
-      "price_period": "/month",
+      "price_period": "/ month",
       "highlighted": false,
       "badge": null,
+      "tagline": "For testing and small catalogs",
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
         "50 products / month",
-        "Basic AI optimization (titles only)",
+        "Basic title optimization",
         "CSV upload + export",
         "Preview before download"
       ],
       "limitations": [
-        "No bulk regeneration",
-        "No Merchant integration",
-        "No history"
+        "No bulk processing",
+        "No Merchant integration"
       ],
+      "hook_line": null,
       "cta_label": "Start free",
       "cta_href": "/login?next=/upload"
     },
     {
       "id": "starter",
-      "name": "Starter",
+      "name": "STARTER",
+      "tier_emoji": "🔵",
       "price_display": "$19",
-      "price_period": "/month",
+      "price_period": "/ month",
       "highlighted": false,
       "badge": null,
+      "tagline": "For small stores getting started",
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
@@ -56,88 +85,123 @@
         "Titles + descriptions optimization",
         "Bulk processing",
         "Optimization history",
-        "Basic analytics (issues detection)"
+        "Basic analytics"
       ],
       "limitations": [],
+      "hook_line": null,
       "cta_label": "Upgrade to Starter",
       "cta_href": "/login?next=/upload&plan=starter"
     },
     {
       "id": "growth",
-      "name": "Growth",
+      "name": "GROWTH",
+      "tier_emoji": "🟣",
       "price_display": "$49",
-      "price_period": "/month",
+      "price_period": "/ month",
       "highlighted": true,
-      "badge": "Most popular",
+      "badge": "🔥 MAIN PLAN",
+      "tagline": "For stores that want real performance improvements",
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
         "2,000 products / month",
         "Advanced AI optimization (SEO-focused)",
         "Regenerate specific products",
-        "Feed issue detection (GMC-focused)",
+        "Feed issue detection (GMC-ready)",
         "CSV + API export",
         "Priority processing"
       ],
       "limitations": [],
+      "hook_line": "Reduce disapprovals and improve feed performance automatically",
       "cta_label": "Get better results",
       "cta_href": "/login?next=/upload&plan=growth"
     },
     {
       "id": "pro",
-      "name": "Pro",
+      "name": "PRO",
+      "tier_emoji": "⚫",
       "price_display": "$99",
-      "price_period": "/month",
+      "price_period": "/ month",
       "highlighted": false,
       "badge": null,
+      "tagline": "For high-volume stores and scaling teams",
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
         "6,000 products / month",
         "Full feed optimization pipeline",
         "Merchant-ready formatting",
-        "Advanced analytics (before/after impact)",
-        "AI chat assistant (upload → optimize flow)",
+        "Advanced analytics (before / after impact)",
+        "AI assistant (chat + bulk actions)",
         "Priority support"
       ],
       "limitations": [],
+      "hook_line": "Full automation for large catalogs",
       "cta_label": "Scale your feed",
       "cta_href": "/login?next=/upload&plan=pro"
-    },
-    {
-      "id": "enterprise",
-      "name": "Enterprise",
-      "price_display": "Custom",
-      "price_period": "",
-      "highlighted": false,
-      "badge": null,
-      "paddle_price_id": null,
-      "paypro_plan_code": null,
-      "features": [
-        "Unlimited products",
-        "Custom AI prompts per brand",
-        "Direct Merchant integration (API push)",
-        "Dedicated support",
-        "SLA"
-      ],
-      "limitations": [],
-      "cta_label": "Contact us",
-      "cta_href": "/contact?topic=enterprise"
     }
   ],
+  "social_proof": {
+    "title": "Real impact on product feeds",
+    "stats": [
+      "Up to 32% fewer disapprovals",
+      "Higher CTR from optimized titles",
+      "Better visibility in Google Shopping"
+    ],
+    "stat_prefixes": ["down", "up", "up"],
+    "quote": "Cartozo helped us fix our feed issues in hours instead of weeks."
+  },
+  "roi": {
+    "text": "Even small improvements in your product feed can significantly increase ad performance and reduce wasted budget."
+  },
+  "comparison": {
+    "title": "What you get at each level",
+    "subtitle": "Clear limits and features — pick what matches your store.",
+    "column_plan_ids": ["free", "starter", "growth", "pro"],
+    "rows": [
+      {
+        "label": "Products / month",
+        "cells": ["50", "500", "2,000", "6,000"]
+      },
+      {
+        "label": "Title optimization",
+        "cells": ["Basic", "Yes", "Advanced", "Full pipeline"]
+      },
+      {
+        "label": "Descriptions",
+        "cells": ["—", "✓", "✓", "✓"]
+      },
+      {
+        "label": "Bulk processing",
+        "cells": ["—", "✓", "✓", "✓"]
+      },
+      {
+        "label": "Feed issue detection",
+        "cells": ["—", "—", "✓", "✓"]
+      },
+      {
+        "label": "AI assistant",
+        "cells": ["—", "—", "—", "✓"]
+      }
+    ]
+  },
+  "addons_section": {
+    "title": "Scale when you need more",
+    "subtitle": "Add capacity instantly as your catalog grows"
+  },
   "addons": [
     {
       "id": "extra_products_1k",
       "title": "+1,000 products",
       "price": "$10",
-      "note": "Add capacity when you outgrow your tier",
+      "note": "",
       "paddle_price_id": null
     },
     {
       "id": "ai_regen_500",
       "title": "500 AI regenerations",
       "price": "$5",
-      "note": "Extra regeneration packs",
+      "note": "",
       "paddle_price_id": null
     },
     {
@@ -148,33 +212,19 @@
       "paddle_price_id": null
     }
   ],
-  "comparison": {
-    "column_plan_ids": ["free", "starter", "growth", "pro"],
-    "rows": [
-      {
-        "label": "Products / month",
-        "cells": ["50", "500", "2,000", "6,000"]
-      },
-      {
-        "label": "Titles optimization",
-        "cells": ["Basic", "Yes", "Advanced (SEO)", "Full pipeline"]
-      },
-      {
-        "label": "Descriptions optimization",
-        "cells": ["—", "Yes", "Yes", "Yes"]
-      },
-      {
-        "label": "Bulk processing",
-        "cells": ["—", "Yes", "Yes", "Yes"]
-      },
-      {
-        "label": "Analytics",
-        "cells": ["None", "Basic", "Advanced", "Full (+ impact)"]
-      },
-      {
-        "label": "AI chat (optimize flow)",
-        "cells": ["—", "—", "—", "Yes"]
-      }
+  "trust_commitments": {
+    "lines": [
+      "Cancel anytime",
+      "Secure payments",
+      "No long-term commitment"
     ]
+  },
+  "final_cta": {
+    "title": "Start optimizing your product feed today",
+    "cta_label": "Try Cartozo on your real data",
+    "cta_href": "/login?next=/upload"
+  },
+  "seo_footer": {
+    "text": "Cartozo helps e-commerce businesses optimize product feeds, reduce Google Merchant Center disapprovals, and improve Google Shopping performance with AI-powered titles, descriptions, and structured data ready for export."
   }
 }

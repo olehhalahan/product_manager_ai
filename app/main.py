@@ -3113,8 +3113,8 @@ def pricing_page(request: Request):
     """Monetization: plan tiers, add-ons, comparison — content from pricing_plans.json."""
     title = "Pricing — Cartozo AI for Google Shopping feeds"
     desc = (
-        "Simple plans from free to enterprise. Fix disapprovals, optimize titles, "
-        "push Merchant-ready feeds. Add-ons for extra products and regenerations."
+        "Fix your product feed and Google Shopping performance. Simple plans from free to Pro, "
+        "add-ons to scale, and AI optimization for titles, descriptions, and Merchant-ready export."
     )
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
