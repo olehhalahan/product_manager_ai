@@ -48,7 +48,9 @@ from .writter_routes import register_writter_routes
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
 from .how_it_works_page import build_how_it_works_html
 from .pricing_page import build_pricing_html
-from .privacy_pages import build_cookie_policy_html, build_privacy_policy_html
+from .faq_page import build_faq_html
+from .privacy_pages import build_cookie_policy_html, build_privacy_policy_html, build_refund_policy_html
+from .seo import head_canonical_og_url_type, website_json_ld
 from .terms_page import build_terms_html
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
 
@@ -1013,6 +1015,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="{SEO_OG_TITLE}" />
     <meta name="twitter:description" content="{SEO_OG_DESCRIPTION}" />
+    {SEO_LINK_EXTRA}
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <link rel="stylesheet" href="/static/styles.css" />
@@ -2535,7 +2538,27 @@ def _build_upload_page(user_role: str = "customer") -> str:
     )
 
 
-def _build_contact_page() -> str:
+def _build_contact_page(request: Request) -> str:
+    import html as html_module
+
+    from .seo import head_canonical_social
+
+    s = _get_settings()
+    base = _public_site_base(request)
+    og_image = (s.get("seo_og_image") or "").strip()
+    og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
+    title_plain = "Contact us — Cartozo.ai"
+    desc = "Reach Cartozo.ai for product feed optimization, Google Merchant Center support, and general inquiries."
+    seo = head_canonical_social(
+        canonical_url=f"{base}/contact",
+        og_title=title_plain,
+        og_description=desc,
+        og_image=og_image,
+        og_site_name=og_site,
+        og_type="website",
+    )
+    meta_line = f'    <meta name="description" content="{html_module.escape(desc, quote=True)}" />\n'
+    contact_meta_seo = meta_line + seo
     _nav = public_site_nav_html(feed_structure_href="/#feed-structure")
     return """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -2544,6 +2567,7 @@ def _build_contact_page() -> str:
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Contact us &mdash; Cartozo.ai</title>
+__CONTACT_META_SEO__
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
@@ -2707,12 +2731,34 @@ def _build_contact_page() -> str:
     </script>
     <script src="/static/page-transition.js"></script>
 </body>
-</html>""".replace("@@HP_NAV_STYLES@@", HP_NAV_CSS + HP_FOOTER_CSS).replace("@@PUBLIC_HP_NAV@@", _nav).replace(
+</html>""".replace("__CONTACT_META_SEO__", contact_meta_seo).replace(
+        "@@HP_NAV_STYLES@@", HP_NAV_CSS + HP_FOOTER_CSS
+    ).replace("@@PUBLIC_HP_NAV@@", _nav).replace(
         "@@PUBLIC_SITE_FOOTER@@", public_site_footer_html(feed_structure_href="/#feed-structure")
     )
 
 
-def _build_presentation_page() -> str:
+def _build_presentation_page(request: Request) -> str:
+    import html as html_module
+
+    from .seo import head_canonical_social
+
+    s = _get_settings()
+    base = _public_site_base(request)
+    og_image = (s.get("seo_og_image") or "").strip()
+    og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
+    title_plain = "Features — Cartozo.ai"
+    desc = "Explore Cartozo.ai features: AI product feed optimization, Google Merchant Center workflows, and catalog enrichment."
+    pres_seo = head_canonical_social(
+        canonical_url=f"{base}/presentation",
+        og_title=title_plain,
+        og_description=desc,
+        og_image=og_image,
+        og_site_name=og_site,
+        og_type="website",
+    )
+    pres_meta = f'    <meta name="description" content="{html_module.escape(desc, quote=True)}" />\n'
+    presentation_meta_seo = pres_meta + pres_seo
     _html = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -2720,6 +2766,7 @@ def _build_presentation_page() -> str:
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Features &mdash; Cartozo.ai</title>
+__PRESENTATION_META_SEO__
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
@@ -2892,7 +2939,8 @@ def _build_presentation_page() -> str:
 </body>
 </html>"""
     return (
-        _html.replace("@@HP_NAV_STYLES@@", HP_NAV_CSS)
+        _html.replace("__PRESENTATION_META_SEO__", presentation_meta_seo)
+        .replace("@@HP_NAV_STYLES@@", HP_NAV_CSS)
         .replace("@@PUBLIC_HP_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure"))
         .replace(
             "__THEME_INLINE__",
@@ -2901,9 +2949,10 @@ def _build_presentation_page() -> str:
     )
 
 
-def _build_homepage_html() -> str:
-    """Build homepage HTML with SEO meta from settings."""
+def _build_homepage_html(request: Request) -> str:
+    """Build homepage HTML with SEO meta from settings (server-rendered; canonical + WebSite JSON-LD)."""
     import html as html_module
+
     s = _get_settings()
     meta_title = s.get("seo_meta_title") or "Cartozo.ai — AI-Powered Product Feed Optimization"
     meta_desc = s.get("seo_meta_description") or "AI-powered optimization for your product titles and descriptions."
@@ -2911,6 +2960,18 @@ def _build_homepage_html() -> str:
     og_desc = s.get("seo_og_description") or meta_desc
     og_image = s.get("seo_og_image") or ""
     og_site = s.get("seo_og_site_name") or "Cartozo.ai"
+    base = _public_site_base(request)
+    canonical = f"{base}/"
+    tw_img = ""
+    if (og_image or "").strip():
+        tw_img = (
+            f'    <meta name="twitter:image" content="{html_module.escape(og_image.strip(), quote=True)}" />\n'
+        )
+    seo_link_extra = (
+        head_canonical_og_url_type(canonical_url=canonical, og_type="website")
+        + tw_img
+        + website_json_ld(site_url=base, name=og_site)
+    )
     return HOMEPAGE_HTML.replace("{GTM_HEAD}", GTM_HEAD).replace(
         "{PUBLIC_HP_NAV}", public_site_nav_html(feed_structure_href="#feed-structure")).replace(
         "{HP_FOOTER_CSS}", HP_FOOTER_CSS).replace(
@@ -2920,83 +2981,156 @@ def _build_homepage_html() -> str:
         "{SEO_OG_TITLE}", html_module.escape(og_title)).replace(
         "{SEO_OG_DESCRIPTION}", html_module.escape(og_desc)).replace(
         "{SEO_OG_IMAGE}", html_module.escape(og_image)).replace(
-        "{SEO_OG_SITE_NAME}", html_module.escape(og_site))
+        "{SEO_OG_SITE_NAME}", html_module.escape(og_site)).replace(
+        "{SEO_LINK_EXTRA}", seo_link_extra)
 
 
 @app.get("/", response_class=HTMLResponse)
-def homepage():
-    return HTMLResponse(content=_build_homepage_html())
+def homepage(request: Request):
+    return HTMLResponse(content=_build_homepage_html(request))
 
 
 @app.get("/contact", response_class=HTMLResponse)
-def contact_page():
-    return HTMLResponse(content=_build_contact_page())
+def contact_page(request: Request):
+    return HTMLResponse(content=_build_contact_page(request))
 
 
 @app.get("/presentation", response_class=HTMLResponse)
-def presentation_page():
-    return HTMLResponse(content=_build_presentation_page())
+def presentation_page(request: Request):
+    return HTMLResponse(content=_build_presentation_page(request))
 
 
-def _terms_of_service_html_response() -> HTMLResponse:
+def _terms_of_service_html_response(request: Request) -> HTMLResponse:
     title = "Terms of Service | Cartozo AI"
     desc = "Terms of Service for Cartozo AI — product feed optimization SaaS. Last updated March 26, 2026."
+    base = _public_site_base(request)
+    s = _get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
     return HTMLResponse(
         content=build_terms_html(
             meta_title=title,
             meta_description=desc,
             og_title=title,
             og_description=desc,
+            canonical_url=f"{base}/terms",
+            og_image=og_image,
             gtm_head=GTM_HEAD,
             gtm_body=GTM_BODY,
         )
     )
 
 
-def _privacy_policy_html_response() -> HTMLResponse:
+def _privacy_policy_html_response(request: Request) -> HTMLResponse:
     title = "Privacy Policy | Cartozo AI"
     desc = "How Cartozo AI collects, uses, and protects your data. Product feed optimization SaaS."
+    base = _public_site_base(request)
+    s = _get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
     return HTMLResponse(
         content=build_privacy_policy_html(
             meta_title=title,
             meta_description=desc,
             og_title=title,
             og_description=desc,
+            canonical_url=f"{base}/privacy",
+            og_image=og_image,
             gtm_head=GTM_HEAD,
             gtm_body=GTM_BODY,
         )
     )
 
 
-def _cookie_policy_html_response() -> HTMLResponse:
+def _cookie_policy_html_response(request: Request) -> HTMLResponse:
     title = "Cookie Policy | Cartozo AI"
     desc = "How Cartozo AI uses cookies and similar technologies on cartozo.ai."
+    base = _public_site_base(request)
+    s = _get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
     return HTMLResponse(
         content=build_cookie_policy_html(
             meta_title=title,
             meta_description=desc,
             og_title=title,
             og_description=desc,
+            canonical_url=f"{base}/cookies",
+            og_image=og_image,
             gtm_head=GTM_HEAD,
             gtm_body=GTM_BODY,
         )
     )
 
 
+def _refund_policy_html_response(request: Request) -> HTMLResponse:
+    title = "Refund Policy | Cartozo AI"
+    desc = "How refunds may apply to Cartozo AI subscriptions and paid add-ons."
+    base = _public_site_base(request)
+    s = _get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
+    return HTMLResponse(
+        content=build_refund_policy_html(
+            meta_title=title,
+            meta_description=desc,
+            og_title=title,
+            og_description=desc,
+            canonical_url=f"{base}/refund-policy",
+            og_image=og_image,
+            gtm_head=GTM_HEAD,
+            gtm_body=GTM_BODY,
+        )
+    )
+
+
+def _faq_html_response(request: Request) -> HTMLResponse:
+    title = "FAQ | Cartozo.ai"
+    desc = "Frequently asked questions about Cartozo.ai, product feeds, Google Merchant Center, and billing."
+    base = _public_site_base(request)
+    s = _get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
+    return HTMLResponse(
+        content=build_faq_html(
+            meta_title=title,
+            meta_description=desc,
+            og_title=title,
+            og_description=desc,
+            canonical_url=f"{base}/faq",
+            og_image=og_image,
+            gtm_head=GTM_HEAD,
+            gtm_body=GTM_BODY,
+        )
+    )
+
+
+@app.get("/refund-policy", response_class=HTMLResponse)
+def refund_policy_page(request: Request):
+    return _refund_policy_html_response(request)
+
+
+@app.get("/faq", response_class=HTMLResponse)
+def faq_public_page(request: Request):
+    return _faq_html_response(request)
+
+
 @app.get("/pricing", response_class=HTMLResponse)
-def pricing_page():
+def pricing_page(request: Request):
     """Monetization: plan tiers, add-ons, comparison — content from pricing_plans.json."""
     title = "Pricing — Cartozo AI for Google Shopping feeds"
     desc = (
         "Simple plans from free to enterprise. Fix disapprovals, optimize titles, "
         "push Merchant-ready feeds. Add-ons for extra products and regenerations."
     )
+    base = _public_site_base(request)
+    s = _get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
+    og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
     return HTMLResponse(
         content=build_pricing_html(
             meta_title=title,
             meta_description=desc,
             og_title=title,
             og_description=desc,
+            canonical_url=f"{base}/pricing",
+            og_image=og_image,
+            og_site_name=og_site,
             gtm_head=GTM_HEAD,
             gtm_body=GTM_BODY,
         )
@@ -3004,19 +3138,26 @@ def pricing_page():
 
 
 @app.get("/how-it-works", response_class=HTMLResponse)
-def how_it_works_page():
+def how_it_works_page(request: Request):
     """EN performance landing: feed cleanup, AI optimization, Merchant (ads)."""
     title = "Fix Google Shopping feed issues & boost Merchant performance | Cartozo.ai"
     desc = (
         "Up to 30% of products can fail in Merchant from feed issues. Get more clicks and sales from the same ad "
         "budget—fix disapprovals, improve titles, push clean feeds. No setup: upload any CSV."
     )
+    base = _public_site_base(request)
+    s = _get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
+    og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
     return HTMLResponse(
         content=build_how_it_works_html(
             meta_title=title,
             meta_description=desc,
             og_title=title,
             og_description=desc,
+            canonical_url=f"{base}/how-it-works",
+            og_image=og_image,
+            og_site_name=og_site,
             gtm_head=GTM_HEAD,
             gtm_body=GTM_BODY,
         )
@@ -5135,11 +5276,13 @@ async def settings_page(request: Request):
     if tab_param not in ("prompts", "api", "seo", "users", "feedback", "chats"):
         tab_param = "prompts"
     prompt_sub_param = request.query_params.get("sub", "products")
-    if prompt_sub_param not in ("products", "writter"):
+    if prompt_sub_param not in ("products", "writter", "homepage"):
         prompt_sub_param = "products"
 
     def _tx_esc(val: str) -> str:
         return (val or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    hp_chat_prompt_esc = _tx_esc(s.get("homepage_chat_system_prompt", ""))
 
     wp_ps = _tx_esc(s.get("writter_prompt_problem_solving", ""))
     wp_fp = _tx_esc(s.get("writter_prompt_feature_presentation", ""))
@@ -5295,6 +5438,7 @@ async def settings_page(request: Request):
             <div class="prompt-subtabs">
                 <button type="button" class="prompt-subtab{' active' if prompt_sub_param == 'products' else ''}" data-sub="products" onclick="switchPromptSub('products')">Product feed</button>
                 <button type="button" class="prompt-subtab{' active' if prompt_sub_param == 'writter' else ''}" data-sub="writter" onclick="switchPromptSub('writter')">Blog article types</button>
+                <button type="button" class="prompt-subtab{' active' if prompt_sub_param == 'homepage' else ''}" data-sub="homepage" onclick="switchPromptSub('homepage')">Homepage chat</button>
             </div>
 
             <div id="prompt-sub-products" class="prompt-subpanel{' active' if prompt_sub_param == 'products' else ''}">
@@ -5357,6 +5501,19 @@ async def settings_page(request: Request):
             <div style="display:flex;align-items:center;">
                 <button class="btn btn-primary" onclick="saveWritterPrompts()">Save article-type prompts</button>
                 <span id="writter-prompts-status" class="save-msg">&#10003; Saved</span>
+            </div>
+            </div>
+
+            <div id="prompt-sub-homepage" class="prompt-subpanel{' active' if prompt_sub_param == 'homepage' else ''}">
+            <p class="group-desc" style="margin-bottom:18px;">System instructions for the <strong>AI chat on the homepage</strong> (hero). Uses the same <strong>OpenAI API key</strong> as in the API Keys tab. If you leave this empty and save, the built-in default assistant prompt is used.</p>
+            <div class="group">
+                <div class="group-title">Homepage chat — system prompt</div>
+                <p class="group-desc">Describe how the assistant should behave (tone, topics, what to promote). This is sent as the <code>system</code> message; the visitor&apos;s messages are the conversation.</p>
+                <textarea id="homepage_chat_system_prompt" style="min-height:220px;">{hp_chat_prompt_esc}</textarea>
+            </div>
+            <div style="display:flex;align-items:center;">
+                <button class="btn btn-primary" onclick="saveHomepageChatPrompt()">Save homepage chat prompt</button>
+                <span id="homepage-chat-prompt-status" class="save-msg">&#10003; Saved</span>
             </div>
             </div>
         </div>
@@ -5544,6 +5701,11 @@ async def settings_page(request: Request):
         const resp=await fetch('/api/settings/writter-prompts',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(body)}});
         if(resp.ok)showSaved('writter-prompts-status');
     }}
+    async function saveHomepageChatPrompt(){{
+        const ta=document.getElementById('homepage_chat_system_prompt');
+        const resp=await fetch('/api/settings/homepage-chat-prompt',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{homepage_chat_system_prompt:ta?ta.value:''}})}});
+        if(resp.ok)showSaved('homepage-chat-prompt-status');
+    }}
     async function saveApiKey(){{
         const key=document.getElementById('openai_key').value;
         const resp=await fetch('/api/settings/apikey',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{openai_api_key:key}})}});
@@ -5589,6 +5751,7 @@ async def api_chat(request: Request):
     s = _get_settings()
     storage._ai.set_api_key(s.get("openai_api_key", "") or "")
     storage._ai.set_prompts(s.get("prompt_title", ""), s.get("prompt_description", ""))
+    storage._ai.set_homepage_chat_system_prompt(s.get("homepage_chat_system_prompt", "") or "")
 
     from .db import get_db
     from .services.db_repository import (
@@ -5661,6 +5824,7 @@ async def save_prompts(request: Request):
             set_setting(db, "prompt_description", str(data["prompt_description"]))
     s = _get_settings()
     storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
+    storage._ai.set_homepage_chat_system_prompt(s.get("homepage_chat_system_prompt", "") or "")
     return JSONResponse({"ok": True})
 
 
@@ -5688,6 +5852,24 @@ async def save_writter_prompts(request: Request):
     return JSONResponse({"ok": True})
 
 
+@app.post("/api/settings/homepage-chat-prompt")
+async def save_homepage_chat_prompt(request: Request):
+    """Persist system prompt for the public homepage hero chat (uses OpenAI key from settings)."""
+    require_admin_http(request)
+
+    data = await request.json()
+    raw = data.get("homepage_chat_system_prompt")
+    if raw is None:
+        raise HTTPException(status_code=400, detail="homepage_chat_system_prompt is required")
+    from .db import get_db
+    from .services.db_repository import set_setting
+    with get_db() as db:
+        set_setting(db, "homepage_chat_system_prompt", str(raw))
+    s = _get_settings()
+    storage._ai.set_homepage_chat_system_prompt(s.get("homepage_chat_system_prompt", "") or "")
+    return JSONResponse({"ok": True})
+
+
 @app.post("/api/settings/apikey")
 async def save_api_key(request: Request):
     require_admin_http(request)
@@ -5701,6 +5883,7 @@ async def save_api_key(request: Request):
         storage._ai.set_api_key(data["openai_api_key"])
     s = _get_settings()
     storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
+    storage._ai.set_homepage_chat_system_prompt(s.get("homepage_chat_system_prompt", "") or "")
     return JSONResponse({"ok": True})
 
 
@@ -6490,6 +6673,8 @@ def _build_sitemap_xml_body(base: str, db) -> str:
         ("/terms", "0.5", "yearly"),
         ("/privacy", "0.5", "yearly"),
         ("/cookies", "0.5", "yearly"),
+        ("/refund-policy", "0.5", "yearly"),
+        ("/faq", "0.6", "monthly"),
         ("/blog", "0.9", "daily"),
     ]
     for path, pri, cf in static:

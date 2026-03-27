@@ -25,6 +25,7 @@ from .services import db_repository as repo
 from .services.db_repository import get_settings
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
 from .public_nav import public_site_nav_html
+from .seo import blog_posting_json_ld, head_canonical_social, public_site_base
 from .writter_new_article_page import render_writter_new_article_html
 
 _log = logging.getLogger("uvicorn.error")
@@ -1624,7 +1625,16 @@ async def api_public_article_json(slug: str):
     return JSONResponse(data)
 
 
-def _blog_index_page_html(rows: List[Dict[str, Any]], q_raw: str) -> str:
+def _blog_index_page_html(
+    rows: List[Dict[str, Any]],
+    q_raw: str,
+    *,
+    canonical_url: str,
+    meta_desc: str,
+    page_title: str,
+    og_image: str,
+    og_site_name: str,
+) -> str:
     """Public blog listing with keyword search (matches title, topic, keywords, meta)."""
     q_esc = html_module.escape(q_raw)
     cards: List[str] = []
@@ -1658,18 +1668,24 @@ def _blog_index_page_html(rows: List[Dict[str, Any]], q_raw: str) -> str:
         cards_html = '<li class="blog-idx-empty">No articles match your search. <a href="/blog">Clear search</a></li>'
     else:
         cards_html = '<li class="blog-idx-empty">No published articles yet. Check back soon.</li>'
-    title_page = "Blog — Cartozo.ai"
-    if q_raw.strip():
-        title_page = f"Search: {q_raw[:40]}{'…' if len(q_raw) > 40 else ''} — Cartozo.ai"
-    title_esc = html_module.escape(title_page)
+    seo_block = head_canonical_social(
+        canonical_url=canonical_url,
+        og_title=page_title,
+        og_description=meta_desc,
+        og_image=og_image,
+        og_site_name=og_site_name,
+        og_type="website",
+    )
+    title_esc = html_module.escape(page_title)
+    meta_desc_esc = html_module.escape(meta_desc, quote=True)
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title_esc}</title>
-  <meta name="description" content="Articles and guides from Cartozo — product feed optimization, Google Merchant Center, and e-commerce SEO." />
-  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+  <meta name="description" content="{meta_desc_esc}" />
+  {seo_block}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
   <style>
   body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
@@ -1721,12 +1737,33 @@ def _blog_index_page_html(rows: List[Dict[str, Any]], q_raw: str) -> str:
 
 
 @router.get("/blog", response_class=HTMLResponse)
-async def blog_index_page(q: str = Query("", max_length=500)):
+async def blog_index_page(request: Request, q: str = Query("", max_length=500)):
     """Public blog index: all published articles, optional keyword search."""
     q_clean = (q or "").strip()
+    base = public_site_base(request)
+    s = get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
+    og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
+    canonical_url = f"{base}/blog"
+    meta_desc = (
+        "Articles and guides from Cartozo — product feed optimization, Google Merchant Center, and e-commerce SEO."
+    )
+    if q_clean:
+        meta_desc = f'Search results for "{q_clean[:120]}" — Cartozo blog (feeds, Merchant Center, SEO).'
+    page_title = "Blog — Cartozo.ai"
+    if q_clean:
+        page_title = f"Search: {q_clean[:40]}{'…' if len(q_clean) > 40 else ''} — Cartozo.ai"
     with get_db() as db:
         rows = repo.list_blog_articles_published_search(db, search=q_clean, limit=300)
-    html = _blog_index_page_html(rows, q_clean)
+    html = _blog_index_page_html(
+        rows,
+        q_clean,
+        canonical_url=canonical_url,
+        meta_desc=meta_desc,
+        page_title=page_title,
+        og_image=og_image,
+        og_site_name=og_site,
+    )
     return HTMLResponse(content=html)
 
 
@@ -1942,6 +1979,29 @@ async def blog_public_page(request: Request, slug: str):
         _bc = _bc[:69] + "…"
     breadcrumb_title_esc = html_module.escape(_bc)
     blog_body = display_content if isinstance(display_content, str) else str(display_content or "")
+    base = public_site_base(request)
+    s = get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
+    og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
+    article_url = f"{base}/blog/{slug}"
+    og_desc_for_social = ((meta_plain or "").strip()[:500]) or ((title_plain or "").strip()[:160])
+    article_seo = head_canonical_social(
+        canonical_url=article_url,
+        og_title=(title_plain or "Article") + " — Cartozo.ai",
+        og_description=og_desc_for_social,
+        og_image=og_image,
+        og_site_name=og_site,
+        og_type="article",
+    )
+    ts_pub = row.published_at or row.created_at
+    ts_mod = getattr(row, "updated_at", None) or ts_pub
+    ld = blog_posting_json_ld(
+        headline=title_plain or "",
+        url=article_url,
+        description=meta_plain or "",
+        date_published=str(ts_pub) if ts_pub else "",
+        date_modified=str(ts_mod) if ts_mod else None,
+    )
     html = (
         f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -1950,7 +2010,7 @@ async def blog_public_page(request: Request, slug: str):
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title_esc} — Cartozo.ai</title>
   <meta name="description" content="{meta_esc}" />
-  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+  {article_seo}{ld}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
   <style>
   body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}

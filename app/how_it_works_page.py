@@ -14,6 +14,7 @@ from __future__ import annotations
 import html as html_module
 
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
+from .seo import head_canonical_social
 
 
 def build_how_it_works_html(
@@ -22,13 +23,22 @@ def build_how_it_works_html(
     meta_description: str,
     og_title: str,
     og_description: str,
+    canonical_url: str,
+    og_image: str = "",
+    og_site_name: str = "",
     gtm_head: str,
     gtm_body: str,
 ) -> str:
+    seo_block = head_canonical_social(
+        canonical_url=canonical_url,
+        og_title=og_title,
+        og_description=og_description,
+        og_image=og_image,
+        og_site_name=og_site_name,
+        og_type="website",
+    )
     mt = html_module.escape(meta_title)
     md = html_module.escape(meta_description)
-    ot = html_module.escape(og_title)
-    od = html_module.escape(og_description)
 
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -38,10 +48,7 @@ def build_how_it_works_html(
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>{mt}</title>
 <meta name="description" content="{md}"/>
-<meta property="og:title" content="{ot}"/>
-<meta property="og:description" content="{od}"/>
-<meta name="twitter:card" content="summary_large_image"/>
-<script>document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')</script>
+{seo_block}<script>document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800;900&display=swap" rel="stylesheet"/>

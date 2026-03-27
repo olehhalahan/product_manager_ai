@@ -152,6 +152,8 @@ def build_terms_html(
     meta_description: str,
     og_title: str,
     og_description: str,
+    canonical_url: str,
+    og_image: str = "",
     gtm_head: str,
     gtm_body: str,
 ) -> str:
@@ -161,6 +163,8 @@ def build_terms_html(
         meta_description=meta_description,
         og_title=og_title,
         og_description=og_description,
+        canonical_url=canonical_url,
+        og_image=og_image,
         gtm_head=gtm_head,
         gtm_body=gtm_body,
     )

@@ -6,6 +6,31 @@ import html
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
 
 
+def _legal_seo_extra(canonical_url: str, ot: str, od: str, og_image: str) -> str:
+    cu = html.escape(canonical_url, quote=True)
+    lines = [
+        f'<link rel="canonical" href="{cu}"/>',
+        f'<meta property="og:url" content="{cu}"/>',
+        '<meta property="og:type" content="website"/>',
+    ]
+    if (og_image or "").strip():
+        oi = html.escape(og_image.strip(), quote=True)
+        lines.extend(
+            [
+                f'<meta property="og:image" content="{oi}"/>',
+                f'<meta name="twitter:image" content="{oi}"/>',
+            ]
+        )
+    lines.extend(
+        [
+            '<meta name="twitter:card" content="summary_large_image"/>',
+            f'<meta name="twitter:title" content="{ot}"/>',
+            f'<meta name="twitter:description" content="{od}"/>',
+        ]
+    )
+    return "\n".join(lines)
+
+
 def build_legal_document_html(
     *,
     article_html: str,
@@ -13,6 +38,9 @@ def build_legal_document_html(
     meta_description: str,
     og_title: str,
     og_description: str,
+    canonical_url: str,
+    og_image: str = "",
+    extra_head: str = "",
     gtm_head: str,
     gtm_body: str,
 ) -> str:
@@ -20,6 +48,8 @@ def build_legal_document_html(
     md = html.escape(meta_description)
     ot = html.escape(og_title)
     od = html.escape(og_description)
+    seo_extra = _legal_seo_extra(canonical_url, ot, od, og_image)
+    xh = extra_head or ""
 
     return (
         f"""<!DOCTYPE html>
@@ -33,6 +63,7 @@ def build_legal_document_html(
 <meta property="og:title" content="{ot}"/>
 <meta property="og:description" content="{od}"/>
 <meta name="robots" content="index,follow"/>
+{seo_extra}{xh}
 <script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>

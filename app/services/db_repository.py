@@ -86,6 +86,9 @@ def get_settings(db: Session) -> Dict[str, str]:
     ):
         if _wk not in settings:
             settings[_wk] = ""
+    # Homepage hero chat: optional system prompt (empty = built-in default in AIProvider)
+    if "homepage_chat_system_prompt" not in settings:
+        settings["homepage_chat_system_prompt"] = ""
     # Writter workspace defaults (optional — used when admin leaves fields blank)
     if "writter_default_country_language" not in settings:
         settings["writter_default_country_language"] = "US / English"

@@ -28,6 +28,12 @@ _TYPE_SUFFIXES = [
     "Accessory", "Accessories", "Supply", "Supplies",
 ]
 
+DEFAULT_HOMEPAGE_CHAT_SYSTEM_PROMPT = """You are a helpful AI assistant for Cartozo.ai, an e-commerce product feed optimization platform.
+Cartozo.ai helps merchants optimize product titles and descriptions for search engines, generate compelling copy,
+translate content to multiple languages, and improve product feed quality for Google Merchant Center and other channels.
+Answer questions about the service, features, pricing, how it works, and product optimization best practices.
+Be concise, friendly, and professional."""
+
 
 class AIProvider:
     """
@@ -40,6 +46,7 @@ class AIProvider:
         self._client = None
         self._prompt_title: str = ""
         self._prompt_description: str = ""
+        self._homepage_chat_system_prompt: str = ""
 
     def set_api_key(self, key: str) -> None:
         self._api_key = key
@@ -51,6 +58,10 @@ class AIProvider:
     def set_prompts(self, title_prompt: str, desc_prompt: str) -> None:
         self._prompt_title = title_prompt
         self._prompt_description = desc_prompt
+
+    def set_homepage_chat_system_prompt(self, system_prompt: str) -> None:
+        """System message for the public homepage chat; empty means use DEFAULT_HOMEPAGE_CHAT_SYSTEM_PROMPT."""
+        self._homepage_chat_system_prompt = (system_prompt or "").strip()
 
     def _call_openai(self, prompt: str) -> str:
         """Call OpenAI API and return the response text."""
@@ -72,11 +83,7 @@ class AIProvider:
         if not self._client:
             return "AI is not configured. Please ask an admin to add an OpenAI API key in Settings."
         try:
-            system_prompt = """You are a helpful AI assistant for Cartozo.ai, an e-commerce product feed optimization platform.
-Cartozo.ai helps merchants optimize product titles and descriptions for search engines, generate compelling copy,
-translate content to multiple languages, and improve product feed quality for Google Merchant Center and other channels.
-Answer questions about the service, features, pricing, how it works, and product optimization best practices.
-Be concise, friendly, and professional."""
+            system_prompt = self._homepage_chat_system_prompt or DEFAULT_HOMEPAGE_CHAT_SYSTEM_PROMPT
             msgs = [{"role": "system", "content": system_prompt}] + [
                 {"role": m.get("role", "user"), "content": m.get("content", "")}
                 for m in messages

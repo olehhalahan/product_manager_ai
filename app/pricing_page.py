@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html
+from .seo import head_canonical_social
 
 _CONFIG_PATH = Path(__file__).resolve().parent / "pricing_plans.json"
 
@@ -135,14 +136,23 @@ def build_pricing_html(
     meta_description: str,
     og_title: str,
     og_description: str,
+    canonical_url: str,
+    og_image: str = "",
+    og_site_name: str = "",
     gtm_head: str,
     gtm_body: str,
 ) -> str:
     cfg = load_pricing_config()
+    seo_block = head_canonical_social(
+        canonical_url=canonical_url,
+        og_title=og_title,
+        og_description=og_description,
+        og_image=og_image,
+        og_site_name=og_site_name,
+        og_type="website",
+    )
     mt = _esc(meta_title)
     md = _esc(meta_description)
-    ot = _esc(og_title)
-    od = _esc(og_description)
 
     header = cfg["header"]
     pain = cfg["pain"]
@@ -168,10 +178,7 @@ def build_pricing_html(
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>{mt}</title>
 <meta name="description" content="{md}"/>
-<meta property="og:title" content="{ot}"/>
-<meta property="og:description" content="{od}"/>
-<meta name="twitter:card" content="summary_large_image"/>
-<script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
+{seo_block}<script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>

@@ -142,6 +142,8 @@ def build_privacy_policy_html(
     meta_description: str,
     og_title: str,
     og_description: str,
+    canonical_url: str,
+    og_image: str = "",
     gtm_head: str,
     gtm_body: str,
 ) -> str:
@@ -151,6 +153,8 @@ def build_privacy_policy_html(
         meta_description=meta_description,
         og_title=og_title,
         og_description=og_description,
+        canonical_url=canonical_url,
+        og_image=og_image,
         gtm_head=gtm_head,
         gtm_body=gtm_body,
     )
@@ -162,6 +166,8 @@ def build_cookie_policy_html(
     meta_description: str,
     og_title: str,
     og_description: str,
+    canonical_url: str,
+    og_image: str = "",
     gtm_head: str,
     gtm_body: str,
 ) -> str:
@@ -171,6 +177,67 @@ def build_cookie_policy_html(
         meta_description=meta_description,
         og_title=og_title,
         og_description=og_description,
+        canonical_url=canonical_url,
+        og_image=og_image,
+        gtm_head=gtm_head,
+        gtm_body=gtm_body,
+    )
+
+
+_REFUND_ARTICLE = """
+<article class="legal-doc">
+  <h1>Refund Policy</h1>
+  <p class="legal-updated">Last updated: March 27, 2026</p>
+
+  <p class="legal-lead">This Refund Policy explains how refunds may apply to Cartozo AI subscriptions and paid add-ons. It supplements our <a href="/terms">Terms of Service</a>.</p>
+
+  <section id="rf-1" aria-labelledby="rf-h1">
+    <h2 id="rf-h1">1. Billing and payment processors</h2>
+    <p>Payments may be processed by third parties (e.g., Paddle, PayPro, or other providers shown at checkout). Their terms and dispute windows may apply in addition to this policy.</p>
+  </section>
+
+  <section id="rf-2" aria-labelledby="rf-h2">
+    <h2 id="rf-h2">2. Subscription refunds</h2>
+    <p>If you believe a charge was made in error or you are eligible for a refund under applicable law or the payment provider&apos;s rules, contact <a href="mailto:support@cartozo.ai">support@cartozo.ai</a> with your account email, invoice or transaction ID, and a short description. We review requests in good faith and coordinate with the processor where applicable.</p>
+  </section>
+
+  <section id="rf-3" aria-labelledby="rf-h3">
+    <h2 id="rf-h3">3. No guarantee of refunds</h2>
+    <p>Except where required by law, refunds are not guaranteed. Eligibility may depend on time since purchase, usage of the service, promotional terms, and processor policies.</p>
+  </section>
+
+  <section id="rf-4" aria-labelledby="rf-h4">
+    <h2 id="rf-h4">4. Chargebacks</h2>
+    <p>Please contact us before initiating a chargeback so we can help resolve the issue. Unwarranted chargebacks may affect account access.</p>
+  </section>
+
+  <section id="rf-5" aria-labelledby="rf-h5">
+    <h2 id="rf-h5">5. Changes</h2>
+    <p>We may update this policy from time to time. The &quot;Last updated&quot; date reflects the latest version.</p>
+  </section>
+</article>
+"""
+
+
+def build_refund_policy_html(
+    *,
+    meta_title: str,
+    meta_description: str,
+    og_title: str,
+    og_description: str,
+    canonical_url: str,
+    og_image: str = "",
+    gtm_head: str,
+    gtm_body: str,
+) -> str:
+    return build_legal_document_html(
+        article_html=_REFUND_ARTICLE,
+        meta_title=meta_title,
+        meta_description=meta_description,
+        og_title=og_title,
+        og_description=og_description,
+        canonical_url=canonical_url,
+        og_image=og_image,
         gtm_head=gtm_head,
         gtm_body=gtm_body,
     )
