@@ -52,8 +52,8 @@ DEFAULT_SEO_META_TITLE = "Cartozo.ai — AI-Powered Product Feed Optimization"
 DEFAULT_SEO_META_DESCRIPTION = "AI-powered optimization for your product titles and descriptions. Boost search rankings, increase clicks, and drive more sales. Ready for Google Merchant Center."
 
 
-def get_settings(db: Session) -> Dict[str, str]:
-    """Get settings as dict. Returns defaults if not in DB."""
+def _settings_dict_from_db(db: Session) -> Dict[str, str]:
+    """Load settings row dict plus defaults (requires an active session)."""
     rows = db.execute(select(Setting)).scalars().all() or []
     settings = {r.key: (r.value or "") for r in rows}
     if "prompt_title" not in settings:
@@ -97,6 +97,21 @@ def get_settings(db: Session) -> Dict[str, str]:
     if "writter_default_cta" not in settings:
         settings["writter_default_cta"] = "Try Cartozo on your product feed"
     return settings
+
+
+def get_settings(db: Optional[Session] = None) -> Dict[str, str]:
+    """
+    Get settings as dict. Returns defaults if not in DB.
+
+    Pass an existing ``db`` session when one is already open (preferred).
+    Call with no arguments to open a short-lived session (e.g. blog/SEO paths).
+    """
+    if db is not None:
+        return _settings_dict_from_db(db)
+    from ..db import get_db
+
+    with get_db() as session:
+        return _settings_dict_from_db(session)
 
 
 def set_setting(db: Session, key: str, value: str) -> None:

@@ -1745,9 +1745,6 @@ def _blog_index_page_html(
 async def blog_index_page(request: Request, q: str = Query("", max_length=500)):
     """Public blog index: all published articles, optional keyword search."""
     q_clean = (q or "").strip()
-    s = get_settings()
-    og_image = (s.get("seo_og_image") or "").strip()
-    og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
     canonical_url = canonical_url_for_request(request)
     meta_desc = (
         "Articles and guides from Cartozo — product feed optimization, Google Merchant Center, and e-commerce SEO."
@@ -1758,6 +1755,9 @@ async def blog_index_page(request: Request, q: str = Query("", max_length=500)):
     if q_clean:
         page_title = f"Search: {q_clean[:40]}{'…' if len(q_clean) > 40 else ''} — Cartozo.ai"
     with get_db() as db:
+        s = get_settings(db)
+        og_image = (s.get("seo_og_image") or "").strip()
+        og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
         rows = repo.list_blog_articles_published_search(db, search=q_clean, limit=300)
     html = _blog_index_page_html(
         rows,
@@ -1808,6 +1808,12 @@ async def blog_public_page(request: Request, slug: str):
         at_plain = row.article_type or ""
         topic_plain = row.topic or ""
         display_content = _strip_trailing_writter_cta_block(content)
+        s_seo = get_settings(db)
+        og_image = (s_seo.get("seo_og_image") or "").strip()
+        og_site = (s_seo.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
+        # Materialize dates while session is open (avoid DetachedInstanceError on lazy refresh).
+        ts_pub = row.published_at or row.created_at
+        ts_mod = getattr(row, "updated_at", None) or ts_pub
 
     admin_aside = ""
     if show_admin:
@@ -1983,9 +1989,6 @@ async def blog_public_page(request: Request, slug: str):
         _bc = _bc[:69] + "…"
     breadcrumb_title_esc = html_module.escape(_bc)
     blog_body = display_content if isinstance(display_content, str) else str(display_content or "")
-    s = get_settings()
-    og_image = (s.get("seo_og_image") or "").strip()
-    og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
     article_url = canonical_url_blog_article(slug)
     og_desc_for_social = ((meta_plain or "").strip()[:500]) or ((title_plain or "").strip()[:160])
     article_seo = head_canonical_social(
@@ -1996,8 +1999,6 @@ async def blog_public_page(request: Request, slug: str):
         og_site_name=og_site,
         og_type="article",
     )
-    ts_pub = row.published_at or row.created_at
-    ts_mod = getattr(row, "updated_at", None) or ts_pub
     ld = blog_posting_json_ld(
         headline=title_plain or "",
         url=article_url,
