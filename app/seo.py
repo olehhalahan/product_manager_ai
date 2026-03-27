@@ -5,16 +5,43 @@ import html
 import json
 import os
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import Request
 
+# When DEPLOY_URL is unset (local dev), canonical/og:sitemap use this absolute origin — not request.host (avoids 127.0.0.1:random in metadata).
+_LOCAL_DEV_SITE_BASE = "http://localhost:8000"
+
+
+def site_base_url() -> str:
+    """
+    Absolute site origin with no trailing slash.
+
+    Production: set DEPLOY_URL (e.g. https://cartozo.ai).
+    Local: defaults to http://localhost:8000 if DEPLOY_URL is empty.
+    """
+    u = (os.getenv("DEPLOY_URL") or "").strip().rstrip("/")
+    return u if u else _LOCAL_DEV_SITE_BASE
+
 
 def public_site_base(request: Request) -> str:
-    """Site origin for canonical links, og:url, sitemap (set DEPLOY_URL in production)."""
-    u = (os.getenv("DEPLOY_URL") or "").strip().rstrip("/")
-    if u:
-        return u
-    return str(request.base_url).rstrip("/")
+    """Same as site_base_url(). Request is kept for call-site compatibility."""
+    return site_base_url()
+
+
+def canonical_url_for_request(request: Request) -> str:
+    """Full canonical URL for the current path (no query string). Uses DEPLOY_URL via site_base_url()."""
+    base = site_base_url().rstrip("/")
+    path = request.url.path or "/"
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{base}{path}"
+
+
+def canonical_url_blog_article(slug: str) -> str:
+    """Absolute /blog/{slug} URL for SEO (slug encoded for path safety)."""
+    s = (slug or "").strip()
+    return f"{site_base_url().rstrip('/')}/blog/{quote(s, safe='')}"
 
 
 def esc_attr(s: str) -> str:

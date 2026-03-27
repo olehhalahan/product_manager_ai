@@ -25,7 +25,12 @@ from .services import db_repository as repo
 from .services.db_repository import get_settings
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
 from .public_nav import public_site_nav_html
-from .seo import blog_posting_json_ld, head_canonical_social, public_site_base
+from .seo import (
+    blog_posting_json_ld,
+    canonical_url_blog_article,
+    canonical_url_for_request,
+    head_canonical_social,
+)
 from .writter_new_article_page import render_writter_new_article_html
 
 _log = logging.getLogger("uvicorn.error")
@@ -1740,11 +1745,10 @@ def _blog_index_page_html(
 async def blog_index_page(request: Request, q: str = Query("", max_length=500)):
     """Public blog index: all published articles, optional keyword search."""
     q_clean = (q or "").strip()
-    base = public_site_base(request)
     s = get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
     og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
-    canonical_url = f"{base}/blog"
+    canonical_url = canonical_url_for_request(request)
     meta_desc = (
         "Articles and guides from Cartozo — product feed optimization, Google Merchant Center, and e-commerce SEO."
     )
@@ -1979,11 +1983,10 @@ async def blog_public_page(request: Request, slug: str):
         _bc = _bc[:69] + "…"
     breadcrumb_title_esc = html_module.escape(_bc)
     blog_body = display_content if isinstance(display_content, str) else str(display_content or "")
-    base = public_site_base(request)
     s = get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
     og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
-    article_url = f"{base}/blog/{slug}"
+    article_url = canonical_url_blog_article(slug)
     og_desc_for_social = ((meta_plain or "").strip()[:500]) or ((title_plain or "").strip()[:160])
     article_seo = head_canonical_social(
         canonical_url=article_url,

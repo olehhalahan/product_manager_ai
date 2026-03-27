@@ -50,7 +50,7 @@ from .how_it_works_page import build_how_it_works_html
 from .pricing_page import build_pricing_html
 from .faq_page import build_faq_html
 from .privacy_pages import build_cookie_policy_html, build_privacy_policy_html, build_refund_policy_html
-from .seo import head_canonical_og_url_type, website_json_ld
+from .seo import canonical_url_for_request, head_canonical_og_url_type, site_base_url, website_json_ld
 from .terms_page import build_terms_html
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
 
@@ -2544,13 +2544,12 @@ def _build_contact_page(request: Request) -> str:
     from .seo import head_canonical_social
 
     s = _get_settings()
-    base = _public_site_base(request)
     og_image = (s.get("seo_og_image") or "").strip()
     og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
     title_plain = "Contact us — Cartozo.ai"
     desc = "Reach Cartozo.ai for product feed optimization, Google Merchant Center support, and general inquiries."
     seo = head_canonical_social(
-        canonical_url=f"{base}/contact",
+        canonical_url=canonical_url_for_request(request),
         og_title=title_plain,
         og_description=desc,
         og_image=og_image,
@@ -2744,13 +2743,12 @@ def _build_presentation_page(request: Request) -> str:
     from .seo import head_canonical_social
 
     s = _get_settings()
-    base = _public_site_base(request)
     og_image = (s.get("seo_og_image") or "").strip()
     og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
     title_plain = "Features — Cartozo.ai"
     desc = "Explore Cartozo.ai features: AI product feed optimization, Google Merchant Center workflows, and catalog enrichment."
     pres_seo = head_canonical_social(
-        canonical_url=f"{base}/presentation",
+        canonical_url=canonical_url_for_request(request),
         og_title=title_plain,
         og_description=desc,
         og_image=og_image,
@@ -2960,8 +2958,8 @@ def _build_homepage_html(request: Request) -> str:
     og_desc = s.get("seo_og_description") or meta_desc
     og_image = s.get("seo_og_image") or ""
     og_site = s.get("seo_og_site_name") or "Cartozo.ai"
-    base = _public_site_base(request)
-    canonical = f"{base}/"
+    base = site_base_url()
+    canonical = canonical_url_for_request(request)
     tw_img = ""
     if (og_image or "").strip():
         tw_img = (
@@ -3003,7 +3001,7 @@ def presentation_page(request: Request):
 def _terms_of_service_html_response(request: Request) -> HTMLResponse:
     title = "Terms of Service | Cartozo AI"
     desc = "Terms of Service for Cartozo AI — product feed optimization SaaS. Last updated March 26, 2026."
-    base = _public_site_base(request)
+    base = site_base_url()
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
     return HTMLResponse(
@@ -3023,7 +3021,7 @@ def _terms_of_service_html_response(request: Request) -> HTMLResponse:
 def _privacy_policy_html_response(request: Request) -> HTMLResponse:
     title = "Privacy Policy | Cartozo AI"
     desc = "How Cartozo AI collects, uses, and protects your data. Product feed optimization SaaS."
-    base = _public_site_base(request)
+    base = site_base_url()
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
     return HTMLResponse(
@@ -3043,7 +3041,7 @@ def _privacy_policy_html_response(request: Request) -> HTMLResponse:
 def _cookie_policy_html_response(request: Request) -> HTMLResponse:
     title = "Cookie Policy | Cartozo AI"
     desc = "How Cartozo AI uses cookies and similar technologies on cartozo.ai."
-    base = _public_site_base(request)
+    base = site_base_url()
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
     return HTMLResponse(
@@ -3063,7 +3061,7 @@ def _cookie_policy_html_response(request: Request) -> HTMLResponse:
 def _refund_policy_html_response(request: Request) -> HTMLResponse:
     title = "Refund Policy | Cartozo AI"
     desc = "How refunds may apply to Cartozo AI subscriptions and paid add-ons."
-    base = _public_site_base(request)
+    base = site_base_url()
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
     return HTMLResponse(
@@ -3083,7 +3081,7 @@ def _refund_policy_html_response(request: Request) -> HTMLResponse:
 def _faq_html_response(request: Request) -> HTMLResponse:
     title = "FAQ | Cartozo.ai"
     desc = "Frequently asked questions about Cartozo.ai, product feeds, Google Merchant Center, and billing."
-    base = _public_site_base(request)
+    base = site_base_url()
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
     return HTMLResponse(
@@ -3118,7 +3116,6 @@ def pricing_page(request: Request):
         "Simple plans from free to enterprise. Fix disapprovals, optimize titles, "
         "push Merchant-ready feeds. Add-ons for extra products and regenerations."
     )
-    base = _public_site_base(request)
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
     og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
@@ -3128,7 +3125,7 @@ def pricing_page(request: Request):
             meta_description=desc,
             og_title=title,
             og_description=desc,
-            canonical_url=f"{base}/pricing",
+            canonical_url=canonical_url_for_request(request),
             og_image=og_image,
             og_site_name=og_site,
             gtm_head=GTM_HEAD,
@@ -3145,7 +3142,6 @@ def how_it_works_page(request: Request):
         "Up to 30% of products can fail in Merchant from feed issues. Get more clicks and sales from the same ad "
         "budget—fix disapprovals, improve titles, push clean feeds. No setup: upload any CSV."
     )
-    base = _public_site_base(request)
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
     og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
@@ -3155,7 +3151,7 @@ def how_it_works_page(request: Request):
             meta_description=desc,
             og_title=title,
             og_description=desc,
-            canonical_url=f"{base}/how-it-works",
+            canonical_url=canonical_url_for_request(request),
             og_image=og_image,
             og_site_name=og_site,
             gtm_head=GTM_HEAD,
@@ -6098,7 +6094,7 @@ async def api_admin_regenerate_sitemap_robots(request: Request):
     from .db import get_db
     from .services.db_repository import set_setting
 
-    base = _public_site_base(request)
+    base = site_base_url()
     with get_db() as db:
         sm = _build_sitemap_xml_body(base, db)
         rb = _build_robots_txt_body(base)
@@ -6614,14 +6610,6 @@ async def admin_onboarding_analytics_page(
     return HTMLResponse(content=html)
 
 
-def _public_site_base(request: Request) -> str:
-    """Canonical site URL for sitemap/robots (production: set DEPLOY_URL)."""
-    u = (_os.getenv("DEPLOY_URL") or "").strip().rstrip("/")
-    if u:
-        return u
-    return str(request.base_url).rstrip("/")
-
-
 def _sitemap_url_block(loc: str, *, priority: str, changefreq: str, lastmod: Optional[str] = None) -> str:
     lines = [
         "  <url>",
@@ -6707,7 +6695,7 @@ async def sitemap_xml(request: Request):
 
     from .db import get_db
 
-    base = _public_site_base(request)
+    base = site_base_url()
     with get_db() as db:
         body = _build_sitemap_xml_body(base, db)
     return Response(content=body, media_type="application/xml; charset=utf-8")
@@ -6724,7 +6712,7 @@ async def robots_txt(request: Request):
     if cached:
         return PlainTextResponse(cached, media_type="text/plain; charset=utf-8")
 
-    base = _public_site_base(request)
+    base = site_base_url()
     text = _build_robots_txt_body(base)
     return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 

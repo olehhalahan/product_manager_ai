@@ -4,7 +4,19 @@
 
 The marketing site and blog are **not** a client-only SPA shell. FastAPI returns **full HTML documents** as strings (or composed templates): the response body already contains visible text, headings, and links. Browsers may run JavaScript for theme, navigation polish, and forms, but **the main content and metadata are present on the first response** without waiting for client-side data fetching.
 
-Canonical URLs and Open Graph use the same base as sitemaps: set **`DEPLOY_URL`** in production (e.g. `https://cartozo.ai`) so `canonical`, `og:url`, and sitemap `loc` match the live domain.
+## Canonical base URL (`DEPLOY_URL`)
+
+All public SEO metadata (canonical, `og:url`, sitemap `loc`, JSON-LD URLs) uses **`app/seo.py`**:
+
+| Function | Role |
+|----------|------|
+| `site_base_url()` | Reads **`DEPLOY_URL`** from the environment (no trailing slash). If unset, uses **`http://localhost:8000`** so local HTML never picks up `127.0.0.1` or a random port in tags. |
+| `canonical_url_for_request(request)` | `site_base_url()` + `request.url.path` (no query string). Used for home, contact, presentation, pricing, how-it-works, blog index. |
+| `canonical_url_blog_article(slug)` | `https://…/blog/{slug}` with path-safe encoding. |
+
+Production: set `DEPLOY_URL=https://cartozo.ai` (or your live origin). Legal aliases (e.g. `/terms-of-service`) still emit canonical pointing at the primary path (`/terms`, etc.) via `f"{site_base_url()}/terms"` in handlers.
+
+There is **no shared Jinja base layout**; pages are built from Python string templates. Shared SEO fragments live in `app/seo.py` and `head_canonical_social` / `head_canonical_og_url_type`.
 
 ## Adding a new SEO public page
 
@@ -20,7 +32,10 @@ Legal-style pages can reuse `build_legal_document_html` in `app/legal_document_p
 
 | Helper | Use |
 |--------|-----|
-| `public_site_base(request)` | Site origin for canonical URLs (respects `DEPLOY_URL`). |
+| `site_base_url()` | Origin for sitemap/robots and `f"{base}/path"` where needed. |
+| `public_site_base(request)` | Alias of `site_base_url()` (request ignored). |
+| `canonical_url_for_request(request)` | Full URL for the current path under `DEPLOY_URL`. |
+| `canonical_url_blog_article(slug)` | Full article URL. |
 | `head_canonical_social(...)` | Full block: canonical, `og:url`, `og:type`, optional `og:image` / `og:site_name`, Twitter title/description/image. |
 | `head_canonical_og_url_type(...)` | When the page already has `og:title` / Twitter in the template; adds canonical + `og:url` + `og:type` only. |
 | `website_json_ld(...)` | `WebSite` schema on the home page. |
