@@ -1,5 +1,6 @@
+import logging
 import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 try:
     import openai
@@ -9,7 +10,10 @@ except ImportError:
     openai = None
 
 from ..models import NormalizedProduct
+from .llm_json import parse_json_object_from_text
 
+
+_LOG = logging.getLogger(__name__)
 
 _STOP_WORDS: Set[str] = {
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
@@ -28,10 +32,34 @@ _TYPE_SUFFIXES = [
     "Accessory", "Accessories", "Supply", "Supplies",
 ]
 
+# Legacy one-shot title/description when the positioning pipeline falls back to plain rewrite.
+# Admin Prompt 1/2 are JSON system prompts for extraction/assembly only (not .format()-safe).
+LEGACY_SEO_TITLE_PROMPT = """You are an SEO expert. Optimize the following product title for search engines.
+Keep it under 120 characters. Include relevant keywords. Use a pipe separator for secondary phrases.
+
+Original title: {title}
+Category: {category}
+Brand: {brand}
+Attributes: {attributes}
+
+Return only the optimized title, nothing else."""
+
+LEGACY_SEO_DESCRIPTION_PROMPT = """You are an e-commerce copywriter. Write a compelling product description.
+Keep it 2-3 paragraphs. Focus on benefits and features. Do not mention price.
+
+Product: {title}
+Category: {category}
+Brand: {brand}
+Attributes: {attributes}
+Original description: {description}
+
+Return only the description, nothing else."""
+
 DEFAULT_HOMEPAGE_CHAT_SYSTEM_PROMPT = """You are a helpful AI assistant for Cartozo.ai, an e-commerce product feed optimization platform.
-Cartozo.ai helps merchants optimize product titles and descriptions for search engines, generate compelling copy,
-translate content to multiple languages, and improve product feed quality for Google Merchant Center and other channels.
-Answer questions about the service, features, pricing, how it works, and product optimization best practices.
+Cartozo.ai is not a simple \"rewrite\" tool: it runs a decision layer for search positioning—detecting likely shopper search intents,
+scoring them, choosing the best few, then assembling Google Merchant-friendly titles and descriptions grounded in the product data.
+It also supports translation and feed-quality checks for Google Merchant Center and similar channels.
+Answer questions about the service, features, pricing, how it works, and product / Shopping feed best practices.
 Be concise, friendly, and professional."""
 
 
@@ -39,6 +67,9 @@ class AIProvider:
     """
     Thin abstraction over the real LLM provider.
     Uses OpenAI when API key is set, otherwise falls back to placeholder.
+
+    ``_prompt_title`` / ``_prompt_description`` hold admin **positioning** system prompts
+    (search intent extraction + title/description assembly JSON steps), not the legacy SEO templates.
     """
 
     def __init__(self):
@@ -56,8 +87,21 @@ class AIProvider:
             self._client = None
 
     def set_prompts(self, title_prompt: str, desc_prompt: str) -> None:
+        """Prompt 1 = extraction system message; Prompt 2 = assembly system message."""
         self._prompt_title = title_prompt
         self._prompt_description = desc_prompt
+
+    def positioning_extraction_system_prompt(self) -> str:
+        from .positioning.prompt_defaults import DEFAULT_EXTRACTION_SYSTEM
+
+        p = (self._prompt_title or "").strip()
+        return p if p else DEFAULT_EXTRACTION_SYSTEM
+
+    def positioning_assembly_system_prompt(self) -> str:
+        from .positioning.prompt_defaults import DEFAULT_ASSEMBLY_SYSTEM
+
+        p = (self._prompt_description or "").strip()
+        return p if p else DEFAULT_ASSEMBLY_SYSTEM
 
     def set_homepage_chat_system_prompt(self, system_prompt: str) -> None:
         """System message for the public homepage chat; empty means use DEFAULT_HOMEPAGE_CHAT_SYSTEM_PROMPT."""
@@ -77,6 +121,50 @@ class AIProvider:
             return response.choices[0].message.content.strip()
         except Exception:
             return ""
+
+    def complete_chat_json(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_tokens: int = 2000,
+        temperature: float = 0.28,
+    ) -> Tuple[Optional[dict], str]:
+        """
+        Chat completion with JSON object response. Returns (parsed dict or None, raw text).
+        """
+        raw = ""
+        if not self._client:
+            return None, raw
+        try:
+            base_kw: Dict[str, Any] = dict(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            try:
+                response = self._client.chat.completions.create(
+                    **base_kw,
+                    response_format={"type": "json_object"},
+                )
+            except Exception:
+                response = self._client.chat.completions.create(**base_kw)
+            raw = (response.choices[0].message.content or "").strip()
+            parsed = parse_json_object_from_text(raw)
+            if parsed is not None:
+                return parsed, raw
+            if raw:
+                _LOG.warning(
+                    "complete_chat_json: unparseable model output (excerpt): %s",
+                    raw[:500].replace("\n", " "),
+                )
+            return None, raw
+        except Exception:
+            return None, raw
 
     def chat(self, messages: list) -> str:
         """Chat with AI agent about Cartozo.ai service. Uses same OpenAI API as titles/descriptions."""
@@ -101,15 +189,15 @@ class AIProvider:
     # ------------------------------------------------------------------ #
     #  Title optimisation
     # ------------------------------------------------------------------ #
-    def generate_title(self, product: NormalizedProduct) -> str:
+    def generate_title(self, product: NormalizedProduct, *, allow_llm: bool = True) -> str:
         base = (product.title or "").strip()
         if not base:
             return base
 
-        # Try OpenAI if available
-        if self._client and self._prompt_title:
+        # Try OpenAI if available (legacy template — not the positioning JSON prompt).
+        if allow_llm and self._client:
             attrs_str = ", ".join(f"{k}: {v}" for k, v in (product.attributes or {}).items())
-            prompt = self._prompt_title.format(
+            prompt = LEGACY_SEO_TITLE_PROMPT.format(
                 title=base,
                 category=product.category or "",
                 brand=product.brand or "",
@@ -185,13 +273,12 @@ class AIProvider:
     # ------------------------------------------------------------------ #
     #  Description optimisation
     # ------------------------------------------------------------------ #
-    def generate_description(self, product: NormalizedProduct) -> str:
+    def generate_description(self, product: NormalizedProduct, *, allow_llm: bool = True) -> str:
         title = product.title or "this product"
 
-        # Try OpenAI if available
-        if self._client and self._prompt_description:
+        if allow_llm and self._client:
             attrs_str = ", ".join(f"{k}: {v}" for k, v in (product.attributes or {}).items())
-            prompt = self._prompt_description.format(
+            prompt = LEGACY_SEO_DESCRIPTION_PROMPT.format(
                 title=title,
                 category=product.category or "",
                 brand=product.brand or "",

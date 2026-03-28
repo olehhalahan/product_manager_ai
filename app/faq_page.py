@@ -9,7 +9,9 @@ from .seo import faq_page_json_ld
 _FAQ_QA: list[tuple[str, str]] = [
     (
         "What does Cartozo.ai do?",
-        "Cartozo.ai helps merchants optimize product feeds for Google Merchant Center and similar channels: titles, descriptions, attribute mapping, and issue detection from your catalog data.",
+        "Cartozo.ai optimizes product feeds for Google Merchant Center and similar channels. "
+        "Instead of a simple AI rewrite, it runs a decision layer: infer likely shopper search intents, score them, pick the best few, "
+        "then assemble titles and descriptions grounded in your data. You also get mapping, validation, and batch export.",
     ),
     (
         "Do I need Google Merchant Center to start?",

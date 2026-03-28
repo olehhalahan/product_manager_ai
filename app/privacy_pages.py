@@ -12,7 +12,7 @@ _PRIVACY_ARTICLE = """
 
   <section id="pp-1" aria-labelledby="pp-h1">
     <h2 id="pp-h1">1. Who we are</h2>
-    <p>Cartozo AI provides a cloud service for optimizing product feeds and related e-commerce content. For privacy questions, contact us at <a href="mailto:support@cartozo.ai">support@cartozo.ai</a>.</p>
+    <p>Cartozo AI provides a cloud service for product feed quality and search-intent positioning (titles, descriptions, and related e-commerce content). For privacy questions, contact us at <a href="mailto:support@cartozo.ai">support@cartozo.ai</a>.</p>
   </section>
 
   <section id="pp-2" aria-labelledby="pp-h2">

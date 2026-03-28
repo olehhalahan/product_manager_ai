@@ -16,7 +16,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .auth import get_current_user, is_admin, require_admin_http, require_admin_redirect
@@ -36,6 +36,7 @@ from .writter_new_article_page import render_writter_new_article_html
 _log = logging.getLogger("uvicorn.error")
 from .services.writter_service import (
     ARTICLE_TYPE_LABELS,
+    MIN_QUALITY_AUTO_PUBLISH,
     PRIMARY_GOAL_LABELS,
     VALID_ARTICLE_TYPES,
     VALID_PRIMARY_GOALS,
@@ -58,11 +59,16 @@ from .services.writter_service import (
     RULE_PRESET_MESSAGES,
     run_seo_quality_audit,
     score_article_opportunity,
+    suggest_auto_article_brief,
+    suggest_future_topics_keywords_only,
     suggest_internal_link_placements,
     slugify,
 )
 
 router = APIRouter(tags=["writter"])
+
+# Auto article: number of draft variants saved; user picks one to publish via /auto-article/finalize.
+_AUTO_ARTICLE_VARIANTS = 5
 
 _WRITTER_SCREENSHOT_DIR = Path(__file__).resolve().parent.parent / "static" / "uploads" / "writter"
 _WRITTER_SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024
@@ -328,6 +334,7 @@ async def writter_list_page(request: Request):
         return redir
     with get_db() as db:
         rows = repo.list_blog_articles_admin(db)
+        future_rows = repo.list_writter_future_articles(db)
     tr = ""
     for r in rows:
         title_esc = html_module.escape(r.get("title") or "")
@@ -386,6 +393,67 @@ async def writter_list_page(request: Request):
     if not tr:
         tr = '<tr><td colspan="11" class="wt-empty">No articles yet. Create one.</td></tr>'
 
+    tr_f = ""
+    for fr in future_rows:
+        fid = int(fr.get("id") or 0)
+        topic_esc = html_module.escape((fr.get("topic") or "")[:200])
+        kw_esc = html_module.escape((fr.get("keywords") or "")[:160])
+        at_esc = html_module.escape((fr.get("article_type") or "")[:32])
+        st = (fr.get("status") or "").strip()
+        st_esc = html_module.escape(st)
+        gen_id = fr.get("generated_article_id")
+        gen_cell = (
+            f'<a href="/admin/writter/article/{int(gen_id)}/review">#{int(gen_id)}</a>'
+            if gen_id
+            else "—"
+        )
+        rationale = ""
+        bj = fr.get("briefing_json") if isinstance(fr.get("briefing_json"), dict) else {}
+        if isinstance(bj, dict) and bj.get("rationale"):
+            rationale = html_module.escape(str(bj.get("rationale"))[:200])
+        pill = "wt-pill-draft"
+        if st == "approved":
+            pill = "wt-pill-published"
+        elif st == "done":
+            pill = "wt-pill-published"
+        elif st == "rejected":
+            pill = "wt-pill-draft"
+        disabled = "disabled" if st == "done" else ""
+        gen_disabled = "disabled" if st == "done" or st != "approved" else ""
+        gen_title = (
+            ""
+            if st == "approved"
+            else (' title="Approve this row first"' if st != "done" else "")
+        )
+        tr_f += f"""<tr data-future-id="{fid}">
+  <td class="wt-col-title">{topic_esc}</td>
+  <td class="wt-col-keywords" title="{kw_esc}">{kw_esc}</td>
+  <td class="wt-col-type">{at_esc}</td>
+  <td class="wt-status-cell"><span class="wt-pill {pill}">{st_esc}</span></td>
+  <td class="wt-col-dt">{gen_cell}</td>
+  <td class="wt-fut-rationale" style="font-size:.82rem;color:#94a3b8;max-width:14rem;">{rationale or "—"}</td>
+  <td class="wt-actions-cell wt-fut-actions-cell">
+    <div class="wt-fut-act-stack" role="group" aria-label="Queue row actions">
+      <div class="wt-fut-act-row">
+        <span class="wt-fut-act-h">Review</span>
+        <div class="wt-fut-act-pair">
+          <button type="button" class="wt-btn wt-btn-sm wt-btn-fut" data-fut="approve" data-id="{fid}" {disabled}>Approve</button>
+          <button type="button" class="wt-btn wt-btn-sm wt-btn-secondary wt-btn-fut" data-fut="reject" data-id="{fid}" {disabled}>Reject</button>
+        </div>
+      </div>
+      <div class="wt-fut-act-row">
+        <span class="wt-fut-act-h">AI</span>
+        <div class="wt-fut-act-pair">
+          <button type="button" class="wt-btn wt-btn-sm wt-btn-secondary wt-btn-fut" data-fut="regen" data-id="{fid}" {disabled}>Regenerate</button>
+          <button type="button" class="wt-btn wt-btn-sm wt-btn-gen wt-btn-fut" data-fut="gen" data-id="{fid}" {gen_disabled}{gen_title}>Generate</button>
+        </div>
+      </div>
+    </div>
+  </td>
+</tr>"""
+    if not tr_f:
+        tr_f = '<tr><td colspan="7" class="wt-empty">No queued ideas yet. Click <strong>Refresh queue</strong> to generate suggestions.</td></tr>'
+
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -429,7 +497,20 @@ async def writter_list_page(request: Request):
   .wt-pill-draft {{ background:rgba(251,191,36,.12); color:#fbbf24; }}
   .wt-status-cell {{ vertical-align:top; white-space:nowrap; width:6.5rem; }}
   .wt-actions-cell {{ vertical-align:top; width:12rem; min-width:12rem; text-align:right; padding-inline-end:4px !important; }}
+  .wt-fut-actions-cell {{ width:15.5rem; min-width:15.5rem; text-align:left; padding-inline-start:10px !important; padding-inline-end:10px !important; }}
+  .wt-fut-act-stack {{ display:flex; flex-direction:column; gap:10px; align-items:stretch; }}
+  .wt-fut-act-row {{ display:flex; flex-direction:column; gap:5px; }}
+  .wt-fut-act-h {{ font-size:.62rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:#64748b; }}
+  [data-theme="light"] .wt-fut-act-h {{ color:#94a3b8; }}
+  .wt-fut-act-pair {{ display:grid; grid-template-columns:1fr 1fr; gap:6px; }}
+  .wt-fut-act-pair .wt-btn-sm {{ margin:0; width:100%; box-sizing:border-box; justify-content:center; }}
+  .wt-btn-gen {{ background:linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%) !important; color:#fff !important; box-shadow:0 1px 0 rgba(255,255,255,.12) inset; }}
+  .wt-btn-gen:hover:not(:disabled) {{ filter:brightness(1.06); }}
+  .wt-btn-gen:disabled {{ opacity:.45; cursor:not-allowed; filter:none; }}
+  [data-theme="light"] .wt-btn-gen {{ background:linear-gradient(180deg, #38bdf8 0%, #0ea5e9 100%) !important; color:#0f172a !important; box-shadow:none; }}
+  [data-theme="light"] .wt-btn-gen:disabled {{ opacity:.4; }}
   .wt-th-actions {{ text-align:right; }}
+  .wt-th-fut-actions {{ text-align:left; vertical-align:bottom; }}
   .wt-dd {{
     width:100%;
     max-width:100%;
@@ -476,6 +557,18 @@ async def writter_list_page(request: Request):
   .wt-loading-box p {{ margin:0; color:#e5e7eb; font-weight:600; }}
   [data-theme="light"] .wt-loading-box p {{ color:#0f172a; }}
   .wt-loading-sub {{ font-size:.85rem !important; font-weight:400 !important; color:#94a3b8 !important; margin-top:8px !important; }}
+  .wt-tabs {{ display:flex; gap:8px; margin:20px 0 12px; flex-wrap:wrap; align-items:center; }}
+  .wt-tab {{ padding:8px 18px; border-radius:8px; border:1px solid rgba(255,255,255,.12); background:transparent; color:#94a3b8; cursor:pointer; font-weight:600; font-size:.9rem; }}
+  .wt-tab:hover {{ color:#e5e7eb; border-color:rgba(129,140,248,.35); }}
+  .wt-tab.wt-tab--on {{ background:rgba(79,70,229,.22); color:#c7d2fe; border-color:rgba(129,140,248,.45); }}
+  [data-theme="light"] .wt-tab {{ border-color:rgba(15,23,42,.15); color:#64748b; }}
+  [data-theme="light"] .wt-tab.wt-tab--on {{ color:#4F46E5; background:rgba(79,70,229,.1); }}
+  .wt-tab-panel {{ display:none; }}
+  .wt-tab-panel.wt-on {{ display:block; }}
+  table.wt-future-table {{ min-width:900px; }}
+  .wt-btn-sm {{ padding:6px 10px; font-size:.75rem; margin:2px; }}
+  .wt-btn-secondary {{ background:#334155 !important; }}
+  [data-theme="light"] .wt-btn-secondary {{ background:#e2e8f0 !important; color:#0f172a !important; }}
   </style>
 </head>
 <body>
@@ -483,8 +576,8 @@ async def writter_list_page(request: Request):
   <div id="wtLoading" class="wt-loading" role="dialog" aria-modal="true" aria-labelledby="wtLoadTitle" aria-hidden="true">
     <div class="wt-loading-box">
       <div class="wt-spinner" aria-hidden="true"></div>
-      <p id="wtLoadTitle">Generating article…</p>
-      <p class="wt-loading-sub">Please wait — this can take up to a minute.</p>
+      <p id="wtLoadTitle">Please wait…</p>
+      <p id="wtLoadSub" class="wt-loading-sub">Working…</p>
     </div>
   </div>
   <div class="wt-layout">
@@ -496,9 +589,19 @@ async def writter_list_page(request: Request):
     <main class="wt-main">
       <h1 class="wt-h1">Writter</h1>
       <p style="color:#9ca3af;margin:0 0 8px;">SEO articles — list and analytics</p>
-      <div class="wt-toolbar">
+      <div class="wt-toolbar" style="flex-wrap:wrap;">
         <a class="wt-btn" href="/admin/writter/new">+ Create New Article</a>
+        <button type="button" class="wt-btn wt-btn-secondary" id="wtBtnRefreshQueue">Refresh queue</button>
+        <button type="button" class="wt-btn wt-btn-secondary" id="wtBtnAddFiveTopics" title="Adds 5 rows: AI suggests only topic + keywords (no article bodies)">+ 5 topics</button>
       </div>
+      <div class="wt-tabs" role="tablist">
+        <button type="button" class="wt-tab wt-tab--on" id="wtTabArticles" role="tab" aria-selected="true">Articles</button>
+        <button type="button" class="wt-tab" id="wtTabFuture" role="tab" aria-selected="false">Future articles</button>
+      </div>
+      <p id="wtFutureHint" style="display:none;color:#94a3b8;font-size:.88rem;margin:0 0 12px;max-width:52rem;">
+        <strong>Refresh queue</strong> and <strong>+ 5 topics</strong> only add a short topic line and keywords (ideas for the queue), not article bodies. Approve rows you want, then click <strong>Generate</strong> to draft and publish when SEO overall score is at least {MIN_QUALITY_AUTO_PUBLISH}. <strong>Regenerate</strong> replaces one row with a new full AI brief.
+      </p>
+      <div id="panelArticles" class="wt-tab-panel wt-on" role="tabpanel">
       <div class="wt-table-wrap">
       <table class="wt-table">
         <thead><tr>
@@ -517,11 +620,114 @@ async def writter_list_page(request: Request):
         <tbody>{tr}</tbody>
       </table>
       </div>
+      </div>
+      <div id="panelFuture" class="wt-tab-panel" role="tabpanel">
+      <div class="wt-table-wrap">
+      <table class="wt-table wt-future-table">
+        <thead><tr>
+          <th class="wt-col-title">Topic</th>
+          <th class="wt-col-keywords">Keywords</th>
+          <th class="wt-col-type">Type</th>
+          <th class="wt-status-cell">Status</th>
+          <th class="wt-col-dt">Article</th>
+          <th>Notes</th>
+          <th class="wt-th-fut-actions wt-fut-actions-cell">Actions</th>
+        </tr></thead>
+        <tbody id="wtFutureTbody">{tr_f}</tbody>
+      </table>
+      </div>
+      </div>
     </main>
   </div>
   <script>
   {ADMIN_THEME_SCRIPT.strip()}
   {ADMIN_MERCHANT_SCRIPT.strip()}
+  (function() {{
+    var tabA = document.getElementById('wtTabArticles');
+    var tabF = document.getElementById('wtTabFuture');
+    var pA = document.getElementById('panelArticles');
+    var pF = document.getElementById('panelFuture');
+    var hint = document.getElementById('wtFutureHint');
+    function showArticles() {{
+      if (tabA) {{ tabA.classList.add('wt-tab--on'); tabA.setAttribute('aria-selected', 'true'); }}
+      if (tabF) {{ tabF.classList.remove('wt-tab--on'); tabF.setAttribute('aria-selected', 'false'); }}
+      if (pA) {{ pA.classList.add('wt-on'); }}
+      if (pF) {{ pF.classList.remove('wt-on'); }}
+      if (hint) hint.style.display = 'none';
+    }}
+    function showFuture() {{
+      if (tabF) {{ tabF.classList.add('wt-tab--on'); tabF.setAttribute('aria-selected', 'true'); }}
+      if (tabA) {{ tabA.classList.remove('wt-tab--on'); tabA.setAttribute('aria-selected', 'false'); }}
+      if (pF) {{ pF.classList.add('wt-on'); }}
+      if (pA) {{ pA.classList.remove('wt-on'); }}
+      if (hint) hint.style.display = 'block';
+    }}
+    if (tabA) tabA.addEventListener('click', showArticles);
+    if (tabF) tabF.addEventListener('click', showFuture);
+    var load = document.getElementById('wtLoading');
+    var loadTitle = document.getElementById('wtLoadTitle');
+    var loadSub = document.getElementById('wtLoadSub');
+    function setLoad(on, mode) {{
+      if (!load) return;
+      load.classList.toggle('wt-loading--on', !!on);
+      load.setAttribute('aria-hidden', on ? 'false' : 'true');
+      if (!on) {{
+        if (loadTitle) loadTitle.textContent = 'Please wait…';
+        if (loadSub) loadSub.textContent = 'Working…';
+        return;
+      }}
+      if (mode === 'topics') {{
+        if (loadTitle) loadTitle.textContent = 'Suggesting topics…';
+        if (loadSub) loadSub.textContent = 'Only titles and keywords for the queue — no full articles.';
+      }} else {{
+        if (loadTitle) loadTitle.textContent = 'Refreshing queue…';
+        if (loadSub) loadSub.textContent = 'Replacing pending ideas (titles + keywords only).';
+      }}
+    }}
+    var btnQ = document.getElementById('wtBtnRefreshQueue');
+    if (btnQ) btnQ.addEventListener('click', function() {{
+      setLoad(true, 'refresh');
+      fetch('/api/admin/writter/future-articles/refresh', {{ method: 'POST', credentials: 'same-origin' }})
+        .then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t || r.status); }}); return r.json(); }})
+        .then(function() {{ location.reload(); }})
+        .catch(function(e) {{ alert(e.message || 'Failed'); setLoad(false); }});
+    }});
+    var btn5 = document.getElementById('wtBtnAddFiveTopics');
+    if (btn5) btn5.addEventListener('click', function() {{
+      setLoad(true, 'topics');
+      fetch('/api/admin/writter/future-articles/add-topics?count=5', {{ method: 'POST', credentials: 'same-origin' }})
+        .then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t || r.status); }}); return r.json(); }})
+        .then(function() {{ location.reload(); }})
+        .catch(function(e) {{ alert(e.message || 'Failed'); setLoad(false); }});
+    }});
+    document.querySelectorAll('.wt-btn-fut').forEach(function(b) {{
+      b.addEventListener('click', function() {{
+        var id = b.getAttribute('data-id');
+        var act = b.getAttribute('data-fut');
+        if (!id || !act || b.disabled) return;
+        var path = '';
+        if (act === 'approve') path = '/api/admin/writter/future-articles/' + encodeURIComponent(id) + '/approve';
+        else if (act === 'reject') path = '/api/admin/writter/future-articles/' + encodeURIComponent(id) + '/reject';
+        else if (act === 'regen') path = '/api/admin/writter/future-articles/' + encodeURIComponent(id) + '/regenerate';
+        else if (act === 'gen') {{
+          if (!confirm('Generate and publish this article? (Requires SEO quality ≥ {MIN_QUALITY_AUTO_PUBLISH} — otherwise saved as draft.)')) return;
+          path = '/api/admin/writter/future-articles/' + encodeURIComponent(id) + '/generate';
+        }} else return;
+        setLoad(true);
+        fetch(path, {{ method: 'POST', credentials: 'same-origin', headers: {{ 'Accept': 'application/json' }} }})
+          .then(function(r) {{ if (!r.ok) return r.text().then(function(t) {{ throw new Error(t || r.status); }}); return r.json(); }})
+          .then(function(d) {{
+            if (d.warning) alert(d.warning);
+            if (d.id && act === 'gen') {{
+              window.location.href = '/admin/writter/article/' + d.id + '/review';
+              return;
+            }}
+            location.reload();
+          }})
+          .catch(function(e) {{ alert(e.message || 'Failed'); setLoad(false); }});
+      }});
+    }});
+  }})();
   document.querySelectorAll('.wt-dd').forEach(function(sel) {{
     sel.addEventListener('change', function() {{
       var v = this.value;
@@ -1018,6 +1224,12 @@ class CheapVisualBody(BaseModel):
     seed: int = 0
 
 
+class FinalizeAutoArticleBody(BaseModel):
+    article_id: int
+    batch_id: str
+    delete_siblings: bool = True
+
+
 @router.get("/api/admin/writter/visual-options")
 async def api_visual_options(
     request: Request,
@@ -1122,7 +1334,15 @@ async def api_upload_writter_screenshots(request: Request, files: List[UploadFil
     return JSONResponse({"urls": urls})
 
 
-def _create_article_from_body(body: CreateArticleBody, author_email: str) -> Dict[str, Any]:
+def _build_article_bundle(
+    db: Any,
+    body: CreateArticleBody,
+    author_email: str,
+    *,
+    extra_user_instruction: str = "",
+    visual_seed_effective: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Generate HTML + metrics without inserting (used for retries before commit)."""
     at = body.article_type
     if at not in VALID_ARTICLE_TYPES:
         raise HTTPException(400, detail=f"Invalid article_type: {at}")
@@ -1148,6 +1368,193 @@ def _create_article_from_body(body: CreateArticleBody, author_email: str) -> Dic
         rules_payload.append(d)
 
     api_key = _settings_openai_key()
+    settings = get_settings(db)
+    type_prompt = get_writter_type_prompt(settings, at)
+    siblings = repo.get_published_slugs_titles_excluding(db, exclude_slug=None, limit=40)
+    icount = len(siblings)
+    defaults = {
+        "writter_default_country_language": settings.get("writter_default_country_language") or "",
+        "writter_default_audience": settings.get("writter_default_audience") or "",
+        "writter_default_cta": settings.get("writter_default_cta") or "",
+    }
+
+    full_plan: Optional[Dict[str, Any]] = None
+    if isinstance(body.article_plan_json, dict) and body.article_plan_json:
+        full_plan = body.article_plan_json
+    link_sug = suggest_internal_link_placements(body.topic, body.keywords, siblings, limit=8)
+    if not full_plan:
+        full_plan = build_article_plan(
+            topic=body.topic,
+            keywords=body.keywords,
+            article_type=at,
+            primary_goal=pg,
+            audience_override=body.audience,
+            country_language_override=body.country_language,
+            business_goal_override=body.business_goal,
+            settings_defaults=defaults,
+            internal_article_count=icount,
+            internal_link_suggestions=link_sug,
+        )
+    opportunity = full_plan.get("opportunity") if isinstance(full_plan.get("opportunity"), dict) else {}
+    if not opportunity:
+        opportunity = score_article_opportunity(
+            topic=body.topic,
+            keywords=body.keywords,
+            article_type=at,
+            primary_goal=pg,
+            audience=(body.audience or "").strip() or full_plan.get("inferred_audience") or "",
+            country_language=(body.country_language or "").strip() or full_plan.get("country_language") or "",
+            business_goal=(body.business_goal or "").strip() or full_plan.get("business_goal_interpretation") or "",
+            internal_article_count=icount,
+        )
+
+    audience = (body.audience or "").strip() or (full_plan.get("inferred_audience") or "")
+    country_language = (body.country_language or "").strip() or (full_plan.get("country_language") or "")
+    business_goal = (body.business_goal or "").strip() or (full_plan.get("business_goal_interpretation") or "")
+    link_sug = full_plan.get("internal_link_suggestions") or link_sug
+    outline_sections = body.outline_sections or full_plan.get("blueprint_outline") or build_outline_headings(at, body.topic)
+
+    opp_for_gen = dict(opportunity) if isinstance(opportunity, dict) else {}
+    cta_dir = full_plan.get("cta_direction") if isinstance(full_plan, dict) else None
+    if cta_dir:
+        opp_for_gen["cta_direction"] = cta_dir
+
+    evidence_dict = body.evidence.model_dump()
+    rp = full_plan.get("recommended_proof") if isinstance(full_plan, dict) else None
+    if rp and not evidence_dict.get("recommended_proof_plan"):
+        evidence_dict["recommended_proof_plan"] = rp
+
+    slug_base = slugify(body.topic, body.keywords)
+
+    def exists(s: str) -> bool:
+        return repo.slug_exists(db, s)
+
+    final_slug = ensure_unique_slug(exists, slug_base)
+
+    vseed = int(visual_seed_effective) if visual_seed_effective is not None else int(body.visual_seed or 0)
+
+    vm = (body.visual_mode or "auto").strip().lower()
+    if vm == "none":
+        v: Dict[str, Any] = {"html": "", "label": ""}
+        wrap = ""
+    elif vm == "describe" and (body.visual_description or "").strip():
+        cv = route_cheap_visual(
+            body.visual_description or "",
+            body.topic,
+            body.keywords,
+            seed=vseed,
+        )
+        v = {"html": cv.get("html") or "", "label": cv.get("label") or "Diagram"}
+        wrap = f'<div class="writter-visual-wrap">{v["html"]}</div>' if v.get("html") else ""
+    else:
+        layout = body.visual_layout or "horizontal"
+        rv = full_plan.get("recommended_visual") if isinstance(full_plan, dict) else None
+        if isinstance(rv, dict) and rv.get("layout"):
+            layout = str(rv["layout"])
+        visuals = build_visual_options(
+            body.topic,
+            body.keywords,
+            seed=vseed,
+            layout=layout,
+        )
+        vi = max(0, min(body.visual_index, len(visuals) - 1)) if visuals else 0
+        v = visuals[vi] if visuals else {"html": "", "label": ""}
+        wrap = f'<div class="writter-visual-wrap">{v["html"]}</div>' if v.get("html") else ""
+
+    payload, metrics = generate_article_with_ai(
+        api_key=api_key,
+        article_type=at,
+        topic=body.topic,
+        keywords=body.keywords,
+        rules=rules_payload,
+        internal_context=siblings,
+        visual_label=v.get("label") or "",
+        type_prompt_extra=type_prompt,
+        generation_mode=mode,
+        audience=audience,
+        country_language=country_language,
+        business_goal=business_goal,
+        evidence=evidence_dict,
+        opportunity_plan=opp_for_gen,
+        internal_link_suggestions=link_sug,
+        outline_sections=outline_sections,
+        extra_user_instruction=extra_user_instruction,
+    )
+
+    inner = payload.get("content_html") or ""
+    if wrap:
+        full_html = wrap + inner
+    else:
+        full_html = inner
+    full_html, used_links = inject_internal_links(full_html, siblings)
+
+    h1 = (payload.get("h1") or body.topic or "").strip()
+    seo_qa = run_seo_quality_audit(
+        content_html=full_html,
+        title=(payload.get("seo_title") or body.topic)[:500],
+        meta_description=payload.get("meta_description") or "",
+        slug=final_slug,
+        keywords=body.keywords,
+        h1=h1,
+    )
+    metrics["seo_qa"] = seo_qa
+    metrics = _merge_metrics_with_admin_ai_insights(
+        metrics,
+        api_key=_settings_openai_key(),
+        title=(payload.get("seo_title") or body.topic)[:500],
+        meta_description=payload.get("meta_description") or "",
+        topic=body.topic,
+        keywords=body.keywords,
+        article_type=at,
+        content_html=full_html,
+        views=0,
+        sessions=0,
+        avg_time_s=0.0,
+        avg_scroll=0.0,
+        cta_clicks=0,
+        internal_links_n=len(used_links) if isinstance(used_links, list) else 0,
+    )
+
+    planning_json: Dict[str, Any] = {
+        "inputs": {
+            "topic": body.topic,
+            "keywords": body.keywords,
+            "article_type": at,
+            "primary_goal": pg,
+            "audience": audience,
+            "country_language": country_language,
+            "business_goal": business_goal,
+            "generation_mode": mode,
+            "visual_mode": body.visual_mode or "auto",
+            "visual_description": body.visual_description or "",
+            "visual_seed": vseed,
+            "visual_index": int(body.visual_index or 0),
+            "visual_layout": body.visual_layout or "horizontal",
+            "rule_presets": body.rule_presets or [],
+        },
+        "article_plan": full_plan,
+        "outline_sections": outline_sections,
+        "evidence": evidence_dict,
+        "opportunity": opportunity,
+        "internal_link_suggestions": link_sug,
+    }
+
+    return {
+        "payload": payload,
+        "metrics": metrics,
+        "full_html": full_html,
+        "final_slug": final_slug,
+        "v": v,
+        "planning_json": planning_json,
+        "used_links": used_links,
+        "rules_payload": rules_payload,
+        "at": at,
+        "pg": pg,
+        "mode": mode,
+    }
+
+
+def _create_article_from_body(body: CreateArticleBody, author_email: str) -> Dict[str, Any]:
     with get_db() as db:
         spam = extended_creation_blocked_message(
             same_topic_count=repo.count_blog_articles_same_topic(db, body.topic),
@@ -1158,173 +1565,16 @@ def _create_article_from_body(body: CreateArticleBody, author_email: str) -> Dic
         if spam:
             raise HTTPException(400, detail=spam)
 
-        settings = get_settings(db)
-        type_prompt = get_writter_type_prompt(settings, at)
-        siblings = repo.get_published_slugs_titles_excluding(db, exclude_slug=None, limit=40)
-        icount = len(siblings)
-        defaults = {
-            "writter_default_country_language": settings.get("writter_default_country_language") or "",
-            "writter_default_audience": settings.get("writter_default_audience") or "",
-            "writter_default_cta": settings.get("writter_default_cta") or "",
-        }
-
-        full_plan: Optional[Dict[str, Any]] = None
-        if isinstance(body.article_plan_json, dict) and body.article_plan_json:
-            full_plan = body.article_plan_json
-        link_sug = suggest_internal_link_placements(body.topic, body.keywords, siblings, limit=8)
-        if not full_plan:
-            full_plan = build_article_plan(
-                topic=body.topic,
-                keywords=body.keywords,
-                article_type=at,
-                primary_goal=pg,
-                audience_override=body.audience,
-                country_language_override=body.country_language,
-                business_goal_override=body.business_goal,
-                settings_defaults=defaults,
-                internal_article_count=icount,
-                internal_link_suggestions=link_sug,
-            )
-        opportunity = full_plan.get("opportunity") if isinstance(full_plan.get("opportunity"), dict) else {}
-        if not opportunity:
-            opportunity = score_article_opportunity(
-                topic=body.topic,
-                keywords=body.keywords,
-                article_type=at,
-                primary_goal=pg,
-                audience=(body.audience or "").strip() or full_plan.get("inferred_audience") or "",
-                country_language=(body.country_language or "").strip() or full_plan.get("country_language") or "",
-                business_goal=(body.business_goal or "").strip() or full_plan.get("business_goal_interpretation") or "",
-                internal_article_count=icount,
-            )
-
-        audience = (body.audience or "").strip() or (full_plan.get("inferred_audience") or "")
-        country_language = (body.country_language or "").strip() or (full_plan.get("country_language") or "")
-        business_goal = (body.business_goal or "").strip() or (full_plan.get("business_goal_interpretation") or "")
-        link_sug = full_plan.get("internal_link_suggestions") or link_sug
-        outline_sections = body.outline_sections or full_plan.get("blueprint_outline") or build_outline_headings(at, body.topic)
-
-        opp_for_gen = dict(opportunity) if isinstance(opportunity, dict) else {}
-        cta_dir = full_plan.get("cta_direction") if isinstance(full_plan, dict) else None
-        if cta_dir:
-            opp_for_gen["cta_direction"] = cta_dir
-
-        evidence_dict = body.evidence.model_dump()
-        rp = full_plan.get("recommended_proof") if isinstance(full_plan, dict) else None
-        if rp and not evidence_dict.get("recommended_proof_plan"):
-            evidence_dict["recommended_proof_plan"] = rp
-
-        slug_base = slugify(body.topic, body.keywords)
-
-        def exists(s: str) -> bool:
-            return repo.slug_exists(db, s)
-
-        final_slug = ensure_unique_slug(exists, slug_base)
-
-        vm = (body.visual_mode or "auto").strip().lower()
-        if vm == "none":
-            v: Dict[str, Any] = {"html": "", "label": ""}
-            wrap = ""
-        elif vm == "describe" and (body.visual_description or "").strip():
-            cv = route_cheap_visual(
-                body.visual_description or "",
-                body.topic,
-                body.keywords,
-                seed=int(body.visual_seed or 0),
-            )
-            v = {"html": cv.get("html") or "", "label": cv.get("label") or "Diagram"}
-            wrap = f'<div class="writter-visual-wrap">{v["html"]}</div>' if v.get("html") else ""
-        else:
-            layout = body.visual_layout or "horizontal"
-            rv = full_plan.get("recommended_visual") if isinstance(full_plan, dict) else None
-            if isinstance(rv, dict) and rv.get("layout"):
-                layout = str(rv["layout"])
-            visuals = build_visual_options(
-                body.topic,
-                body.keywords,
-                seed=int(body.visual_seed or 0),
-                layout=layout,
-            )
-            vi = max(0, min(body.visual_index, len(visuals) - 1)) if visuals else 0
-            v = visuals[vi] if visuals else {"html": "", "label": ""}
-            wrap = f'<div class="writter-visual-wrap">{v["html"]}</div>' if v.get("html") else ""
-
-        payload, metrics = generate_article_with_ai(
-            api_key=api_key,
-            article_type=at,
-            topic=body.topic,
-            keywords=body.keywords,
-            rules=rules_payload,
-            internal_context=siblings,
-            visual_label=v.get("label") or "",
-            type_prompt_extra=type_prompt,
-            generation_mode=mode,
-            audience=audience,
-            country_language=country_language,
-            business_goal=business_goal,
-            evidence=evidence_dict,
-            opportunity_plan=opp_for_gen,
-            internal_link_suggestions=link_sug,
-            outline_sections=outline_sections,
-        )
-
-        inner = payload.get("content_html") or ""
-        if wrap:
-            full_html = wrap + inner
-        else:
-            full_html = inner
-        full_html, used_links = inject_internal_links(full_html, siblings)
-
-        h1 = (payload.get("h1") or body.topic or "").strip()
-        seo_qa = run_seo_quality_audit(
-            content_html=full_html,
-            title=(payload.get("seo_title") or body.topic)[:500],
-            meta_description=payload.get("meta_description") or "",
-            slug=final_slug,
-            keywords=body.keywords,
-            h1=h1,
-        )
-        metrics["seo_qa"] = seo_qa
-        metrics = _merge_metrics_with_admin_ai_insights(
-            metrics,
-            api_key=_settings_openai_key(),
-            title=(payload.get("seo_title") or body.topic)[:500],
-            meta_description=payload.get("meta_description") or "",
-            topic=body.topic,
-            keywords=body.keywords,
-            article_type=at,
-            content_html=full_html,
-            views=0,
-            sessions=0,
-            avg_time_s=0.0,
-            avg_scroll=0.0,
-            cta_clicks=0,
-            internal_links_n=len(used_links) if isinstance(used_links, list) else 0,
-        )
-
-        planning_json: Dict[str, Any] = {
-            "inputs": {
-                "topic": body.topic,
-                "keywords": body.keywords,
-                "article_type": at,
-                "primary_goal": pg,
-                "audience": audience,
-                "country_language": country_language,
-                "business_goal": business_goal,
-                "generation_mode": mode,
-                "visual_mode": body.visual_mode or "auto",
-                "visual_description": body.visual_description or "",
-                "visual_seed": int(body.visual_seed or 0),
-                "visual_index": int(body.visual_index or 0),
-                "visual_layout": body.visual_layout or "horizontal",
-                "rule_presets": body.rule_presets or [],
-            },
-            "article_plan": full_plan,
-            "outline_sections": outline_sections,
-            "evidence": evidence_dict,
-            "opportunity": opportunity,
-            "internal_link_suggestions": link_sug,
-        }
+        b = _build_article_bundle(db, body, author_email)
+        payload = b["payload"]
+        metrics = b["metrics"]
+        full_html = b["full_html"]
+        final_slug = b["final_slug"]
+        v = b["v"]
+        planning_json = b["planning_json"]
+        used_links = b["used_links"]
+        rules_payload = b["rules_payload"]
+        at = b["at"]
 
         now = datetime.now(timezone.utc)
         published_at = now if body.publish else None
@@ -1360,6 +1610,252 @@ def _create_article_from_body(body: CreateArticleBody, author_email: str) -> Dic
         return out
 
 
+def _auto_article_stream_run(author_email: str):
+    """
+    Yield event dicts for SSE. Creates _AUTO_ARTICLE_VARIANTS drafts (same batch_id); user publishes one via finalize.
+    """
+    batch_id = uuid.uuid4().hex[:24]
+    api_key = _settings_openai_key()
+    with get_db() as db:
+        existing = repo.list_blog_topics_and_titles(db)
+        brief = suggest_auto_article_brief(api_key, existing_topics=existing)
+        topic = brief["topic"]
+        spam = extended_creation_blocked_message(
+            same_topic_count=repo.count_blog_articles_same_topic(db, topic),
+            same_primary_keyword_count=repo.count_articles_sharing_primary_keyword(db, brief.get("keywords") or ""),
+            author_24h_count=repo.count_articles_by_author_since(db, author_email, 24),
+            similar_title_pairs=repo.count_near_duplicate_titles(db, topic),
+        )
+        if spam:
+            yield {"phase": "error", "detail": spam}
+            return
+
+        yield {
+            "phase": "brief",
+            "batch_id": batch_id,
+            "topic": topic,
+            "keywords": brief.get("keywords") or "",
+            "article_type": brief["article_type"],
+            "primary_goal": brief["primary_goal"],
+            "rationale": brief.get("rationale") or "",
+        }
+
+        body = CreateArticleBody(
+            article_type=brief["article_type"],
+            topic=topic,
+            keywords=brief.get("keywords") or "",
+            primary_goal=brief["primary_goal"],
+            audience="",
+            country_language="",
+            business_goal="",
+            generation_mode="authority",
+            evidence=EvidencePayload(),
+            rules=[],
+            rule_presets=list(RULE_PRESET_MESSAGES.keys()),
+            visual_mode="auto",
+            visual_description="",
+            visual_index=0,
+            visual_seed=0,
+            visual_layout="horizontal",
+            publish=False,
+            outline_sections=None,
+            article_plan_json=None,
+        )
+
+        candidates: List[Dict[str, Any]] = []
+        for attempt in range(_AUTO_ARTICLE_VARIANTS):
+            yield {
+                "phase": "attempt_start",
+                "attempt": attempt + 1,
+                "total": _AUTO_ARTICLE_VARIANTS,
+                "topic": topic,
+            }
+            extra_instr = ""
+            if attempt > 0:
+                extra_instr = (
+                    "Alternative draft variant (same topic and keywords). Use different examples, "
+                    "reframe or reorder sections where helpful, and vary internal link emphasis. "
+                    "Keep authority depth and length targets."
+                )
+            bundle = _build_article_bundle(
+                db,
+                body,
+                author_email,
+                extra_user_instruction=extra_instr,
+                visual_seed_effective=attempt,
+            )
+            planning = dict(bundle["planning_json"])
+            planning["writter_auto_batch"] = {
+                "batch_id": batch_id,
+                "attempt": attempt + 1,
+                "total": _AUTO_ARTICLE_VARIANTS,
+            }
+            payload = bundle["payload"]
+            metrics = bundle["metrics"]
+            seo = metrics.get("seo_qa") if isinstance(metrics.get("seo_qa"), dict) else {}
+            scores = seo.get("scores") if isinstance(seo.get("scores"), dict) else {}
+            overall = scores.get("overall")
+            verdict = (seo.get("verdict") or "").strip()
+            plain = re.sub(r"<[^>]+>", " ", bundle.get("full_html") or "")
+            words = len(re.findall(r"\b\w+\b", plain))
+
+            row = repo.create_blog_article(
+                db,
+                slug=bundle["final_slug"],
+                title=payload.get("seo_title") or body.topic[:500],
+                article_type=bundle["at"],
+                topic=body.topic,
+                keywords=body.keywords,
+                rules_json=bundle["rules_payload"],
+                content_html=bundle["full_html"],
+                meta_description=payload.get("meta_description") or "",
+                structure_json=payload.get("structure_outline"),
+                visual_html=bundle["v"].get("html"),
+                metrics_json=metrics,
+                planning_json=planning,
+                internal_links_json=bundle["used_links"],
+                status="draft",
+                author_email=author_email,
+                published_at=None,
+                auto_generation_batch_id=batch_id,
+            )
+            db.flush()
+            cand = {
+                "article_id": row.id,
+                "attempt": attempt + 1,
+                "overall": overall,
+                "verdict": verdict,
+                "title": (payload.get("seo_title") or body.topic)[:500],
+                "word_count_approx": words,
+            }
+            candidates.append(cand)
+            yield {"phase": "attempt_done", **cand}
+
+        yield {"phase": "complete", "batch_id": batch_id, "brief": brief, "candidates": candidates}
+
+
+def _generate_from_future_row(db: Any, row: Any, author_email: str) -> Dict[str, Any]:
+    """Create + publish from an approved WritterFutureArticle row (quality gate 80)."""
+    body = CreateArticleBody(
+        article_type=(row.article_type or "informational").strip(),
+        topic=(row.topic or "").strip(),
+        keywords=(row.keywords or "").strip(),
+        primary_goal=(row.primary_goal or "organic_traffic").strip(),
+        audience="",
+        country_language="",
+        business_goal="",
+        generation_mode="authority",
+        evidence=EvidencePayload(),
+        rules=[],
+        rule_presets=list(RULE_PRESET_MESSAGES.keys()),
+        visual_mode="auto",
+        visual_description="",
+        visual_index=0,
+        visual_seed=0,
+        visual_layout="horizontal",
+        publish=True,
+        outline_sections=None,
+        article_plan_json=None,
+    )
+    spam = extended_creation_blocked_message(
+        same_topic_count=repo.count_blog_articles_same_topic(db, body.topic),
+        same_primary_keyword_count=repo.count_articles_sharing_primary_keyword(db, body.keywords),
+        author_24h_count=repo.count_articles_by_author_since(db, author_email, 24),
+        similar_title_pairs=repo.count_near_duplicate_titles(db, body.topic),
+    )
+    if spam:
+        raise HTTPException(400, detail=spam)
+
+    extra = ""
+    last_bundle: Optional[Dict[str, Any]] = None
+    last_metrics: Optional[Dict[str, Any]] = None
+    for attempt in range(5):
+        bundle = _build_article_bundle(
+            db,
+            body,
+            author_email,
+            extra_user_instruction=extra,
+            visual_seed_effective=attempt,
+        )
+        last_bundle = bundle
+        metrics = bundle["metrics"]
+        last_metrics = metrics
+        blocked = publish_blocked_by_quality(metrics, min_overall=MIN_QUALITY_AUTO_PUBLISH)
+        ov = (metrics.get("seo_qa") or {}).get("scores", {}).get("overall")
+        if not blocked and isinstance(ov, int) and ov >= MIN_QUALITY_AUTO_PUBLISH:
+            payload = bundle["payload"]
+            art = repo.create_blog_article(
+                db,
+                slug=bundle["final_slug"],
+                title=payload.get("seo_title") or body.topic[:500],
+                article_type=bundle["at"],
+                topic=body.topic,
+                keywords=body.keywords,
+                rules_json=bundle["rules_payload"],
+                content_html=bundle["full_html"],
+                meta_description=payload.get("meta_description") or "",
+                structure_json=payload.get("structure_outline"),
+                visual_html=bundle["v"].get("html"),
+                metrics_json=metrics,
+                planning_json=bundle["planning_json"],
+                internal_links_json=bundle["used_links"],
+                status="published",
+                author_email=author_email,
+                published_at=datetime.now(timezone.utc),
+            )
+            db.flush()
+            repo.update_writter_future_article(
+                db,
+                row,
+                status="done",
+                generated_article_id=art.id,
+            )
+            out = repo.blog_article_to_dict(art)
+            out["metrics"] = metrics
+            out["attempts_used"] = attempt + 1
+            return out
+        extra = (
+            f"Previous draft overall SEO score was {ov}. Improve depth, examples, and internal links. "
+            f"Target at least {MIN_QUALITY_AUTO_PUBLISH} overall."
+        )
+
+    assert last_bundle is not None and last_metrics is not None
+    payload = last_bundle["payload"]
+    art = repo.create_blog_article(
+        db,
+        slug=last_bundle["final_slug"],
+        title=payload.get("seo_title") or body.topic[:500],
+        article_type=last_bundle["at"],
+        topic=body.topic,
+        keywords=body.keywords,
+        rules_json=last_bundle["rules_payload"],
+        content_html=last_bundle["full_html"],
+        meta_description=payload.get("meta_description") or "",
+        structure_json=payload.get("structure_outline"),
+        visual_html=last_bundle["v"].get("html"),
+        metrics_json=last_metrics,
+        planning_json=last_bundle["planning_json"],
+        internal_links_json=last_bundle["used_links"],
+        status="draft",
+        author_email=author_email,
+        published_at=None,
+    )
+    db.flush()
+    repo.update_writter_future_article(
+        db,
+        row,
+        status="approved",
+        generated_article_id=art.id,
+    )
+    out = repo.blog_article_to_dict(art)
+    out["metrics"] = last_metrics
+    out["warning"] = (
+        f"Saved as draft (score below {MIN_QUALITY_AUTO_PUBLISH} after 5 attempts). Edit and publish from Review."
+    )
+    out["attempts_used"] = 5
+    return out
+
+
 @router.post("/api/admin/writter/articles")
 async def api_create_article(request: Request, body: CreateArticleBody):
     require_admin_http(request)
@@ -1387,6 +1883,214 @@ async def api_batch_articles(request: Request, body: BatchCreateBody):
         except Exception as e:
             errors.append({"index": i, "error": str(e)[:300]})
     return JSONResponse({"created": results, "errors": errors})
+
+
+@router.post("/api/admin/writter/auto-article/stream")
+async def api_auto_article_stream(request: Request):
+    """Server-Sent Events: brief → per-attempt progress (title, score, word count) → complete with candidates."""
+    require_admin_http(request)
+    user = get_current_user(request)
+    email = (user.get("email") or "") if user else ""
+
+    def iter_sse():
+        try:
+            for ev in _auto_article_stream_run(email):
+                yield f"data: {json.dumps(_sanitize_for_json(ev), ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps(_sanitize_for_json({'phase': 'error', 'detail': str(e)[:800]}), ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        iter_sse(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/api/admin/writter/auto-article/finalize")
+async def api_auto_article_finalize(request: Request, body: FinalizeAutoArticleBody):
+    """Publish one chosen draft from an auto batch; optional delete other drafts in the batch."""
+    require_admin_http(request)
+    user = get_current_user(request)
+    email = (user.get("email") or "") if user else ""
+    with get_db() as db:
+        row = repo.get_blog_article_by_id(db, body.article_id)
+        if not row:
+            raise HTTPException(404, detail="Not found")
+        bid_row = (getattr(row, "auto_generation_batch_id", None) or "").strip()
+        if bid_row != (body.batch_id or "").strip():
+            raise HTTPException(400, detail="batch_id does not match this article")
+        ae = (row.author_email or "").strip().lower()
+        em = (email or "").strip().lower()
+        if ae and em and ae != em:
+            raise HTTPException(403, detail="This article was created under a different admin user")
+        if (row.status or "") == "published":
+            raise HTTPException(400, detail="Already published")
+        metrics = row.metrics_json if isinstance(row.metrics_json, dict) else {}
+        blocked = publish_blocked_by_quality(metrics, min_overall=42)
+        if blocked:
+            raise HTTPException(400, detail=blocked)
+        now = datetime.now(timezone.utc)
+        repo.update_blog_article(db, row, status="published", published_at=now)
+        if body.delete_siblings:
+            repo.delete_drafts_in_auto_batch_except(db, bid_row, body.article_id)
+        out = repo.blog_article_to_dict(row)
+    return JSONResponse(out)
+
+
+@router.post("/api/admin/writter/auto-article")
+async def api_auto_article(request: Request):
+    """Non-streaming: runs full multi-variant run and returns the final `complete` payload (for scripts)."""
+    require_admin_http(request)
+    user = get_current_user(request)
+    email = (user.get("email") or "") if user else ""
+    try:
+        last: Optional[Dict[str, Any]] = None
+        for ev in _auto_article_stream_run(email):
+            last = ev
+            if ev.get("phase") == "error":
+                raise HTTPException(400, detail=ev.get("detail", "Failed"))
+        if not last or last.get("phase") != "complete":
+            raise HTTPException(500, detail="Generation incomplete")
+        return JSONResponse(last)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, detail=str(e)[:500])
+
+
+@router.get("/api/admin/writter/future-articles")
+async def api_future_articles_list(request: Request):
+    require_admin_http(request)
+    with get_db() as db:
+        rows = repo.list_writter_future_articles(db)
+    return JSONResponse({"items": rows})
+
+
+@router.post("/api/admin/writter/future-articles/refresh")
+async def api_future_articles_refresh(request: Request):
+    """Replace pending/rejected queue rows with new AI suggestions."""
+    require_admin_http(request)
+    api_key = _settings_openai_key()
+    with get_db() as db:
+        repo.delete_writter_future_articles_by_statuses(db, ("pending", "rejected"))
+        existing = repo.list_blog_topics_and_titles(db)
+        ideas = suggest_future_topics_keywords_only(api_key, existing_topics=existing, count=12)
+        for idea in ideas:
+            repo.insert_writter_future_article(
+                db,
+                topic=idea["topic"],
+                keywords=idea.get("keywords") or "",
+                article_type="informational",
+                primary_goal="organic_traffic",
+                briefing_json={"note": "topic+keywords only"},
+                status="pending",
+            )
+        rows = repo.list_writter_future_articles(db)
+    return JSONResponse({"items": rows})
+
+
+@router.post("/api/admin/writter/future-articles/add-topics")
+async def api_future_articles_add_topics(request: Request, count: int = 5):
+    """Append new AI topic rows without clearing existing queue (default 5)."""
+    require_admin_http(request)
+    api_key = _settings_openai_key()
+    n = max(1, min(15, int(count)))
+    with get_db() as db:
+        existing = repo.list_blog_topics_and_titles(db)
+        existing.extend(repo.list_future_queue_topics(db))
+        ideas = suggest_future_topics_keywords_only(api_key, existing_topics=existing, count=n)
+        for idea in ideas:
+            repo.insert_writter_future_article(
+                db,
+                topic=idea["topic"],
+                keywords=idea.get("keywords") or "",
+                article_type="informational",
+                primary_goal="organic_traffic",
+                briefing_json={"note": "topic+keywords only"},
+                status="pending",
+            )
+        rows = repo.list_writter_future_articles(db)
+    return JSONResponse({"items": rows})
+
+
+@router.post("/api/admin/writter/future-articles/{row_id}/approve")
+async def api_future_approve(request: Request, row_id: int):
+    require_admin_http(request)
+    with get_db() as db:
+        row = repo.get_writter_future_article(db, row_id)
+        if not row:
+            raise HTTPException(404, detail="Not found")
+        if (row.status or "") == "done":
+            raise HTTPException(400, detail="Already generated")
+        repo.update_writter_future_article(db, row, status="approved")
+        item = repo.get_writter_future_article_dict(db, row_id)
+    return JSONResponse({"item": item})
+
+
+@router.post("/api/admin/writter/future-articles/{row_id}/reject")
+async def api_future_reject(request: Request, row_id: int):
+    require_admin_http(request)
+    with get_db() as db:
+        row = repo.get_writter_future_article(db, row_id)
+        if not row:
+            raise HTTPException(404, detail="Not found")
+        if (row.status or "") == "done":
+            raise HTTPException(400, detail="Already generated")
+        repo.update_writter_future_article(db, row, status="rejected")
+        item = repo.get_writter_future_article_dict(db, row_id)
+    return JSONResponse({"item": item})
+
+
+@router.post("/api/admin/writter/future-articles/{row_id}/regenerate")
+async def api_future_regenerate(request: Request, row_id: int):
+    """Replace this queue row with a new AI brief (same slot)."""
+    require_admin_http(request)
+    api_key = _settings_openai_key()
+    with get_db() as db:
+        row = repo.get_writter_future_article(db, row_id)
+        if not row:
+            raise HTTPException(404, detail="Not found")
+        if (row.status or "") == "done":
+            raise HTTPException(400, detail="Already generated")
+        existing = repo.list_blog_topics_and_titles(db)
+        extra = [row.topic or ""] if row.topic else []
+        brief = suggest_auto_article_brief(api_key, existing_topics=existing + extra)
+        repo.update_writter_future_article(
+            db,
+            row,
+            topic=brief["topic"],
+            keywords=brief.get("keywords") or "",
+            article_type=brief["article_type"],
+            primary_goal=brief["primary_goal"],
+            briefing_json={"rationale": brief.get("rationale") or ""},
+        )
+        item = repo.get_writter_future_article_dict(db, row_id)
+    return JSONResponse({"item": item})
+
+
+@router.post("/api/admin/writter/future-articles/{row_id}/generate")
+async def api_future_generate(request: Request, row_id: int):
+    """Generate and publish from an approved queue row (SEO overall ≥ 80, else draft)."""
+    require_admin_http(request)
+    user = get_current_user(request)
+    email = (user.get("email") or "") if user else ""
+    try:
+        with get_db() as db:
+            row = repo.get_writter_future_article(db, row_id)
+            if not row:
+                raise HTTPException(404, detail="Not found")
+            if (row.status or "") != "approved":
+                raise HTTPException(400, detail="Approve this queue item first")
+            out = _generate_from_future_row(db, row, email)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, detail=str(e)[:500])
+    return JSONResponse(out)
 
 
 @router.get("/api/admin/writter/articles")
@@ -2107,11 +2811,11 @@ async def blog_public_page(request: Request, slug: str):
             <section class="blog-article-mid-cta writter-cta" aria-labelledby="blog-mid-cta-title">
               <div class="blog-article-mid-cta-inner">
                 <h3 id="blog-mid-cta-title" class="blog-article-mid-cta-head">Fix your product feed automatically</h3>
-                <p class="blog-article-mid-cta-lead">From raw CSV to a cleaner Merchant Center listing—without manual spreadsheet triage.</p>
+                <p class="blog-article-mid-cta-lead">From raw CSV to Shopping-ready listings—search intents scored and assembled, not a blind rewrite.</p>
                 <ol class="blog-article-mid-cta-steps" aria-label="How it works">
                   <li>Upload your CSV</li>
                   <li>Detect feed issues</li>
-                  <li>Optimize titles &amp; attributes</li>
+                  <li>Position titles &amp; descriptions on intents</li>
                   <li>Push to Google Merchant Center</li>
                 </ol>
                 <a href="/upload" class="blog-article-mid-cta-btn"><span class="blog-article-mid-cta-btn-label">Upload your feed</span></a>

@@ -158,10 +158,21 @@ WRITTER_PROMPT_SETTING_BY_TYPE: Dict[str, str] = {
 }
 
 GENERATION_MODE_PARAMS: Dict[str, Dict[str, Any]] = {
-    "fast": {"max_tokens": 2600, "temperature": 0.5},
-    "standard": {"max_tokens": 4096, "temperature": 0.65},
-    "authority": {"max_tokens": 4500, "temperature": 0.7},
+    "fast": {"max_tokens": 4200, "temperature": 0.5},
+    "standard": {"max_tokens": 9000, "temperature": 0.65},
+    "authority": {"max_tokens": 14000, "temperature": 0.7},
 }
+
+# Prompt hint: encourage substantively long HTML (actual length still capped by max_tokens).
+_LENGTH_HINT_STANDARD = (
+    "LENGTH: Aim for roughly 1,200–2,000 words of substantive body copy (not counting boilerplate). "
+    "Give every main H2 several paragraphs; include examples, a short FAQ or objection-handling block where natural, "
+    "and avoid thin sections."
+)
+_LENGTH_HINT_AUTHORITY = (
+    "LENGTH: Aim for roughly 1,800–3,000 words of substantive body copy. Deepen each H2 with specifics, "
+    "steps, trade-offs, and internal links; include FAQ or comparison where it helps. Do not pad with filler—add real detail."
+)
 
 
 def get_writter_type_prompt(settings: Dict[str, str], article_type: str) -> str:
@@ -968,7 +979,13 @@ def run_seo_quality_audit(
     }
 
 
-def publish_blocked_by_quality(metrics_json: Optional[Dict[str, Any]]) -> Optional[str]:
+# Minimum overall SEO QA score for one-click auto-generate + publish (admin automation).
+MIN_QUALITY_AUTO_PUBLISH = 80
+
+
+def publish_blocked_by_quality(
+    metrics_json: Optional[Dict[str, Any]], *, min_overall: int = 42
+) -> Optional[str]:
     """Return error message if publish should be blocked (anti-thin safeguards)."""
     if not metrics_json:
         return None
@@ -979,8 +996,12 @@ def publish_blocked_by_quality(metrics_json: Optional[Dict[str, Any]]) -> Option
     overall = (seo.get("scores") or {}).get("overall")
     if verdict == "Draft only":
         return "Publish blocked: SEO QA verdict is “Draft only”. Edit content or run regeneration, then review checks."
-    if isinstance(overall, int) and overall < 42:
-        return f"Publish blocked: overall quality score is {overall}/100 (minimum 42 for auto-publish)."
+    mo = max(0, min(100, int(min_overall)))
+    if isinstance(overall, int) and overall < mo:
+        return (
+            f"Publish blocked: overall quality score is {overall}/100 "
+            f"(minimum {mo} for this publish path)."
+        )
     return None
 
 
@@ -1004,6 +1025,13 @@ def _parse_json_obj(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _writter_extra_revision_block(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+    return f"\n\nCRITICAL REVISION REQUEST (must honor):\n{t}\n"
+
+
 def generate_article_with_ai(
     *,
     api_key: str,
@@ -1022,6 +1050,7 @@ def generate_article_with_ai(
     opportunity_plan: Optional[Dict[str, Any]] = None,
     internal_link_suggestions: Optional[List[Dict[str, Any]]] = None,
     outline_sections: Optional[List[str]] = None,
+    extra_user_instruction: str = "",
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Returns (payload, metrics_dict).
@@ -1100,16 +1129,20 @@ Business goal: {business_goal or "(not specified)"}
                 "(one <figure> per URL, exact src). Do not omit images to save length."
             )
         else:
-            mode_extra = "Mode: FAST — shorter sections, fewer words, still structured and on-topic."
+            mode_extra = (
+                "Mode: FAST — tighter sections than Standard, but still cover the topic properly "
+                "(about 800–1,200 words of substantive copy unless screenshots drive more)."
+            )
     elif generation_mode == "authority":
         mode_extra = (
             "Mode: AUTHORITY — longer, denser sections; include FAQ or objection handling where natural; "
-            "strong internal links; clear expert tone. Suggest JSON-LD types in the metrics JSON field schema_hints only as hints."
+            "strong internal links; clear expert tone. Suggest JSON-LD types in the metrics JSON field schema_hints only as hints.\n"
+            f"{_LENGTH_HINT_AUTHORITY}"
         )
         if shot_n > 0:
             mode_extra += f" Include all {shot_n} user screenshots with full context."
     else:
-        mode_extra = "Mode: STANDARD — balanced SEO article length and structure."
+        mode_extra = f"Mode: STANDARD — balanced SEO article length and structure.\n{_LENGTH_HINT_STANDARD}"
         if shot_n > 0:
             mode_extra += f" The article must be long enough to place all {shot_n} screenshots with surrounding copy."
 
@@ -1159,7 +1192,7 @@ Visual placed in article (describe near top; align copy with this diagram): {vis
 {shot_flow_block}
 
 {mode_extra}
-
+{_writter_extra_revision_block(extra_user_instruction)}
 JSON schema:
 {{
   "seo_title": "max 120 chars",
@@ -1800,3 +1833,203 @@ def gsc_feedback_suggestions(gsc: Dict[str, Any]) -> Dict[str, Any]:
         },
         "suggestions": suggestions[:8],
     }
+
+
+_FALLBACK_AUTO_TOPICS: List[Dict[str, str]] = [
+    {
+        "topic": "Google Merchant Center feed errors: diagnose and fix item issues fast",
+        "keywords": "google merchant center, feed errors, disapproved products, data quality",
+        "article_type": "problem_solving",
+        "primary_goal": "organic_traffic",
+    },
+    {
+        "topic": "Product feed optimization checklist for multi-channel e-commerce",
+        "keywords": "product feed, optimization, google shopping, catalog",
+        "article_type": "checklist_template",
+        "primary_goal": "qualified_traffic",
+    },
+    {
+        "topic": "How AI-assisted title and description enrichment affects Shopping visibility",
+        "keywords": "product titles, descriptions, shopping ads, feed enrichment",
+        "article_type": "informational",
+        "primary_goal": "product_awareness",
+    },
+    {
+        "topic": "Comparing manual spreadsheets vs automated feed workflows for growing catalogs",
+        "keywords": "product catalog, automation, spreadsheet, feed management",
+        "article_type": "comparison",
+        "primary_goal": "signups_trials",
+    },
+]
+
+
+def _normalize_brief_dict(raw: Dict[str, Any]) -> Dict[str, str]:
+    at = (raw.get("article_type") or "informational").strip()
+    if at not in VALID_ARTICLE_TYPES:
+        at = "informational"
+    pg = (raw.get("primary_goal") or "organic_traffic").strip()
+    if pg not in VALID_PRIMARY_GOALS:
+        pg = "organic_traffic"
+    topic = (raw.get("topic") or "").strip()[:500]
+    if not topic:
+        topic = "E-commerce product feed optimization basics"
+    kw = (raw.get("keywords") or "").strip()[:2000]
+    return {"topic": topic, "keywords": kw, "article_type": at, "primary_goal": pg}
+
+
+def suggest_auto_article_brief(api_key: str, *, existing_topics: List[str]) -> Dict[str, Any]:
+    """
+    Propose one article brief (topic, keywords, type, goal) avoiding overlap with existing topics.
+    """
+    avoid = "\n".join(f"- {(t or '').strip()}" for t in existing_topics[:80] if (t or "").strip())
+    if not HAS_OPENAI or not (api_key or "").strip():
+        for row in _FALLBACK_AUTO_TOPICS:
+            if not any(row["topic"].lower() == (e or "").strip().lower() for e in existing_topics):
+                return dict(row)
+        return dict(_FALLBACK_AUTO_TOPICS[0])
+    client = openai.OpenAI(api_key=api_key)
+    sys = (
+        "You plan SEO blog articles for Cartozo.ai (AI product feed optimization for e-commerce). "
+        "Return ONLY valid JSON. Propose ONE fresh article that complements—not duplicates—the existing list."
+    )
+    user = f"""Existing topics/titles (do not repeat these themes closely):
+{avoid or "(none — greenfield)"}
+
+Return JSON:
+{{
+  "topic": "specific article title / question (English)",
+  "keywords": "comma-separated keywords",
+  "article_type": one of {sorted(VALID_ARTICLE_TYPES)},
+  "primary_goal": one of {sorted(VALID_PRIMARY_GOALS)},
+  "rationale": "one sentence why this article helps merchants"
+}}"""
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
+            max_tokens=500,
+            temperature=0.85,
+            response_format={"type": "json_object"},
+        )
+        raw = _parse_json_obj((resp.choices[0].message.content or "").strip()) or {}
+        b = _normalize_brief_dict(raw)
+        b["rationale"] = str(raw.get("rationale") or "")[:500]
+        return b
+    except Exception:
+        return dict(_FALLBACK_AUTO_TOPICS[0])
+
+
+def suggest_future_article_queue(api_key: str, *, existing_topics: List[str], count: int = 12) -> List[Dict[str, Any]]:
+    """Propose several queued article briefs for admin approval."""
+    n = max(3, min(20, int(count)))
+    if not HAS_OPENAI or not (api_key or "").strip():
+        out: List[Dict[str, Any]] = []
+        for i, row in enumerate((_FALLBACK_AUTO_TOPICS * 3)[:n]):
+            x = dict(row)
+            x["rationale"] = f"Template idea {i + 1}"
+            out.append(x)
+        return out[:n]
+    client = openai.OpenAI(api_key=api_key)
+    avoid = "\n".join(f"- {(t or '').strip()}" for t in existing_topics[:100] if (t or "").strip())
+    sys = (
+        "You plan a content calendar for Cartozo.ai (e-commerce product feed optimization). "
+        f"Return ONLY valid JSON with key \"items\": array of exactly {n} objects."
+    )
+    user = f"""Existing topics/titles (avoid duplicating):
+{avoid or "(none)"}
+
+Each item must have:
+topic, keywords, article_type (one of {sorted(VALID_ARTICLE_TYPES)}), primary_goal (one of {sorted(VALID_PRIMARY_GOALS)}), rationale (short).
+
+Return: {{ "items": [ ...{n} objects... ] }}"""
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
+            max_tokens=2800,
+            temperature=0.8,
+            response_format={"type": "json_object"},
+        )
+        data = _parse_json_obj((resp.choices[0].message.content or "").strip()) or {}
+        items = data.get("items") if isinstance(data.get("items"), list) else []
+        out: List[Dict[str, Any]] = []
+        for raw in items[:n]:
+            if not isinstance(raw, dict):
+                continue
+            b = _normalize_brief_dict(raw)
+            b["rationale"] = str(raw.get("rationale") or "")[:500]
+            out.append(b)
+        while len(out) < n:
+            i = len(out) % len(_FALLBACK_AUTO_TOPICS)
+            r = dict(_FALLBACK_AUTO_TOPICS[i])
+            r["rationale"] = "Fallback idea"
+            out.append(r)
+        return out[:n]
+    except Exception:
+        out2: List[Dict[str, Any]] = []
+        for i in range(n):
+            r = dict(_FALLBACK_AUTO_TOPICS[i % len(_FALLBACK_AUTO_TOPICS)])
+            r["rationale"] = "Fallback idea"
+            out2.append(r)
+        return out2[:n]
+
+
+def suggest_future_topics_keywords_only(
+    api_key: str, *, existing_topics: List[str], count: int
+) -> List[Dict[str, str]]:
+    """
+    Light queue seeding: only article topic/title + comma-separated keywords.
+    Does not generate outlines, paragraphs, or full articles.
+    """
+    n = max(1, min(20, int(count)))
+    if not HAS_OPENAI or not (api_key or "").strip():
+        out: List[Dict[str, str]] = []
+        for i in range(n):
+            row = _FALLBACK_AUTO_TOPICS[i % len(_FALLBACK_AUTO_TOPICS)]
+            out.append({"topic": row["topic"], "keywords": row["keywords"]})
+        return out[:n]
+    client = openai.OpenAI(api_key=api_key)
+    avoid = "\n".join(f"- {(t or '').strip()}" for t in existing_topics[:100] if (t or "").strip())
+    sys = (
+        "You suggest SEO article ideas for Cartozo.ai (e-commerce product feed optimization). "
+        f"Return ONLY valid JSON with key \"items\": an array of exactly {n} objects. "
+        "Each object has ONLY two string fields: \"topic\" and \"keywords\". "
+        "Do NOT write article bodies, outlines, sections, or introductions — titles and keywords only."
+    )
+    user = f"""Already used or planned topics (avoid close duplicates):
+{avoid or "(none)"}
+
+For each item:
+- topic: a specific English article title or H1-style question (max ~120 chars).
+- keywords: comma-separated SEO phrases (no paragraphs).
+
+Return: {{ \"items\": [ {{ \"topic\": \"...\", \"keywords\": \"...\" }}, ... ] }} — exactly {n} items."""
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
+            max_tokens=min(2000, 160 + n * 120),
+            temperature=0.75,
+            response_format={"type": "json_object"},
+        )
+        data = _parse_json_obj((resp.choices[0].message.content or "").strip()) or {}
+        items = data.get("items") if isinstance(data.get("items"), list) else []
+        out2: List[Dict[str, str]] = []
+        for raw in items[:n]:
+            if not isinstance(raw, dict):
+                continue
+            topic = (raw.get("topic") or "").strip()[:500]
+            kw = (raw.get("keywords") or "").strip()[:2000]
+            if topic:
+                out2.append({"topic": topic, "keywords": kw})
+        while len(out2) < n:
+            i = len(out2) % len(_FALLBACK_AUTO_TOPICS)
+            row = _FALLBACK_AUTO_TOPICS[i]
+            out2.append({"topic": row["topic"], "keywords": row["keywords"]})
+        return out2[:n]
+    except Exception:
+        out3: List[Dict[str, str]] = []
+        for i in range(n):
+            row = _FALLBACK_AUTO_TOPICS[i % len(_FALLBACK_AUTO_TOPICS)]
+            out3.append({"topic": row["topic"], "keywords": row["keywords"]})
+        return out3[:n]

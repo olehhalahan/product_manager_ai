@@ -781,7 +781,7 @@ a{{text-decoration:none;color:inherit}}
           <div class="table-container">
             <table>
               <thead>
-                <tr><th>SKU</th><th>Original title</th><th>AI-optimized title</th><th>Score</th><th>Status</th></tr>
+                <tr><th>SKU</th><th>Original title</th><th>Positioned title</th><th>Score</th><th>Status</th></tr>
               </thead>
               <tbody>
                 <tr>
@@ -838,7 +838,7 @@ a{{text-decoration:none;color:inherit}}
   <!-- ═══ STATS STRIP ═══ -->
   <div class="stats-strip rv">
     <div class="stat-item"><div class="stat-n stat-lead">Fix disapprovals automatically</div><div class="stat-t">Merchant errors, missing GTINs, and policy flags surfaced and corrected row-by-row &mdash; not in a spreadsheet marathon.</div></div>
-    <div class="stat-item"><div class="stat-n stat-lead">Improve titles for higher CTR</div><div class="stat-t">Replace thin, generic titles with listings built to earn clicks &mdash; so the same spend buys more qualified traffic.</div></div>
+    <div class="stat-item"><div class="stat-n stat-lead">Position on real search intents</div><div class="stat-t">Not a blind rewrite: intents are detected, scored, and merged into titles and descriptions so listings match how people shop.</div></div>
     <div class="stat-item"><div class="stat-n stat-lead">Push clean feeds in one click</div><div class="stat-t">Export a validated CSV or send the batch straight to Google Merchant &mdash; no copy-paste between tools.</div></div>
   </div>
 
@@ -904,7 +904,7 @@ a{{text-decoration:none;color:inherit}}
       </div>
       <div class="pipe-track"><div class="pipe-shine"></div></div>
       <div class="pipe-node active" role="listitem">
-        &#129302; AI run
+        &#129302; Intent pipeline
         <em>/confirm</em>
       </div>
       <div class="pipe-track"><div class="pipe-shine"></div></div>
@@ -929,7 +929,7 @@ a{{text-decoration:none;color:inherit}}
         <div class="mw">
           <div class="mw-bar"><span class="mw-dots"><i></i><i></i><i></i></span><span class="mw-url">cartozo.ai&thinsp;/&thinsp;upload</span></div>
           <div class="mw-body af">
-            <p class="subtitle">Upload a CSV with your products. We&rsquo;ll optimize titles, descriptions and attributes using AI.</p>
+            <p class="subtitle">Upload a CSV. We infer shopper search intents, pick the strongest, then assemble titles and descriptions—plus validation and export.</p>
             <div class="dropzone has-file">
               <div class="dropzone-icon">&#10003;</div>
               <div class="dropzone-text"><strong>Ready to process</strong></div>
@@ -944,7 +944,7 @@ a{{text-decoration:none;color:inherit}}
       <div class="sc rv d2">
         <div class="sc-num">02</div>
         <div class="sc-title">Map columns &mdash; auto-detected</div>
-        <p class="sc-desc">Mapping is pre-filled from your headers. Confirm, tick what AI should rewrite &mdash; done.</p>
+        <p class="sc-desc">Mapping is pre-filled from your headers. Confirm which fields run the intent pipeline (title / description) &mdash; done.</p>
         <div class="mw">
           <div class="mw-bar"><span class="mw-dots"><i></i><i></i><i></i></span><span class="mw-url">column_mapping</span></div>
           <div class="mw-body af">
@@ -972,15 +972,15 @@ a{{text-decoration:none;color:inherit}}
       <!-- Step 03: AI Processing -->
       <div class="sc rv d3">
         <div class="sc-num">03</div>
-        <div class="sc-title">AI analyzes &amp; rewrites</div>
-        <p class="sc-desc">Row-by-row GMC checks, then titles and descriptions rewritten to what Shopping actually rewards.</p>
+        <div class="sc-title">Intent layer &amp; assembly</div>
+        <p class="sc-desc">Row-by-row GMC checks, then search intents scored and selected, then titles and descriptions assembled for Shopping&mdash;not generic rewrite.</p>
         <div class="mw">
           <div class="mw-bar"><span class="mw-dots"><i></i><i></i><i></i></span><span class="mw-url">processing</span></div>
           <div class="mw-body af">
             <div class="loader">
               <div class="spinner"></div>
               <div class="thinking">Boiling the water&hellip;</div>
-              <div class="thinking-sub">Optimizing titles, descriptions &amp; attributes</div>
+              <div class="thinking-sub">Extracting intents, selecting winners, assembling copy</div>
               <div class="progress"><div class="progress-fill"></div></div>
             </div>
             <div class="gmc-top-issues">
@@ -1009,7 +1009,7 @@ a{{text-decoration:none;color:inherit}}
             </div>
             <div class="table-container">
               <table>
-                <thead><tr><th>Original</th><th>AI title</th><th>GMC</th><th>&#9733;</th></tr></thead>
+                <thead><tr><th>Original</th><th>Positioned title</th><th>GMC</th><th>&#9733;</th></tr></thead>
                 <tbody>
                   <tr>
                     <td style="color:rgba(239,68,68,.85);font-size:.68rem">shoe</td>

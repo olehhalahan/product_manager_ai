@@ -12,7 +12,7 @@ _TERMS_ARTICLE = """
 
   <section id="tos-1" aria-labelledby="tos-h1">
     <h2 id="tos-h1">1. Introduction</h2>
-    <p>Cartozo AI (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) provides a SaaS platform for optimizing product feeds using artificial intelligence.</p>
+    <p>Cartozo AI (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) provides a SaaS platform for product feed optimization and search-intent positioning for listings (e.g. Google Merchant) using artificial intelligence.</p>
     <p>By using Cartozo AI, you agree to comply with and be bound by these Terms. If you do not agree, do not use the service.</p>
   </section>
 

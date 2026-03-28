@@ -9,6 +9,7 @@ from ..models import (
     ProductStatus,
 )
 from .ai_provider import AIProvider
+from .positioning import apply_feed_optimization
 from .validator import validate_gmc, validate_product_result
 
 
@@ -81,10 +82,9 @@ class InMemoryStorage:
                     ProductAction.MANUAL_REVIEW,
                     ProductAction.TRANSLATE,
                 }:
-                    if "title" in optimize_fields:
-                        result.optimized_title = self._ai.generate_title(result.product)
-                    if "description" in optimize_fields:
-                        result.optimized_description = self._ai.generate_description(result.product)
+                    apply_feed_optimization(
+                        result, self._ai, optimize_fields, positioning_mode="fast"
+                    )
 
                 if result.action == ProductAction.TRANSLATE:
                     title_source = result.optimized_title or result.product.title
@@ -103,6 +103,11 @@ class InMemoryStorage:
                 result.score = self._ai.score_optimization(
                     result.product, result.optimized_title, result.optimized_description
                 )
+                if (
+                    result.positioning
+                    and result.positioning.get("routing") == "skipped_already_strong"
+                ):
+                    result.score = result.original_score
 
                 gmc_errs, gmc_warns = validate_gmc(result, product_type=batch.product_type)
                 result.gmc_errors = gmc_errs
@@ -133,8 +138,12 @@ class InMemoryStorage:
                 continue
 
             try:
-                result.optimized_title = self._ai.generate_title(result.product)
-                result.optimized_description = self._ai.generate_description(result.product)
+                apply_feed_optimization(
+                    result,
+                    self._ai,
+                    {"title", "description"},
+                    positioning_mode="deep",
+                )
 
                 if result.action == ProductAction.TRANSLATE:
                     title_source = result.optimized_title or result.product.title

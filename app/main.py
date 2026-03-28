@@ -26,7 +26,7 @@ from .services.importer import parse_csv_file
 from .services.csv_security import validate_csv_content
 from .services.normalizer import normalize_records, guess_mapping, INTERNAL_FIELDS
 from .services.rule_engine import decide_actions_for_products
-from .services.exporter import generate_result_csv
+from .services.exporter import generate_positioning_debug_csv, generate_result_csv
 from .services.postgres_storage import PostgresStorage
 from .auth import (
     get_session_secret,
@@ -100,6 +100,7 @@ def startup():
     from .google_cloud import log_google_cloud_startup
 
     log_google_cloud_startup()
+    _sync_ai_from_settings()
 
 
 storage = PostgresStorage()
@@ -147,6 +148,14 @@ def _get_settings():
     from .services.db_repository import get_settings as db_get_settings
     with get_db() as db:
         return db_get_settings(db)
+
+
+def _sync_ai_from_settings() -> None:
+    """Keep global storage._ai in sync with DB (key + positioning prompts)."""
+    s = _get_settings()
+    storage._ai.set_api_key(s.get("openai_api_key", "") or "")
+    storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
+    storage._ai.set_homepage_chat_system_prompt(s.get("homepage_chat_system_prompt", "") or "")
 
 
 def _build_batch_history_html(current_batch_id: str, user_email: str) -> str:
@@ -1505,7 +1514,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         <div class="hp-badge">AI-Powered E-commerce</div>
         <h1 class="hp-title">Optimize Every Product<br/>for Maximum Visibility</h1>
         <p class="hp-sub">
-            AI-powered optimization for your product titles and descriptions. Boost search rankings, increase clicks, and drive more sales.
+            Beyond a plain AI rewrite: we detect shopper search intents, score and pick the strongest ones, then assemble titles and descriptions for Google Shopping—so listings match how people actually search.
         </p>
         <div class="hp-chat-anchor" id="hpChatAnchor">
         <div class="hp-chat-spacer" id="hpChatSpacer" aria-hidden="true"></div>
@@ -1521,8 +1530,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <input type="file" id="hpChatFileInput" accept=".csv,text/csv,application/vnd.ms-excel" style="display:none" />
                 <span class="hp-chat-plus" title="Upload file" id="hpChatPlus" role="button" tabindex="0">+</span>
                 <div class="hp-chat-input-wrap">
-                    <input type="text" class="hp-chat-input" id="hpChatInput" placeholder="Ask about your product feed" autocomplete="off" />
-                    <span class="hp-chat-placeholder" id="hpChatPlaceholder">Ask about your product feed</span>
+                    <input type="text" class="hp-chat-input" id="hpChatInput" placeholder="Ask about feeds and search positioning" autocomplete="off" />
+                    <span class="hp-chat-placeholder" id="hpChatPlaceholder">Ask about feeds and search positioning</span>
                 </div>
                 <span class="hp-chat-mic" title="Voice (coming soon)" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
                 <button type="button" class="hp-chat-send" id="hpChatSend" title="Send" aria-label="Send message"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="14" width="3" height="6" rx="1"/><rect x="10" y="10" width="3" height="10" rx="1"/><rect x="16" y="6" width="3" height="14" rx="1"/></svg></button>
@@ -1540,7 +1549,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         <div class="hp-container">
             <div class="hp-features-header">
                 <h2 class="hp-features-title">Complete feed optimization platform</h2>
-                <p class="hp-features-sub">Everything you need to transform your product content</p>
+                <p class="hp-features-sub">A decision layer for search positioning—not just regenerated text</p>
             </div>
             <div class="hp-features-grid">
             <div class="hp-feature">
@@ -1550,8 +1559,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <div class="hp-feature-ring hp-feature-ring-2"></div>
                     <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></div>
                 </div>
-                <div class="hp-feature-title">SEO-Optimized Titles</div>
-                <div class="hp-feature-desc">AI expands short titles with relevant keywords and search phrases using proven e-commerce patterns.</div>
+                <div class="hp-feature-title">Search-intent positioning</div>
+                <div class="hp-feature-desc">Intents are inferred from your catalog facts, ranked, and merged into titles—so you cover real queries without blind keyword stuffing.</div>
             </div>
             <div class="hp-feature">
                 <div class="hp-feature-visual">
@@ -1560,8 +1569,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <div class="hp-feature-ring hp-feature-ring-2"></div>
                     <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg></div>
                 </div>
-                <div class="hp-feature-title">Compelling Descriptions</div>
-                <div class="hp-feature-desc">Generate conversion-focused descriptions emphasizing benefits and features.</div>
+                <div class="hp-feature-title">Compelling descriptions</div>
+                <div class="hp-feature-desc">Descriptions are built from the same selected intents—aligned with the title and grounded in what you actually sell.</div>
             </div>
             <div class="hp-feature">
                 <div class="hp-feature-visual">
@@ -1601,7 +1610,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></div>
                 </div>
                 <div class="hp-feature-title">CSV Import/Export</div>
-                <div class="hp-feature-desc">Upload your feed as CSV, review results, and export optimized data.</div>
+                <div class="hp-feature-desc">Upload CSV, review intent-aware results (with optional debug export), then download a Merchant-ready feed.</div>
             </div>
             </div>
         </div>
@@ -1612,7 +1621,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             <div class="hp-feed-header">
                 <span class="hp-feed-label">Feed Structure</span>
                 <h2 class="hp-feed-title">Perfectly structured for Google Merchant</h2>
-                <p class="hp-feed-sub">We map and optimize your feed according to Google product data specification</p>
+                <p class="hp-feed-sub">We map your feed to Google product data spec, then run intent-aware positioning for titles and descriptions</p>
             </div>
             <div class="hp-feed-block">
                 <div class="hp-feed-block-inner">
@@ -1685,7 +1694,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         </div>
         <div class="hp-container">
             <h2 class="hp-steps-title">How it works</h2>
-            <p class="hp-steps-sub">Three simple steps to better product content</p>
+            <p class="hp-steps-sub">From CSV to Shopping-intent titles and descriptions in three steps</p>
             <div class="hp-steps-grid">
                 <div class="hp-step">
                     <div class="hp-step-num">1</div>
@@ -1694,8 +1703,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 </div>
                 <div class="hp-step">
                     <div class="hp-step-num">2</div>
-                    <div class="hp-step-title">AI optimizes content</div>
-                    <div class="hp-step-desc">Our AI analyzes each product and generates improved titles and descriptions.</div>
+                    <div class="hp-step-title">Intent layer runs</div>
+                    <div class="hp-step-desc">For each SKU we infer search intents, score them, pick the best, then assemble Merchant-ready title and description.</div>
                 </div>
                 <div class="hp-step">
                     <div class="hp-step-num">3</div>
@@ -1714,7 +1723,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         </div>
         <div class="hp-container">
             <h2 class="hp-cta-title">Ready to optimize your product feed?</h2>
-            <p class="hp-cta-sub">Start with a free trial тАФ no API key needed for demo mode.</p>
+            <p class="hp-cta-sub">Start with a free trial — no API key needed for demo mode.</p>
             <a href="/login" class="hp-btn hp-btn-primary">Get Started Free</a>
         </div>
     </section>
@@ -1797,10 +1806,10 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         if (!chatWrap || !chatPanel || !chatInput || !chatSend || !chatMessages || !chatSpacer || !chatAnchor) return;
 
         var placeholders = [
-            'Ask about your product feed',
+            'Ask about search-intent positioning',
             'Upload or describe your feed',
-            'Product feed optimization',
-            'Get help with your feed',
+            'How is this different from a rewrite?',
+            'Get help with Merchant / Shopping',
             'Upload CSV or ask a question'
         ];
         var phIdx = 0;
@@ -2321,7 +2330,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
 
     <div class="container">
         <h1 class="title">Optimize your product catalog</h1>
-        <p class="subtitle">Upload a CSV with your products. We'll improve titles, descriptions and translations using AI — then you review and export.</p>
+        <p class="subtitle">Upload a CSV. For each product we detect search intents, score and select the strongest, then assemble titles and descriptions—plus optional translation. You review and export.</p>
 
         <form action="/batches/preview" method="post" enctype="multipart/form-data">
             <div class="form-actions-top">
@@ -2364,7 +2373,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
                 <div class="form-group">
                     <label class="label" for="mode">Processing mode</label>
                     <select id="mode" name="mode">
-                        <option value="optimize">Optimize titles & descriptions</option>
+                        <option value="optimize">Position titles & descriptions (intent layer)</option>
                         <option value="translate">Translate descriptions</option>
                     </select>
                 </div>
@@ -2547,7 +2556,7 @@ def _build_contact_page(request: Request) -> str:
     og_image = (s.get("seo_og_image") or "").strip()
     og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
     title_plain = "Contact us — Cartozo.ai"
-    desc = "Reach Cartozo.ai for product feed optimization, Google Merchant Center support, and general inquiries."
+    desc = "Reach Cartozo.ai for Shopping feed positioning, Merchant Center support, and general inquiries."
     seo = head_canonical_social(
         canonical_url=canonical_url_for_request(request),
         og_title=title_plain,
@@ -2751,7 +2760,7 @@ def _build_presentation_page(request: Request) -> str:
     og_image = (s.get("seo_og_image") or "").strip()
     og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
     title_plain = "Features — Cartozo.ai"
-    desc = "Explore Cartozo.ai features: AI product feed optimization, Google Merchant Center workflows, and catalog enrichment."
+    desc = "Explore Cartozo.ai: search-intent positioning for feeds, Google Merchant workflows, and catalog enrichment—not just AI rewrite."
     pres_seo = head_canonical_social(
         canonical_url=canonical_url_for_request(request),
         og_title=title_plain,
@@ -2865,16 +2874,16 @@ __PRESENTATION_META_SEO__
         <div class="pp-slide active" data-slide="0">
             <span class="pp-badge">AI-Powered E-commerce</span>
             <h1>Optimize Every Product<br/>for Maximum Visibility</h1>
-            <p>Transform your product feed with AI. Better titles, compelling descriptions, and higher search rankings.</p>
+            <p>Search-intent positioning: detect queries shoppers might use, score and pick the best angles, then assemble titles and descriptions—built for Google Shopping performance.</p>
         </div>
         <div class="pp-slide" data-slide="1">
             <h2>Key Features</h2>
             <p>Everything you need to elevate your product content</p>
             <div class="pp-features">
-                <div class="pp-feature"><div class="pp-feature-icon">&#128269;</div><div class="pp-feature-title">SEO-Optimized Titles</div><div class="pp-feature-desc">AI expands titles with relevant keywords using proven e-commerce patterns.</div></div>
+                <div class="pp-feature"><div class="pp-feature-icon">&#128269;</div><div class="pp-feature-title">Intent-first titles</div><div class="pp-feature-desc">Ranked search intents drive the title—coverage for real queries without stuffing every keyword.</div></div>
                 <div class="pp-feature"><div class="pp-feature-icon">&#128196;</div><div class="pp-feature-title">Compelling Descriptions</div><div class="pp-feature-desc">Conversion-focused descriptions emphasizing benefits and features.</div></div>
                 <div class="pp-feature"><div class="pp-feature-icon">&#127760;</div><div class="pp-feature-title">Multi-Language</div><div class="pp-feature-desc">Translate to German, Swedish, French, Spanish, Polish, and more.</div></div>
-                <div class="pp-feature"><div class="pp-feature-icon">&#128200;</div><div class="pp-feature-title">Quality Scoring</div><div class="pp-feature-desc">Each optimization gets a 1–100 score so you see improvement.</div></div>
+                <div class="pp-feature"><div class="pp-feature-icon">&#128200;</div><div class="pp-feature-title">Scores &amp; explainability</div><div class="pp-feature-desc">Quality scores plus batch-level debug: which intents were used, rejected, and why.</div></div>
                 <div class="pp-feature"><div class="pp-feature-icon">&#9881;</div><div class="pp-feature-title">Custom Prompts</div><div class="pp-feature-desc">Match your brand voice and SEO strategy.</div></div>
                 <div class="pp-feature"><div class="pp-feature-icon">&#128190;</div><div class="pp-feature-title">CSV Import/Export</div><div class="pp-feature-desc">Upload your feed, review results, export optimized data.</div></div>
             </div>
@@ -2887,7 +2896,7 @@ __PRESENTATION_META_SEO__
                 <div class="pp-flow-connector"></div>
                 <div class="pp-flow-step"><div class="pp-flow-num">2</div><div class="pp-flow-title">Map Columns</div><div class="pp-flow-desc">Match your columns to standard fields. AI suggests mappings.</div></div>
                 <div class="pp-flow-connector"></div>
-                <div class="pp-flow-step"><div class="pp-flow-num">3</div><div class="pp-flow-title">AI Optimizes</div><div class="pp-flow-desc">Our AI generates improved titles and descriptions.</div></div>
+                <div class="pp-flow-step"><div class="pp-flow-num">3</div><div class="pp-flow-title">Intent layer runs</div><div class="pp-flow-desc">Extract intents, rule-select the strongest, assemble Merchant-ready copy per SKU.</div></div>
                 <div class="pp-flow-connector"></div>
                 <div class="pp-flow-step"><div class="pp-flow-num">4</div><div class="pp-flow-title">Review Results</div><div class="pp-flow-desc">Compare before/after, regenerate if needed.</div></div>
                 <div class="pp-flow-connector"></div>
@@ -3119,7 +3128,7 @@ def pricing_page(request: Request):
     title = "Pricing — Cartozo AI for Google Shopping feeds"
     desc = (
         "Fix your product feed and Google Shopping performance. Simple plans from free to Pro, "
-        "add-ons to scale, and AI optimization for titles, descriptions, and Merchant-ready export."
+        "add-ons to scale, and intent-aware positioning for titles, descriptions, and Merchant-ready export."
     )
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
@@ -3144,8 +3153,8 @@ def how_it_works_page(request: Request):
     """EN performance landing: feed cleanup, AI optimization, Merchant (ads)."""
     title = "Fix Google Shopping feed issues & boost Merchant performance | Cartozo.ai"
     desc = (
-        "Up to 30% of products can fail in Merchant from feed issues. Get more clicks and sales from the same ad "
-        "budget—fix disapprovals, improve titles, push clean feeds. No setup: upload any CSV."
+        "Up to 30% of products can fail in Merchant from feed issues. Get more clicks from the same ad "
+        "budget—fix disapprovals, position listings on shopper search intents, push clean feeds. No setup: upload any CSV."
     )
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
@@ -3366,9 +3375,7 @@ async def run_processing(
         elif mode == "translate":
             storage.default_target_language = "en"
 
-        # Pass current prompts to AI provider
-        s = _get_settings()
-        storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
+        _sync_ai_from_settings()
 
         storage.process_batch_synchronously(batch_id, optimize_fields=opt_set)
 
@@ -3459,7 +3466,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
                 <div class="checkmark">&#10003;</div>
             </div>
             <div class="thinking" id="thinking">Boiling the water</div>
-            <div class="thinking-sub">This may take a moment depending on catalog size<span class="dots"></span></div>
+            <div class="thinking-sub">Search-intent extraction and assembly per product—large catalogs need a bit longer<span class="dots"></span></div>
             <div class="progress"><div class="progress-fill"></div></div>
             <div class="progress-pct" id="pct">0%</div>
         </div>
@@ -3475,7 +3482,8 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
         "Whispering keywords","Waking up AI hamsters","Sprinkling conversion dust",
         "Smoothing out wrinkles","Checking for hallucinations",
         "Asking ChatGPT for help","Optimizing at full throttle",
-        "Rewriting titles with passion","Making descriptions readable",
+        "Scoring search intents","Picking the best positioning angles","Assembling titles with intent",
+        "Making descriptions readable",
         "Convincing the algorithm of our value","Almost there!"
     ];
     let phraseIdx=0, pct=0, batchId=null, serverReady=false;
@@ -3674,13 +3682,13 @@ def _build_mapping_page(
         </div>
 
         <div class="options-box">
-            <p class="options-title">Which fields should AI optimize?</p>
+            <p class="options-title">Which fields should run the intent → select → assemble pipeline?</p>
             <div class="checkboxes">
                 <label class="checkbox-label">
-                    <input type="checkbox" id="opt_title" checked /> Optimize titles
+                    <input type="checkbox" id="opt_title" checked /> Titles (Shopping positioning)
                 </label>
                 <label class="checkbox-label">
-                    <input type="checkbox" id="opt_desc" checked /> Optimize descriptions
+                    <input type="checkbox" id="opt_desc" checked /> Descriptions (aligned intents)
                 </label>
             </div>
         </div>
@@ -3768,6 +3776,7 @@ async def create_batch(
 
     if target_language:
         storage.default_target_language = target_language
+    _sync_ai_from_settings()
     storage.process_batch_synchronously(batch_id)
 
     if redirect:
@@ -3834,6 +3843,34 @@ async def export_batch(request: Request, batch_id: str):
     )
 
 
+@app.get("/batches/{batch_id}/export-positioning")
+async def export_batch_positioning_debug(request: Request, batch_id: str):
+    """CSV with intent pipeline metadata (QA / tuning), not a Merchant feed."""
+    require_login_http(request)
+    batch = storage.get_batch(batch_id)
+    _ensure_batch_owner_from_batch(request, batch)
+
+    from .models import ProductAction as PA, ProductStatus as PS
+
+    if not any(r.status != PS.SKIPPED and r.action != PA.SKIP for r in batch.products):
+        raise HTTPException(
+            status_code=400,
+            detail="No products to export — all rows are skipped/inactive.",
+        )
+
+    csv_buffer = io.StringIO()
+    generate_positioning_debug_csv(batch.products, csv_buffer)
+    csv_buffer.seek(0)
+
+    return StreamingResponse(
+        iter([csv_buffer.getvalue().encode("utf-8")]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="positioning_debug_{batch_id[:8]}.csv"',
+        },
+    )
+
+
 @app.post("/batches/{batch_id}/regenerate", response_model=BatchSummary)
 async def regenerate_batch_items(request: Request, batch_id: str, product_ids: List[str]):
     """
@@ -3844,6 +3881,7 @@ async def regenerate_batch_items(request: Request, batch_id: str, product_ids: L
     batch = storage.get_batch(batch_id)
     _ensure_batch_owner_from_batch(request, batch)
 
+    _sync_ai_from_settings()
     storage.regenerate_products(batch_id, product_ids)
     return storage.get_batch_summary(batch_id)
 
@@ -4033,6 +4071,145 @@ async def review_batch(request: Request, batch_id: str):
                 bump("warn", part)
         return [(severity_by_text[t], t) for t in order]
 
+    pos_debug_admin = is_admin(request) and request.query_params.get("pos_debug") == "1"
+
+    def _positioning_user_block(r):
+        if not r.positioning:
+            return ""
+        pi = r.positioning
+        fb = pi.get("fallback_used") or ""
+        routing = pi.get("routing") or ""
+
+        fg = pi.get("final_generation") if isinstance(pi.get("final_generation"), dict) else {}
+        intents_used = fg.get("intents_used") if isinstance(fg.get("intents_used"), list) else []
+        intents_display: List[str] = []
+        for x in intents_used:
+            if x and str(x).strip():
+                intents_display.append(str(x).strip())
+        if not intents_display:
+            for x in (pi.get("selected_intents") or [])[:8]:
+                if isinstance(x, dict) and (x.get("intent") or "").strip():
+                    intents_display.append(str(x["intent"]).strip())
+
+        is_intent_success = (
+            ((not fb) and bool(pi.get("final_generation")))
+            or ((not fb) and pi.get("assembly_mode") == "template")
+        )
+
+        inner_parts: List[str] = []
+        tech_block = ""
+
+        if routing == "skipped_already_strong":
+            inner_parts.append(
+                '<p class="pos-line pos-line--ok">&#10004; Listing already had a strong title and description — AI pipeline skipped.</p>'
+                '<p class="pos-sub">Scores and GMC checks still ran; edit above if you want to force a rewrite.</p>'
+            )
+        elif is_intent_success:
+            if intents_display:
+                n = len(intents_display)
+                bullets = "".join(
+                    f"<li>{html_module.escape(t)}</li>" for t in intents_display[:6]
+                )
+                inner_parts.append(
+                    f'<p class="pos-line pos-line--ok">&#10004; {n} search {"intent" if n == 1 else "intents"} applied</p>'
+                    f'<ul class="pos-intent-list">{bullets}</ul>'
+                )
+            else:
+                asm_note = (
+                    "template copy (fast batch)"
+                    if pi.get("assembly_mode") == "template"
+                    else "search-intent assembly"
+                )
+                inner_parts.append(
+                    f'<p class="pos-line pos-line--ok">&#10004; Positioned using {asm_note}</p>'
+                )
+            ps = pi.get("product_summary") if isinstance(pi.get("product_summary"), dict) else {}
+            core = (ps.get("core_product") or "").strip()
+            uc = (ps.get("primary_use_case") or "").strip()
+            if core or uc:
+                frag = html_module.escape(core or uc)
+                if core and uc:
+                    frag = f"{html_module.escape(core)} + {html_module.escape(uc)}"
+                inner_parts.append(
+                    f'<p class="pos-sub">Core positioning: {frag}.</p>'
+                )
+            rationale = fg.get("title_rationale") if isinstance(fg.get("title_rationale"), list) else []
+            if rationale:
+                ritems = "".join(
+                    f"<li>{html_module.escape(str(x))}</li>" for x in rationale[:4]
+                )
+                inner_parts.append(f'<ul class="pos-dbg-rationale">{ritems}</ul>')
+        elif fb == "rules_fallback":
+            inner_parts.append(
+                '<p class="pos-line pos-line--warn">&#9888; Intent extraction didn&rsquo;t return valid JSON.</p>'
+                '<p class="pos-sub">Applied rule-based title and description (no extra AI calls). Edit above or regenerate for a full deep pass.</p>'
+            )
+        elif fb == "legacy_rewrite":
+            inner_parts.append(
+                '<p class="pos-line pos-line--warn">&#9888; We couldn&rsquo;t fully analyze search intents for this product.</p>'
+                '<p class="pos-sub">Applied safe optimization instead. You can edit the title and description above.</p>'
+            )
+        elif fb == "template_title_after_empty_assembly":
+            inner_parts.append(
+                '<p class="pos-line pos-line--warn">&#9888; Final wording used a simplified title pattern.</p>'
+                '<p class="pos-sub">Review relevance above; regenerate if needed.</p>'
+            )
+        elif fb == "template_assembly":
+            if pi.get("assembly_error"):
+                inner_parts.append(
+                    '<p class="pos-line pos-line--warn">&#9888; Search intents were shortlisted, but final copy used a safe template.</p>'
+                    '<p class="pos-sub">Your listing is still optimized for Merchant; edit if you want different emphasis.</p>'
+                )
+            else:
+                inner_parts.append(
+                    '<p class="pos-line pos-line--warn">&#9888; Used safe optimization (limited catalog data).</p>'
+                    '<p class="pos-sub">Add richer titles or descriptions in your feed for fuller intent analysis next time.</p>'
+                )
+        elif fb:
+            inner_parts.append(
+                '<p class="pos-line pos-line--warn">&#9888; Used an alternate optimization path for this row.</p>'
+                '<p class="pos-sub">You can still review and edit the text above.</p>'
+            )
+        else:
+            inner_parts.append(
+                '<p class="pos-sub">Listing updated; positioning summary is not available for this row.</p>'
+            )
+
+        if pos_debug_admin:
+            raw_log = html_module.escape("\n".join(pi.get("pipeline_log") or []))
+            fb_esc = html_module.escape(str(fb or "none"))
+            conf_esc = html_module.escape(str(pi.get("confidence_summary") or ""))
+            ext_tags = pi.get("extraction_last_error_tags") or []
+            asm_tags = pi.get("assembly_last_error_tags") or []
+            tags_esc = ""
+            if ext_tags:
+                tags_esc += "<p><strong>extraction_last_error_tags</strong> " + html_module.escape(
+                    ", ".join(str(x) for x in ext_tags[:20])
+                ) + "</p>"
+            if asm_tags:
+                tags_esc += "<p><strong>assembly_last_error_tags</strong> " + html_module.escape(
+                    ", ".join(str(x) for x in asm_tags[:20])
+                ) + "</p>"
+            mode_esc = html_module.escape(str(pi.get("positioning_mode") or "—"))
+            asm_esc = html_module.escape(str(pi.get("assembly_mode") or "—"))
+            tech_block = (
+                '<details class="pos-tech"><summary>Technical details (admin)</summary>'
+                f'<div class="pos-tech-inner"><p><strong>positioning_mode</strong> {mode_esc}</p>'
+                f'<p><strong>assembly_mode</strong> {asm_esc}</p>'
+                f'<p><strong>fallback_used</strong> {fb_esc}</p>'
+                f'<p><strong>confidence_summary</strong> {conf_esc or "—"}</p>'
+                f"{tags_esc}"
+                f'<pre class="pos-dbg-log">{raw_log}</pre></div></details>'
+            )
+
+        body = "".join(inner_parts) + tech_block
+        if not inner_parts and not tech_block:
+            return ""
+        return (
+            '<details class="pos-dbg"><summary>Search positioning</summary>'
+            f'<div class="pos-dbg-inner">{body}</div></details>'
+        )
+
     rows_html = ""
     for r in batch.products:
         orig_sc = r.original_score
@@ -4139,10 +4316,11 @@ async def review_batch(request: Request, batch_id: str):
 
         # ── Title cells with inline GMC tags ─────────────────────────
         old_title_cell = f'<td>{old_title}{gmc_suffix_old_title}</td>'
+        pos_block = _positioning_user_block(r)
         if gmc_suffix_new_title:
-            new_title_cell = f'<td><div class="cell-with-gmc"><span class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</span>{gmc_suffix_new_title}</div></td>'
+            new_title_cell = f'<td><div class="cell-with-gmc"><span class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</span>{gmc_suffix_new_title}</div>{pos_block}</td>'
         else:
-            new_title_cell = f'<td class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</td>'
+            new_title_cell = f'<td><span class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</span>{pos_block}</td>'
 
         warn_items = _warning_items_for_row(r)
         if not warn_items:
@@ -4478,6 +4656,31 @@ async def review_batch(request: Request, batch_id: str):
     .gmc-tag-warn {{ background: rgba(245,158,11,0.12); color: #f59e0b; }}
     .gmc-tag-fixed {{ background: rgba(34,197,94,0.12); color: #22c55e; }}
     .cell-with-gmc {{ display: flex; flex-direction: column; }}
+    .pos-dbg {{ margin-top: 8px; font-size: 0.72rem; color: rgba(255,255,255,0.5); max-width: 280px; }}
+    .pos-dbg summary {{ cursor: pointer; font-weight: 600; color: rgba(129,140,248,0.95); list-style: none; }}
+    .pos-dbg summary::-webkit-details-marker {{ display: none; }}
+    .pos-dbg-inner {{ margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); line-height: 1.45; }}
+    .pos-line {{ margin: 0 0 6px; font-size: 0.78rem; line-height: 1.4; font-weight: 600; }}
+    .pos-line--ok {{ color: #86efac; font-weight: 600; }}
+    .pos-line--warn {{ color: #fcd34d; font-weight: 600; }}
+    .pos-sub {{ margin: 0; font-size: 0.72rem; color: rgba(255,255,255,0.55); font-weight: 400; }}
+    .pos-intent-list {{ margin: 4px 0 0 1.1rem; padding: 0; font-size: 0.72rem; color: rgba(255,255,255,0.78); }}
+    .pos-tech {{ margin-top: 10px; font-size: 0.68rem; color: rgba(255,255,255,0.45); }}
+    .pos-tech summary {{ cursor: pointer; color: #94a3b8; }}
+    .pos-tech-inner {{ margin-top: 6px; padding: 8px; border-radius: 6px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); }}
+    .pos-dbg-rationale {{ margin: 6px 0 0 1rem; padding: 0; font-size: 0.7rem; color: rgba(255,255,255,0.65); }}
+    .pos-dbg-log {{ margin-top: 8px; font-size: 0.65rem; white-space: pre-wrap; max-height: 100px; overflow: auto; color: rgba(255,255,255,0.45); background: rgba(0,0,0,0.25); padding: 6px; border-radius: 4px; }}
+    [data-theme="light"] .pos-dbg {{ color: rgba(15,23,42,0.55); }}
+    [data-theme="light"] .pos-dbg summary {{ color: #4f46e5; }}
+    [data-theme="light"] .pos-dbg-inner {{ background: #f1f5f9; border-color: rgba(15,23,42,0.1); }}
+    [data-theme="light"] .pos-line--ok {{ color: #15803d; }}
+    [data-theme="light"] .pos-line--warn {{ color: #b45309; }}
+    [data-theme="light"] .pos-sub {{ color: rgba(15,23,42,0.6); }}
+    [data-theme="light"] .pos-intent-list {{ color: rgba(15,23,42,0.8); }}
+    [data-theme="light"] .pos-tech {{ color: rgba(15,23,42,0.5); }}
+    [data-theme="light"] .pos-tech-inner {{ background: #e2e8f0; border-color: rgba(15,23,42,0.12); }}
+    [data-theme="light"] .pos-dbg-rationale {{ color: rgba(15,23,42,0.7); }}
+    [data-theme="light"] .pos-dbg-log {{ background: #e2e8f0; color: rgba(15,23,42,0.55); }}
 
     /* Top issues list inside GMC panel */
     .gmc-top-issues {{ width: 100%; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 4px; padding-top: 12px; }}
@@ -4580,6 +4783,7 @@ async def review_batch(request: Request, batch_id: str):
                 <button type="button" onclick="pushToMerchant()" class="btn btn-merchant-push" id="merchantPushBtn">Push to Merchant</button>
                 <button onclick="downloadSelected()" class="btn btn-primary">&#8681; Download selected</button>
                 <button type="button" onclick="downloadAll()" class="btn btn-outline">&#8681; Download all</button>
+                <button type="button" onclick="downloadPositioningDebug()" class="btn btn-outline" title="Intent extraction / selection debug CSV">Positioning debug CSV</button>
             </div>
         </div>
 
@@ -4964,6 +5168,22 @@ async def review_batch(request: Request, batch_id: str):
         }} catch (e) {{ alert('Download failed'); }}
     }}
 
+    async function downloadPositioningDebug() {{
+        try {{
+            const resp = await fetch('/batches/{batch_id}/export-positioning');
+            if (!resp.ok) {{ alert('Failed to download positioning debug CSV'); return; }}
+            const blob = await resp.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'positioning_debug_{batch_id[:8]}.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }} catch (e) {{ alert('Download failed'); }}
+    }}
+
     // Download selected products
     async function downloadSelected() {{
         const ids = Array.from(document.querySelectorAll("input[name='product_id']:checked")).map(c => c.value);
@@ -5274,7 +5494,7 @@ async def settings_page(request: Request):
         chat_sessions_rows += f'<tr><td>{i + 1}</td><td class="mono">{sid_display}</td><td class="email">{email}</td><td>{msg_count}</td><td class="text-cell">{first_msg}</td><td class="ts">{updated}</td><td><button type="button" class="btn btn-small" onclick="viewChatSession(this)" data-msgs="{msgs_b64}">View</button></td></tr>'
 
     tab_param = request.query_params.get("tab", "prompts")
-    if tab_param not in ("prompts", "api", "seo", "users", "feedback", "chats"):
+    if tab_param not in ("prompts", "api", "seo", "users", "feedback", "chats", "feedurl"):
         tab_param = "prompts"
     prompt_sub_param = request.query_params.get("sub", "products")
     if prompt_sub_param not in ("products", "writter", "homepage"):
@@ -5433,6 +5653,7 @@ async def settings_page(request: Request):
             <button class="tab{' active' if tab_param == 'users' else ''}" data-tab="tab-users" onclick="switchTab('tab-users','users')">Users</button>
             <button class="tab{' active' if tab_param == 'feedback' else ''}" data-tab="tab-feedback" onclick="switchTab('tab-feedback','feedback')">Feedback</button>
             <button class="tab{' active' if tab_param == 'chats' else ''}" data-tab="tab-chats" onclick="switchTab('tab-chats','chats')">Chat Sessions</button>
+            <button class="tab{' active' if tab_param == 'feedurl' else ''}" data-tab="tab-feedurl" onclick="switchTab('tab-feedurl','feedurl')">Feed from URL</button>
         </div>
 
         <div id="tab-prompts" class="tab-content{' active' if tab_param == 'prompts' else ''}">
@@ -5443,20 +5664,22 @@ async def settings_page(request: Request):
             </div>
 
             <div id="prompt-sub-products" class="prompt-subpanel{' active' if prompt_sub_param == 'products' else ''}">
+            <p class="group-desc" style="margin-bottom:14px;">
+                These two <strong>system</strong> prompts drive the feed <strong>search-positioning</strong> pipeline:
+                JSON intent extraction, then JSON title/description assembly. Legacy one-shot SEO rewrite (if the pipeline falls back) uses built-in templates, not these fields.
+            </p>
             <div class="group">
-                <div class="group-title">Title Optimization Prompt</div>
+                <div class="group-title">Prompt 1 — Search intent extraction</div>
                 <p class="group-desc">
-                    This prompt is sent to the AI when optimizing product titles.
-                    Variables: <code>{{{{title}}}}</code>, <code>{{{{category}}}}</code>, <code>{{{{brand}}}}</code>, <code>{{{{attributes}}}}</code>
+                    Sent as the <code>system</code> message for step 1. The model must return a single JSON object (product summary + search intents). No <code>.format()</code> variables — write the full instructions here.
                 </p>
                 <textarea id="prompt_title">{s["prompt_title"]}</textarea>
             </div>
 
             <div class="group">
-                <div class="group-title">Description Generation Prompt</div>
+                <div class="group-title">Prompt 2 — Title and description assembly</div>
                 <p class="group-desc">
-                    This prompt is sent to the AI when generating product descriptions.
-                    Variables: <code>{{{{title}}}}</code>, <code>{{{{category}}}}</code>, <code>{{{{brand}}}}</code>, <code>{{{{attributes}}}}</code>, <code>{{{{description}}}}</code>
+                    Sent as the <code>system</code> message for step 2, after intents are selected. The model must return one JSON object with <code>final_title</code>, <code>final_description</code>, and related fields.
                 </p>
                 <textarea id="prompt_description">{s["prompt_description"]}</textarea>
             </div>
@@ -5643,6 +5866,34 @@ async def settings_page(request: Request):
                 </div>
             </div>
         </div>
+
+        <div id="tab-feedurl" class="tab-content{' active' if tab_param == 'feedurl' else ''}">
+            <p class="group-desc" style="margin-bottom:18px;">
+                Enter a public <strong>catalog / listing</strong> page. The server downloads HTML once and tries, in order:
+                JSON-LD (<code>Product</code> / <code>ItemList</code>), embedded <code>__NEXT_DATA__</code>, then light heuristics
+                (product cards, <code>/produkt</code>-style links, Swedish <code>kr</code> prices).
+                Sites that load products only in the browser may return <strong>zero rows</strong> — use a feed export from your platform when possible.
+                Respect the site&apos;s terms and <code>robots.txt</code>.
+            </p>
+            <div class="group">
+                <div class="group-title">Listing URL</div>
+                <input type="url" id="feed_scrape_url" placeholder="https://example.com/category" autocomplete="off" />
+            </div>
+            <div class="group">
+                <div class="group-title">Max products</div>
+                <input type="number" id="feed_scrape_max" value="100" min="1" max="500" />
+            </div>
+            <div class="group">
+                <div class="group-title">Detail pages to fetch (optional)</div>
+                <p class="group-desc">0 = listing page only. 1–50 = follow that many product links to fill <code>image_link</code> and description (slower).</p>
+                <input type="number" id="feed_scrape_detail" value="0" min="0" max="50" />
+            </div>
+            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:12px;">
+                <button type="button" class="btn btn-primary" onclick="downloadFeedFromUrl()">Generate &amp; download CSV</button>
+                <span id="feed-scrape-status" class="save-msg">&#10003; Download started</span>
+            </div>
+            <div id="feed-scrape-warn" class="note-box" style="display:none;margin-top:20px;"></div>
+        </div>
     </div>
 
     <script>
@@ -5707,6 +5958,37 @@ async def settings_page(request: Request):
         const resp=await fetch('/api/settings/homepage-chat-prompt',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{homepage_chat_system_prompt:ta?ta.value:''}})}});
         if(resp.ok)showSaved('homepage-chat-prompt-status');
     }}
+    async function downloadFeedFromUrl(){{
+        const urlEl=document.getElementById('feed_scrape_url');
+        const url=urlEl?urlEl.value.trim():'';
+        const max_products=parseInt((document.getElementById('feed_scrape_max')||{{}}).value||'100',10)||100;
+        const detail_pages=parseInt((document.getElementById('feed_scrape_detail')||{{}}).value||'0',10)||0;
+        const warnEl=document.getElementById('feed-scrape-warn');
+        if(warnEl){{warnEl.style.display='none';warnEl.innerHTML='';}}
+        if(!url){{alert('Enter a listing URL');return;}}
+        try{{
+            const resp=await fetch('/api/admin/feed-from-url',{{method:'POST',headers:{{'Content-Type':'application/json'}},credentials:'same-origin',body:JSON.stringify({{url:url,max_products:max_products,detail_pages:detail_pages}})}});
+            let j={{}};try{{j=await resp.json();}}catch(e){{}}
+            if(!resp.ok){{alert((j&&j.detail)?j.detail:'Request failed');return;}}
+            const b64=j.csv_base64||'';
+            const bin=atob(b64);
+            const bytes=new Uint8Array(bin.length);
+            for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+            const blob=new Blob([bytes],{{type:'text/csv;charset=utf-8'}});
+            const a=document.createElement('a');
+            a.href=URL.createObjectURL(blob);
+            a.download=(j.filename||'merchant_feed.csv').replace(/[^a-zA-Z0-9._-]/g,'_');
+            a.click();
+            URL.revokeObjectURL(a.href);
+            if(warnEl&&j.warnings&&j.warnings.length){{
+                const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                warnEl.innerHTML='<p style="margin:0 0 8px;"><strong>Notes</strong></p><ul style="margin:0;padding-left:18px;">'+j.warnings.map(w=>'<li>'+esc(w)+'</li>').join('')+'</ul>';
+                if(typeof j.count==='number')warnEl.innerHTML='<p style="margin:0 0 8px;">Rows: <strong>'+j.count+'</strong></p>'+warnEl.innerHTML;
+                warnEl.style.display='block';
+            }}
+            showSaved('feed-scrape-status');
+        }}catch(e){{alert('Could not generate CSV');}}
+    }}
     async function saveApiKey(){{
         const key=document.getElementById('openai_key').value;
         const resp=await fetch('/api/settings/apikey',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{openai_api_key:key}})}});
@@ -5749,10 +6031,7 @@ async def api_chat(request: Request):
     if not user_message:
         raise HTTPException(status_code=400, detail="message is required")
 
-    s = _get_settings()
-    storage._ai.set_api_key(s.get("openai_api_key", "") or "")
-    storage._ai.set_prompts(s.get("prompt_title", ""), s.get("prompt_description", ""))
-    storage._ai.set_homepage_chat_system_prompt(s.get("homepage_chat_system_prompt", "") or "")
+    _sync_ai_from_settings()
 
     from .db import get_db
     from .services.db_repository import (
@@ -5823,9 +6102,7 @@ async def save_prompts(request: Request):
             set_setting(db, "prompt_title", str(data["prompt_title"]))
         if "prompt_description" in data:
             set_setting(db, "prompt_description", str(data["prompt_description"]))
-    s = _get_settings()
-    storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
-    storage._ai.set_homepage_chat_system_prompt(s.get("homepage_chat_system_prompt", "") or "")
+    _sync_ai_from_settings()
     return JSONResponse({"ok": True})
 
 
@@ -5871,6 +6148,53 @@ async def save_homepage_chat_prompt(request: Request):
     return JSONResponse({"ok": True})
 
 
+@app.post("/api/admin/feed-from-url")
+async def api_feed_from_url(request: Request):
+    """Admin: fetch a public listing URL and return a Google Merchant–style CSV (base64) for download."""
+    require_admin_http(request)
+    import asyncio
+    import base64 as _b64
+
+    data = await request.json()
+    url = (data.get("url") or "").strip()
+    try:
+        max_products = int(data.get("max_products") or 100)
+    except (TypeError, ValueError):
+        max_products = 100
+    try:
+        detail_pages = int(data.get("detail_pages") or 0)
+    except (TypeError, ValueError):
+        detail_pages = 0
+
+    from .services.feed_url_scraper import FeedScrapeError, rows_to_csv_bytes, scrape_url_to_rows
+
+    try:
+        rows, warnings = await asyncio.to_thread(
+            scrape_url_to_rows,
+            url,
+            max_products=max_products,
+            detail_pages=detail_pages,
+        )
+    except FeedScrapeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not rows:
+        raise HTTPException(
+            status_code=400,
+            detail="; ".join(warnings) if warnings else "No products found in the page HTML.",
+        )
+    csv_bytes = rows_to_csv_bytes(rows)
+    if len(csv_bytes) > 2_500_000:
+        raise HTTPException(status_code=400, detail="Generated CSV is too large. Lower max_products.")
+    return JSONResponse(
+        {
+            "filename": "merchant_feed.csv",
+            "csv_base64": _b64.b64encode(csv_bytes).decode("ascii"),
+            "warnings": warnings,
+            "count": len(rows),
+        }
+    )
+
+
 @app.post("/api/settings/apikey")
 async def save_api_key(request: Request):
     require_admin_http(request)
@@ -5881,10 +6205,7 @@ async def save_api_key(request: Request):
     if "openai_api_key" in data:
         with get_db() as db:
             set_setting(db, "openai_api_key", str(data["openai_api_key"]))
-        storage._ai.set_api_key(data["openai_api_key"])
-    s = _get_settings()
-    storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
-    storage._ai.set_homepage_chat_system_prompt(s.get("homepage_chat_system_prompt", "") or "")
+    _sync_ai_from_settings()
     return JSONResponse({"ok": True})
 
 

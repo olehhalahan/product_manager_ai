@@ -21,31 +21,20 @@ from ..db_models import (
     BlogArticle,
     BlogArticleVersion,
     ContentCluster,
+    WritterFutureArticle,
 )
 
 
 # ─── Settings ────────────────────────────────────────────────────────────────
 
-DEFAULT_PROMPT_TITLE = """You are an SEO expert. Optimize the following product title for search engines.
-Keep it under 120 characters. Include relevant keywords. Use a pipe separator for secondary phrases.
+from .positioning.prompt_defaults import (
+    DEFAULT_ASSEMBLY_SYSTEM,
+    DEFAULT_EXTRACTION_SYSTEM,
+)
 
-Original title: {title}
-Category: {category}
-Brand: {brand}
-Attributes: {attributes}
-
-Return only the optimized title, nothing else."""
-
-DEFAULT_PROMPT_DESCRIPTION = """You are an e-commerce copywriter. Write a compelling product description.
-Keep it 2-3 paragraphs. Focus on benefits and features. Do not mention price.
-
-Product: {title}
-Category: {category}
-Brand: {brand}
-Attributes: {attributes}
-Original description: {description}
-
-Return only the description, nothing else."""
+# Admin "Product feed" prompts: system messages for positioning JSON steps (not legacy .format templates).
+DEFAULT_PROMPT_TITLE = DEFAULT_EXTRACTION_SYSTEM
+DEFAULT_PROMPT_DESCRIPTION = DEFAULT_ASSEMBLY_SYSTEM
 
 
 DEFAULT_SEO_META_TITLE = "Cartozo.ai — AI-Powered Product Feed Optimization"
@@ -760,6 +749,7 @@ def blog_article_to_dict(row: BlogArticle) -> Dict[str, Any]:
         "cluster_id": row.cluster_id,
         "cluster_role": row.cluster_role or "",
         "writter_refresh_status": row.writter_refresh_status or "",
+        "auto_generation_batch_id": getattr(row, "auto_generation_batch_id", None) or "",
     }
 
 
@@ -866,6 +856,7 @@ def create_blog_article(
     cluster_id: Optional[int] = None,
     cluster_role: Optional[str] = None,
     writter_refresh_status: Optional[str] = None,
+    auto_generation_batch_id: Optional[str] = None,
 ) -> BlogArticle:
     row = BlogArticle(
         slug=slug,
@@ -887,6 +878,7 @@ def create_blog_article(
         cluster_id=cluster_id,
         cluster_role=cluster_role,
         writter_refresh_status=writter_refresh_status,
+        auto_generation_batch_id=(auto_generation_batch_id or None),
     )
     db.add(row)
     db.flush()
@@ -989,6 +981,42 @@ def delete_blog_article(db: Session, article_id: int) -> bool:
     db.execute(delete(BlogArticleVersion).where(BlogArticleVersion.article_id == article_id))
     db.delete(row)
     return True
+
+
+def delete_drafts_in_auto_batch_except(db: Session, batch_id: str, keep_id: int) -> int:
+    """Remove other draft articles in the same auto-generation batch (multi-variant picker)."""
+    bid = (batch_id or "").strip()
+    if not bid:
+        return 0
+    rows = (
+        db.execute(
+            select(BlogArticle).where(
+                BlogArticle.auto_generation_batch_id == bid,
+                BlogArticle.id != int(keep_id),
+                BlogArticle.status == "draft",
+            )
+        )
+        .scalars()
+        .all()
+    )
+    n = 0
+    for r in rows:
+        if delete_blog_article(db, int(r.id)):
+            n += 1
+    return n
+
+
+def list_future_queue_topics(db: Session) -> List[str]:
+    """Topics already in the Future articles table (for de-duplication when adding batches)."""
+    rows = db.execute(select(WritterFutureArticle.topic)).scalars().all()
+    out: List[str] = []
+    seen: set[str] = set()
+    for t in rows:
+        s = (t or "").strip()
+        if s and s.lower() not in seen:
+            seen.add(s.lower())
+            out.append(s)
+    return out
 
 
 def count_articles_sharing_primary_keyword(db: Session, keywords: str) -> int:
@@ -1142,3 +1170,129 @@ def list_articles_in_cluster(db: Session, cluster_id: int) -> List[Dict[str, Any
         .all()
     )
     return [blog_article_to_dict(r) for r in rows]
+
+
+def _future_article_to_dict(row: WritterFutureArticle) -> Dict[str, Any]:
+    return {
+        "id": row.id,
+        "topic": row.topic or "",
+        "keywords": row.keywords or "",
+        "article_type": row.article_type or "",
+        "primary_goal": row.primary_goal or "",
+        "briefing_json": row.briefing_json if isinstance(row.briefing_json, dict) else {},
+        "status": row.status or "pending",
+        "generated_article_id": row.generated_article_id,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def list_writter_future_articles(db: Session, limit: int = 200) -> List[Dict[str, Any]]:
+    rows = (
+        db.execute(
+            select(WritterFutureArticle)
+            .order_by(WritterFutureArticle.created_at.desc())
+            .limit(min(max(1, limit), 500))
+        )
+        .scalars()
+        .all()
+    )
+    return [_future_article_to_dict(r) for r in rows]
+
+
+def get_writter_future_article(db: Session, row_id: int) -> Optional[WritterFutureArticle]:
+    return db.execute(select(WritterFutureArticle).where(WritterFutureArticle.id == row_id)).scalars().one_or_none()
+
+
+def get_writter_future_article_dict(db: Session, row_id: int) -> Optional[Dict[str, Any]]:
+    row = get_writter_future_article(db, row_id)
+    return _future_article_to_dict(row) if row else None
+
+
+def delete_writter_future_articles_by_statuses(db: Session, statuses: tuple) -> int:
+    """Remove queue rows in given statuses (e.g. pending+rejected before refresh)."""
+    if not statuses:
+        return 0
+    q = delete(WritterFutureArticle).where(WritterFutureArticle.status.in_(list(statuses)))
+    r = db.execute(q)
+    return int(r.rowcount or 0)
+
+
+def insert_writter_future_article(
+    db: Session,
+    *,
+    topic: str,
+    keywords: str = "",
+    article_type: str = "informational",
+    primary_goal: str = "organic_traffic",
+    briefing_json: Optional[Dict[str, Any]] = None,
+    status: str = "pending",
+) -> WritterFutureArticle:
+    row = WritterFutureArticle(
+        topic=topic[:500],
+        keywords=keywords or "",
+        article_type=article_type or "informational",
+        primary_goal=primary_goal or "organic_traffic",
+        briefing_json=briefing_json,
+        status=status or "pending",
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def update_writter_future_article(
+    db: Session,
+    row: WritterFutureArticle,
+    *,
+    topic: Any = _UNSET,
+    keywords: Any = _UNSET,
+    article_type: Any = _UNSET,
+    primary_goal: Any = _UNSET,
+    briefing_json: Any = _UNSET,
+    status: Any = _UNSET,
+    generated_article_id: Any = _UNSET,
+) -> None:
+    if topic is not _UNSET:
+        row.topic = (topic or "")[:500]
+    if keywords is not _UNSET:
+        row.keywords = keywords or ""
+    if article_type is not _UNSET:
+        row.article_type = article_type or "informational"
+    if primary_goal is not _UNSET:
+        row.primary_goal = primary_goal or "organic_traffic"
+    if briefing_json is not _UNSET:
+        row.briefing_json = briefing_json
+    if status is not _UNSET:
+        row.status = status or "pending"
+    if generated_article_id is not _UNSET:
+        row.generated_article_id = generated_article_id
+
+
+def delete_writter_future_article(db: Session, row_id: int) -> bool:
+    row = get_writter_future_article(db, row_id)
+    if not row:
+        return False
+    db.delete(row)
+    return True
+
+
+def list_blog_topics_and_titles(db: Session, limit: int = 500) -> List[str]:
+    """Distinct topic + title strings for AI de-duplication."""
+    rows = (
+        db.execute(
+            select(BlogArticle.topic, BlogArticle.title)
+            .order_by(BlogArticle.updated_at.desc())
+            .limit(min(max(1, limit), 2000))
+        )
+        .all()
+    )
+    seen: set[str] = set()
+    out: List[str] = []
+    for t, title in rows:
+        for x in (t, title):
+            s = (x or "").strip()
+            if s and s.lower() not in seen:
+                seen.add(s.lower())
+                out.append(s)
+    return out

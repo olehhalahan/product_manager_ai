@@ -1,7 +1,7 @@
 {
   "hero": {
     "h1": "Fix your product feed. Increase your Google Shopping performance.",
-    "subheadline": "Cartozo automatically detects feed issues, fixes disapprovals, and optimizes your product data — so your products get seen and clicked.",
+    "subheadline": "Detects feed issues and disapprovals, then positions each SKU on shopper search intents—score, select, assemble—not a plain AI rewrite—so Shopping listings match real queries.",
     "cta_primary_label": "Start optimizing your feed",
     "cta_primary_href": "/login?next=/upload",
     "cta_secondary_label": "See how it works",
@@ -10,7 +10,7 @@
   },
   "header": {
     "title": "Fix your product feed. Increase your Google Shopping performance.",
-    "subtitle": "Cartozo automatically detects feed issues, fixes disapprovals, and optimizes your product data — so your products get seen and clicked."
+    "subtitle": "Detects feed issues and disapprovals, then runs search-intent positioning for titles and descriptions—decision layer, not generic rewrite—so products get seen and clicked."
   },
   "pain_solution": {
     "title": "Your product feed is silently killing your performance",
@@ -35,7 +35,7 @@
     "steps": [
       "Upload your product feed (CSV or API)",
       "Cartozo detects issues and weak points",
-      "AI optimizes titles, descriptions, and structure",
+      "Search-intent pipeline: pick winning intents, assemble titles & descriptions",
       "Export ready-to-use feed for Google Merchant"
     ]
   },
@@ -57,7 +57,7 @@
       "paypro_plan_code": null,
       "features": [
         "50 products / month",
-        "Basic title optimization",
+        "Search-intent positioning (titles)",
         "CSV upload + export",
         "Preview before download"
       ],
@@ -82,7 +82,7 @@
       "paypro_plan_code": null,
       "features": [
         "500 products / month",
-        "Titles + descriptions optimization",
+        "Titles + descriptions (intent pipeline)",
         "Bulk processing",
         "Optimization history",
         "Basic analytics"
@@ -105,7 +105,7 @@
       "paypro_plan_code": null,
       "features": [
         "2,000 products / month",
-        "Advanced AI optimization (SEO-focused)",
+        "Advanced intent positioning (SEO-focused assembly)",
         "Regenerate specific products",
         "Feed issue detection (GMC-ready)",
         "CSV + API export",
@@ -129,7 +129,7 @@
       "paypro_plan_code": null,
       "features": [
         "6,000 products / month",
-        "Full feed optimization pipeline",
+        "Full feed + intent positioning pipeline",
         "Merchant-ready formatting",
         "Advanced analytics (before / after impact)",
         "AI assistant (chat + bulk actions)",
@@ -145,7 +145,7 @@
     "title": "Real impact on product feeds",
     "stats": [
       "Up to 32% fewer disapprovals",
-      "Higher CTR from optimized titles",
+      "Higher CTR from intent-led titles",
       "Better visibility in Google Shopping"
     ],
     "stat_prefixes": ["down", "up", "up"],
@@ -164,7 +164,7 @@
         "cells": ["50", "500", "2,000", "6,000"]
       },
       {
-        "label": "Title optimization",
+        "label": "Search intent positioning",
         "cells": ["Basic", "Yes", "Advanced", "Full pipeline"]
       },
       {
@@ -225,6 +225,6 @@
     "cta_href": "/login?next=/upload"
   },
   "seo_footer": {
-    "text": "Cartozo helps e-commerce businesses optimize product feeds, reduce Google Merchant Center disapprovals, and improve Google Shopping performance with AI-powered titles, descriptions, and structured data ready for export."
+    "text": "Cartozo helps e-commerce businesses improve product feeds and reduce Google Merchant disapprovals using a search-intent decision layer—titles and descriptions are assembled from scored intents, not blind rewrites—with structured data ready for export."
   }
 }

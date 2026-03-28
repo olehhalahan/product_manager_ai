@@ -66,13 +66,48 @@ PAGE = r"""<!DOCTYPE html>
   .err { color:#f87171; margin-top:8px; }
   .wt-loading { position:fixed; inset:0; z-index:10050; background:rgba(11,15,25,.72); display:none; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
   .wt-loading.wt-loading--on { display:flex; }
-  .wt-loading-box { background:#111827; border:1px solid rgba(255,255,255,.1); border-radius:16px; padding:32px 40px; text-align:center; max-width:360px; box-shadow:0 24px 48px rgba(0,0,0,.4); }
+  .wt-loading-box { background:#111827; border:1px solid rgba(255,255,255,.1); border-radius:16px; padding:28px 32px; text-align:center; max-width:520px; box-shadow:0 24px 48px rgba(0,0,0,.4); }
   [data-theme="light"] .wt-loading-box { background:#fff; border-color:rgba(15,23,42,.12); }
   .wt-spinner { width:44px; height:44px; border:3px solid rgba(129,140,248,.25); border-top-color:#818cf8; border-radius:50%; margin:0 auto 16px; animation:wtspin .85s linear infinite; }
   @keyframes wtspin { to { transform: rotate(360deg); } }
   .wt-loading-box p { margin:0; color:#e5e7eb; font-weight:600; }
   [data-theme="light"] .wt-loading-box p { color:#0f172a; }
   .wt-loading-sub { font-size:.85rem !important; font-weight:400 !important; color:#94a3b8 !important; margin-top:8px !important; }
+  .wt-load-em { color:#a5b4fc; font-weight:700; }
+  [data-theme="light"] .wt-load-em { color:#4f46e5; }
+  .wt-auto-topic-row { margin:0 0 14px; padding:12px 14px; border-radius:12px; background:linear-gradient(135deg, rgba(79,70,229,.14) 0%, rgba(129,140,248,.08) 100%); border:1px solid rgba(129,140,248,.28); box-shadow:0 4px 20px rgba(0,0,0,.12); }
+  [data-theme="light"] .wt-auto-topic-row { background:linear-gradient(135deg, rgba(79,70,229,.1) 0%, rgba(255,255,255,.9) 100%); border-color:rgba(79,70,229,.2); box-shadow:0 2px 12px rgba(15,23,42,.06); }
+  .wt-auto-topic-label { font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; color:#818cf8; font-weight:700; margin:0; }
+  [data-theme="light"] .wt-auto-topic-label { color:#4f46e5; }
+  .wt-auto-topic-text { margin:6px 0 0; font-size:.95rem; font-weight:600; color:#f1f5f9; line-height:1.4; }
+  [data-theme="light"] .wt-auto-topic-text { color:#0f172a; }
+  #wtAutoLog.wt-auto-log { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; }
+  #wtAutoLog.wt-auto-log li { margin:0; padding:11px 14px; border-radius:11px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.09); font-size:.86rem; color:#cbd5e1; line-height:1.45; }
+  [data-theme="light"] #wtAutoLog.wt-auto-log li { background:#f1f5f9; border-color:rgba(15,23,42,.1); color:#334155; }
+  .wt-var-line { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; }
+  .wt-var-name { font-weight:700; color:#e5e7eb; font-size:.88rem; }
+  [data-theme="light"] .wt-var-name { color:#0f172a; }
+  .wt-pill { display:inline-flex; align-items:center; padding:4px 11px; border-radius:999px; font-size:.72rem; font-weight:600; letter-spacing:.02em; line-height:1.2; white-space:nowrap; }
+  .wt-pill--seo { background:rgba(129,140,248,.22); color:#c7d2fe; border:1px solid rgba(165,180,252,.4); }
+  [data-theme="light"] .wt-pill--seo { background:rgba(79,70,229,.12); color:#4338ca; border-color:rgba(79,70,229,.25); }
+  .wt-pill--score-high { background:rgba(52,211,153,.16); color:#6ee7b7; border:1px solid rgba(45,212,191,.35); }
+  [data-theme="light"] .wt-pill--score-high { background:rgba(16,185,129,.12); color:#047857; border-color:rgba(16,185,129,.3); }
+  .wt-pill--score-mid { background:rgba(251,191,36,.14); color:#fcd34d; border:1px solid rgba(251,191,36,.38); }
+  [data-theme="light"] .wt-pill--score-mid { background:rgba(245,158,11,.12); color:#b45309; border-color:rgba(245,158,11,.35); }
+  .wt-pill--score-low { background:rgba(248,113,113,.12); color:#fca5a5; border:1px solid rgba(248,113,113,.32); }
+  [data-theme="light"] .wt-pill--score-low { background:rgba(239,68,68,.1); color:#b91c1c; border-color:rgba(239,68,68,.28); }
+  .wt-pill--score-muted { background:rgba(148,163,184,.12); color:#94a3b8; border:1px solid rgba(148,163,184,.28); }
+  .wt-pill--words { background:rgba(255,255,255,.06); color:#94a3b8; border:1px solid rgba(255,255,255,.12); font-weight:500; }
+  [data-theme="light"] .wt-pill--words { background:#fff; color:#64748b; border-color:rgba(15,23,42,.12); }
+  .wt-pill--verdict { background:rgba(251,191,36,.12); color:#fbbf24; border:1px solid rgba(251,191,36,.3); }
+  [data-theme="light"] .wt-pill--verdict { background:rgba(245,158,11,.1); color:#92400e; border-color:rgba(245,158,11,.28); }
+  .wt-pill--verdict-ok { background:rgba(52,211,153,.12); color:#34d399; border:1px solid rgba(52,211,153,.3); }
+  [data-theme="light"] .wt-pill--verdict-ok { background:rgba(16,185,129,.1); color:#047857; border-color:rgba(16,185,129,.28); }
+  .wt-pill--verdict-hold { background:rgba(148,163,184,.14); color:#cbd5e1; border:1px solid rgba(148,163,184,.3); }
+  [data-theme="light"] .wt-pill--verdict-hold { background:rgba(100,116,139,.12); color:#475569; border-color:rgba(100,116,139,.25); }
+  .wt-pill--progress { background:rgba(96,165,250,.18); color:#93c5fd; border:1px solid rgba(96,165,250,.4); animation:wt-pulse-soft 1.15s ease-in-out infinite; }
+  [data-theme="light"] .wt-pill--progress { background:rgba(59,130,246,.12); color:#1d4ed8; border-color:rgba(59,130,246,.3); }
+  @keyframes wt-pulse-soft { 0%, 100% { opacity:1; } 50% { opacity:.72; } }
   .wt-step { display:none; }
   .wt-step.wt-step--active { display:block; }
   .wt-steps-bar { display:flex; gap:8px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
@@ -110,9 +145,25 @@ PAGE = r"""<!DOCTYPE html>
   __ADMIN_TOP_NAV__
   <div id="wtLoading" class="wt-loading" role="dialog" aria-modal="true" aria-labelledby="wtLoadTitle" aria-hidden="true">
     <div class="wt-loading-box">
-      <div class="wt-spinner" aria-hidden="true"></div>
-      <p id="wtLoadTitle">Generating article…</p>
-      <p class="wt-loading-sub">Please wait — this can take up to a minute.</p>
+      <div id="wtAutoSpinnerBlock" style="text-align:center;">
+        <div class="wt-spinner" style="margin:0 auto 16px;" aria-hidden="true"></div>
+        <p id="wtLoadTitle">Generating articles…</p>
+        <p id="wtLoadSub" class="wt-loading-sub">Creating several long-form drafts — scores appear as each finishes.</p>
+      </div>
+      <div id="wtAutoLogWrap" style="display:none;margin-top:16px;text-align:left;">
+        <div class="wt-auto-topic-row">
+          <p class="wt-auto-topic-label">Topic</p>
+          <p id="wtAutoTopic" class="wt-auto-topic-text"></p>
+        </div>
+        <ul id="wtAutoLog" class="wt-auto-log"></ul>
+      </div>
+      <div id="wtAutoPick" style="display:none;margin-top:20px;padding-top:16px;border-top:1px solid rgba(255,255,255,.1);text-align:left;">
+        <p style="font-weight:600;margin:0 0 10px;color:#e5e7eb;">Publish the variant you prefer</p>
+        <p style="font-size:.78rem;color:#94a3b8;margin:0 0 12px;line-height:1.45;">Sorted by SEO overall score (highest first). Publishing deletes the other drafts in this batch.</p>
+        <div id="wtAutoPickBtns" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <button type="button" class="wt-btn-ghost" id="wtAutoCancelPick" style="margin-top:14px;width:100%;text-align:center;">Close — keep all drafts in Writter</button>
+      </div>
+      <p class="err" id="wtAutoErr" style="margin-top:12px;text-align:left;"></p>
     </div>
   </div>
   <div class="wt-layout">
@@ -121,8 +172,11 @@ PAGE = r"""<!DOCTYPE html>
       __ADMIN_SHELL_NAV__
     </aside>
     <main class="wt-main">
-      <h1 style="font-size:1.5rem;margin:0 0 8px;">Create article</h1>
-      <p style="color:#9ca3af;margin:0 0 16px;">You choose intent (topic + goal); the system proposes structure, proof, and visuals. Defaults come from workspace settings.</p>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 8px;">
+        <h1 style="font-size:1.5rem;margin:0;">Create article</h1>
+        <button type="button" class="wt-btn-ghost" id="btnAutoArticle" style="font-weight:600;border-color:rgba(129,140,248,.45);color:#c7d2fe;">Auto article</button>
+      </div>
+      <p style="color:#9ca3af;margin:0 0 16px;">You choose intent (topic + goal); the system proposes structure, proof, and visuals. Defaults come from workspace settings. <strong>Auto article</strong> picks topic and metadata, generates <strong>five long-form drafts</strong>, shows each variant's SEO score as it finishes, then you choose which one to publish.</p>
       <div class="wt-steps-bar" aria-hidden="true">
         <span class="wt-step-pill wt-on" id="pill1">1 · Idea</span>
         <span class="wt-step-pill" id="pill2">2 · AI plan</span>
@@ -563,12 +617,185 @@ PAGE = r"""<!DOCTYPE html>
     ruleIdx++;
   };
 
+  function escapeHtml(s) {
+    if (s == null || s === '') return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function scorePillClass(overall) {
+    if (overall == null || overall === '' || overall === '—') return 'wt-pill--score-muted';
+    var n = Number(overall);
+    if (isNaN(n)) return 'wt-pill--score-muted';
+    if (n >= 80) return 'wt-pill--score-high';
+    if (n >= 60) return 'wt-pill--score-mid';
+    return 'wt-pill--score-low';
+  }
+
+  function verdictPillClass(verdict) {
+    if (!verdict) return 'wt-pill--verdict-hold';
+    if (verdict.indexOf('Good to publish') >= 0) return 'wt-pill--verdict-ok';
+    if (verdict.indexOf('Draft only') >= 0) return 'wt-pill--verdict-hold';
+    return 'wt-pill--verdict';
+  }
+
   function setLoading(on) {
     var L = document.getElementById('wtLoading');
     if (!L) return;
     if (on) { L.classList.add('wt-loading--on'); L.setAttribute('aria-hidden', 'false'); }
     else { L.classList.remove('wt-loading--on'); L.setAttribute('aria-hidden', 'true'); }
   }
+
+  function resetAutoOverlay() {
+    var sp = document.getElementById('wtAutoSpinnerBlock');
+    var lw = document.getElementById('wtAutoLogWrap');
+    var pk = document.getElementById('wtAutoPick');
+    var log = document.getElementById('wtAutoLog');
+    var eA = document.getElementById('wtAutoErr');
+    var t = document.getElementById('wtLoadTitle');
+    if (sp) sp.style.display = 'block';
+    if (lw) lw.style.display = 'none';
+    if (pk) pk.style.display = 'none';
+    if (log) log.innerHTML = '';
+    if (eA) eA.textContent = '';
+    if (t) t.textContent = 'Generating articles…';
+  }
+
+  async function runAutoArticleStream() {
+    var errBox = document.getElementById('wtAutoErr');
+    var errMain = document.getElementById('err');
+    var batchId = '';
+    try {
+      var resp = await fetch('/api/admin/writter/auto-article/stream', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'text/event-stream' }
+      });
+      if (!resp.ok) throw new Error(await resp.text() || 'Request failed');
+      var reader = resp.body.getReader();
+      var dec = new TextDecoder();
+      var buf = '';
+      while (true) {
+        var r = await reader.read();
+        if (r.done) break;
+        buf += dec.decode(r.value, { stream: true });
+        var parts = buf.split('\n\n');
+        buf = parts.pop() || '';
+        for (var pi = 0; pi < parts.length; pi++) {
+          var block = parts[pi].trim();
+          if (!block.startsWith('data:')) continue;
+          var payload = JSON.parse(block.slice(5).trim());
+          if (payload.phase === 'error') throw new Error(payload.detail || 'Generation failed');
+          if (payload.phase === 'brief') {
+            batchId = payload.batch_id || '';
+            document.getElementById('wtAutoTopic').textContent = payload.topic || '';
+            document.getElementById('wtAutoLogWrap').style.display = 'block';
+          }
+          if (payload.phase === 'attempt_start') {
+            var att = Number(payload.attempt);
+            var tot = Number(payload.total);
+            document.getElementById('wtLoadTitle').innerHTML =
+              'Generating variant <span class="wt-load-em">' + att + '</span> of <span class="wt-load-em">' + tot + '</span>…';
+            var li = document.createElement('li');
+            li.id = 'wtAutoLi' + payload.attempt;
+            li.innerHTML =
+              '<div class="wt-var-line"><span class="wt-var-name">Variant ' + att + '</span>' +
+              '<span class="wt-pill wt-pill--progress">In progress</span></div>' +
+              '<div style="margin-top:6px;font-size:.78rem;color:#64748b;">Writing draft…</div>';
+            document.getElementById('wtAutoLog').appendChild(li);
+          }
+          if (payload.phase === 'attempt_done') {
+            var el = document.getElementById('wtAutoLi' + payload.attempt);
+            var sc = (payload.overall != null && payload.overall !== '') ? payload.overall : '—';
+            var scClass = scorePillClass(sc);
+            var v = payload.verdict || '';
+            var pills =
+              '<span class="wt-pill wt-pill--seo">SEO overall</span>' +
+              '<span class="wt-pill ' + scClass + '">' + escapeHtml(String(sc)) + '/100</span>';
+            if (payload.word_count_approx)
+              pills += '<span class="wt-pill wt-pill--words">~' + escapeHtml(String(payload.word_count_approx)) + ' words</span>';
+            if (v)
+              pills += '<span class="wt-pill ' + verdictPillClass(v) + '">' + escapeHtml(v) + '</span>';
+            var attDone = Number(payload.attempt);
+            if (el) {
+              el.innerHTML =
+                '<div class="wt-var-line"><span class="wt-var-name">Variant ' + attDone + '</span></div>' +
+                '<div class="wt-var-line" style="margin-top:8px;">' + pills + '</div>';
+            }
+          }
+          if (payload.phase === 'complete') {
+            batchId = payload.batch_id || batchId;
+            var spb = document.getElementById('wtAutoSpinnerBlock');
+            if (spb) spb.style.display = 'none';
+            document.getElementById('wtLoadTitle').innerHTML =
+              'Drafts ready — <span class="wt-load-em">pick one to publish</span>';
+            var candidates = payload.candidates ? payload.candidates.slice() : [];
+            candidates.sort(function(a, b) {
+              var oa = typeof a.overall === 'number' ? a.overall : -1;
+              var ob = typeof b.overall === 'number' ? b.overall : -1;
+              return ob - oa;
+            });
+            var wrap = document.getElementById('wtAutoPickBtns');
+            wrap.innerHTML = '';
+            var bid = batchId;
+            for (var i = 0; i < candidates.length; i++) {
+              (function(cd) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'wt-btn';
+                b.style.width = '100%';
+                b.style.textAlign = 'left';
+                var sc = (cd.overall != null) ? cd.overall : '—';
+                var tit = (cd.title || '').slice(0, 72);
+                b.textContent = 'Publish variant ' + cd.attempt + ' — score ' + sc + ' — ' + tit;
+                b.onclick = function() {
+                  b.disabled = true;
+                  fetch('/api/admin/writter/auto-article/finalize', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({ article_id: cd.article_id, batch_id: bid, delete_siblings: true })
+                  }).then(function(res) {
+                    if (!res.ok) return res.text().then(function(t) { throw new Error(t || res.status); });
+                    return res.json();
+                  }).then(function(d) {
+                    if (d.id) window.location.href = '/admin/writter/article/' + d.id + '/review';
+                  }).catch(function(e) {
+                    alert(e.message || 'Publish failed');
+                    b.disabled = false;
+                  });
+                };
+                wrap.appendChild(b);
+              })(candidates[i]);
+            }
+            document.getElementById('wtAutoPick').style.display = 'block';
+          }
+        }
+      }
+    } catch (e) {
+      if (errBox) errBox.textContent = e.message || 'Failed';
+      if (errMain) errMain.textContent = e.message || 'Failed';
+      setLoading(false);
+    }
+  }
+
+  var btnAuto = document.getElementById('btnAutoArticle');
+  if (btnAuto) btnAuto.onclick = function() {
+    if (!confirm("AI will propose a topic and create five long-form draft variants. You will see each variant's SEO score, then choose which one to publish. Continue?")) return;
+    var err = document.getElementById('err');
+    if (err) err.textContent = '';
+    resetAutoOverlay();
+    setLoading(true);
+    document.getElementById('wtAutoLogWrap').style.display = 'block';
+    runAutoArticleStream();
+  };
+
+  var btnAutoCancel = document.getElementById('wtAutoCancelPick');
+  if (btnAutoCancel) btnAutoCancel.onclick = function() {
+    setLoading(false);
+    resetAutoOverlay();
+  };
 
   document.getElementById('f').onsubmit = function(e) {
     e.preventDefault();

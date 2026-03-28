@@ -164,6 +164,26 @@ class BlogArticle(Base):
     cluster_id = Column(Integer, ForeignKey("content_clusters.id"), nullable=True)
     cluster_role = Column(String(32), nullable=True)
     writter_refresh_status = Column(String(64), nullable=True)
+    auto_generation_batch_id = Column(String(64), nullable=True, index=True)
+
+
+class WritterFutureArticle(Base):
+    """Admin queue: AI-suggested article briefs pending approval before generation."""
+
+    __tablename__ = "writter_future_articles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    topic = Column(String(500), nullable=False)
+    keywords = Column(Text, nullable=True)
+    article_type = Column(String(64), nullable=False, default="informational")
+    primary_goal = Column(String(64), nullable=False, default="organic_traffic")
+    briefing_json = Column(JSON, nullable=True)
+    status = Column(String(32), nullable=False, default="pending")  # pending, approved, rejected, done
+    generated_article_id = Column(Integer, ForeignKey("blog_articles.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+    )
 
 
 class BlogArticleVersion(Base):

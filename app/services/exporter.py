@@ -1,4 +1,5 @@
 import csv
+import json
 import re
 from typing import List, TextIO
 
@@ -85,6 +86,56 @@ _GMC_FEED_FIELDNAMES = [
     "size",
     "material",
 ]
+
+
+def generate_positioning_debug_csv(products: List[ProductResult], buffer: TextIO) -> None:
+    """Sidecar export: intent pipeline metadata for QA (not a Merchant feed)."""
+    fieldnames = [
+        "id",
+        "original_title",
+        "final_title",
+        "original_description_excerpt",
+        "final_description_excerpt",
+        "fallback_used",
+        "confidence_summary",
+        "selected_intents",
+        "rejected_intents_json",
+        "title_rationale_json",
+        "extraction_last_error_tags",
+        "assembly_last_error_tags",
+        "pipeline_log",
+    ]
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for result in _feed_results(products):
+        p = result.positioning or {}
+        sel = p.get("selected_intents") or []
+        sel_text = " | ".join(
+            (x.get("intent") if isinstance(x, dict) else str(x)) for x in sel
+        )
+        fg = p.get("final_generation") or {}
+        rationale = fg.get("title_rationale") if isinstance(fg, dict) else []
+        writer.writerow(
+            {
+                "id": result.product.id,
+                "original_title": result.product.title or "",
+                "final_title": result.optimized_title or "",
+                "original_description_excerpt": ((result.product.description or "")[:240]),
+                "final_description_excerpt": ((result.optimized_description or "")[:240]),
+                "fallback_used": p.get("fallback_used") or "",
+                "confidence_summary": p.get("confidence_summary") or "",
+                "selected_intents": sel_text,
+                "rejected_intents_json": json.dumps(p.get("rejected_intents") or [], ensure_ascii=False),
+                "title_rationale_json": json.dumps(rationale, ensure_ascii=False),
+                "extraction_last_error_tags": " | ".join(
+                    str(x) for x in (p.get("extraction_last_error_tags") or [])
+                ),
+                "assembly_last_error_tags": " | ".join(
+                    str(x) for x in (p.get("assembly_last_error_tags") or [])
+                ),
+                "pipeline_log": " | ".join(p.get("pipeline_log") or []),
+            }
+        )
 
 
 def generate_merchant_feed_csv(products: List[ProductResult], buffer: TextIO) -> None:

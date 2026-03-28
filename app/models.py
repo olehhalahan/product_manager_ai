@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Optional, List
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -70,6 +70,8 @@ class ProductResult(BaseModel):
     score: int = 0
     notes: Optional[str] = None
     error: Optional[str] = None
+    # Intent extraction + assembly debug (AI Decision System for positioning); persisted in batch JSON.
+    positioning: Optional[Dict[str, Any]] = None
 
     gmc_errors: List[str] = Field(default_factory=list)
     gmc_warnings: List[str] = Field(default_factory=list)

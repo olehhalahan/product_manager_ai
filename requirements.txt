@@ -7,6 +7,7 @@ redis
 sqlalchemy
 python-dotenv
 httpx
+beautifulsoup4
 openai
 authlib
 PyJWT

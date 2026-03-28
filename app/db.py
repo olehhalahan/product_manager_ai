@@ -150,6 +150,8 @@ def init_db():
                 conn.execute(text("ALTER TABLE blog_articles ADD COLUMN cluster_role VARCHAR(32)"))
             if "writter_refresh_status" not in bcols:
                 conn.execute(text("ALTER TABLE blog_articles ADD COLUMN writter_refresh_status VARCHAR(64)"))
+            if "auto_generation_batch_id" not in bcols:
+                conn.execute(text("ALTER TABLE blog_articles ADD COLUMN auto_generation_batch_id VARCHAR(64)"))
 
     inspector = inspect(engine)
     if "content_clusters" not in inspector.get_table_names():
@@ -161,5 +163,11 @@ def init_db():
         from .db_models import BlogArticleVersion
 
         BlogArticleVersion.__table__.create(bind=engine, checkfirst=True)
+
+    inspector = inspect(engine)
+    if "writter_future_articles" not in inspector.get_table_names():
+        from .db_models import WritterFutureArticle
+
+        WritterFutureArticle.__table__.create(bind=engine, checkfirst=True)
 
     Base.metadata.create_all(bind=engine)
