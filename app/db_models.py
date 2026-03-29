@@ -186,6 +186,27 @@ class WritterFutureArticle(Base):
     )
 
 
+class WritterAutoRun(Base):
+    """Log + idempotency metadata for daily automatic SEO article runs (cron / manual)."""
+
+    __tablename__ = "writter_auto_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(64), unique=True, nullable=False, index=True)
+    trigger = Column(String(32), nullable=False, default="cron")
+    timezone = Column(String(64), nullable=False, default="UTC")
+    local_date = Column(String(10), nullable=False, index=True)
+    target_count = Column(Integer, nullable=False, default=5)
+    success_count = Column(Integer, nullable=False, default=0)
+    failed_count = Column(Integer, nullable=False, default=0)
+    skipped_count = Column(Integer, nullable=False, default=0)
+    status = Column(String(24), nullable=False, default="running")
+    log_json = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    finished_at = Column(DateTime, nullable=True)
+
+
 class BlogArticleVersion(Base):
     """Snapshot of article HTML/title/meta for version history."""
     __tablename__ = "blog_article_versions"

@@ -170,4 +170,10 @@ def init_db():
 
         WritterFutureArticle.__table__.create(bind=engine, checkfirst=True)
 
+    inspector = inspect(engine)
+    if "writter_auto_runs" not in inspector.get_table_names():
+        from .db_models import WritterAutoRun
+
+        WritterAutoRun.__table__.create(bind=engine, checkfirst=True)
+
     Base.metadata.create_all(bind=engine)

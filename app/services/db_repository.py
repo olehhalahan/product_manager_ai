@@ -22,6 +22,7 @@ from ..db_models import (
     BlogArticleVersion,
     ContentCluster,
     WritterFutureArticle,
+    WritterAutoRun,
 )
 
 
@@ -85,6 +86,33 @@ def _settings_dict_from_db(db: Session) -> Dict[str, str]:
         settings["writter_default_audience"] = "SMB e-commerce merchants and catalog managers"
     if "writter_default_cta" not in settings:
         settings["writter_default_cta"] = "Try Cartozo on your product feed"
+    # Daily automatic Writer articles (cron / manual)
+    if "writter_auto_enabled" not in settings:
+        settings["writter_auto_enabled"] = "0"
+    if "writter_auto_daily_count" not in settings:
+        settings["writter_auto_daily_count"] = "5"
+    if "writter_auto_local_hour" not in settings:
+        settings["writter_auto_local_hour"] = "13"
+    if "writter_auto_local_minute" not in settings:
+        settings["writter_auto_local_minute"] = "0"
+    if "writter_auto_timezone" not in settings:
+        settings["writter_auto_timezone"] = "Europe/Uzhgorod"
+    if "writter_auto_min_topic_score" not in settings:
+        settings["writter_auto_min_topic_score"] = "38"
+    if "writter_auto_publish_immediately" not in settings:
+        settings["writter_auto_publish_immediately"] = "1"
+    if "writter_auto_generation_mode" not in settings:
+        settings["writter_auto_generation_mode"] = "authority"
+    if "writter_auto_pause_seconds" not in settings:
+        settings["writter_auto_pause_seconds"] = "18"
+    if "writter_auto_max_retries" not in settings:
+        settings["writter_auto_max_retries"] = "2"
+    if "writter_auto_cron_secret" not in settings:
+        settings["writter_auto_cron_secret"] = ""
+    if "writter_auto_allowed_article_types" not in settings:
+        settings["writter_auto_allowed_article_types"] = ""
+    if "writter_auto_author_email" not in settings:
+        settings["writter_auto_author_email"] = "writter-auto@cartozo.ai"
     return settings
 
 
@@ -1295,4 +1323,211 @@ def list_blog_topics_and_titles(db: Session, limit: int = 500) -> List[str]:
             if s and s.lower() not in seen:
                 seen.add(s.lower())
                 out.append(s)
+    return out
+
+
+def list_blog_articles_inventory_for_writter(db: Session, *, limit: int = 120) -> List[str]:
+    """
+    One line per blog row: status, slug, type, title, topic, keywords.
+    Used to give the LLM real site coverage so it proposes gaps—not paraphrases.
+    """
+    lim = min(max(1, limit), 500)
+    rows = db.execute(
+        select(
+            BlogArticle.status,
+            BlogArticle.article_type,
+            BlogArticle.slug,
+            BlogArticle.title,
+            BlogArticle.topic,
+            BlogArticle.keywords,
+        )
+        .order_by(BlogArticle.updated_at.desc())
+        .limit(lim)
+    ).all()
+    lines: List[str] = []
+    for st, atype, slug, title, topic, keywords in rows:
+        status = (st or "draft").strip().upper() or "DRAFT"
+        slug_s = (slug or "").strip()[:96]
+        title_s = (title or "").replace("\n", " ").strip()[:180]
+        topic_s = (topic or "").replace("\n", " ").strip()[:160]
+        kw_s = (keywords or "").replace("\n", " ").strip()[:220]
+        lines.append(
+            f"[{status}] /blog/{slug_s} | type={atype or ''} | TITLE: {title_s} | TOPIC: {topic_s} | KW: {kw_s}"
+        )
+    return lines
+
+
+def get_writter_site_context_for_llm(db: Session, *, inventory_limit: int = 120) -> Dict[str, List[str]]:
+    """
+    Deduped topic/title strings for de-duplication plus inventory lines for gap-finding prompts.
+    """
+    inv_lines = list_blog_articles_inventory_for_writter(db, limit=inventory_limit)
+    raw_topics: List[str] = []
+    raw_topics.extend(list_blog_topics_and_titles(db, limit=800))
+    raw_topics.extend(list_future_queue_topics(db))
+    seen: set[str] = set()
+    existing: List[str] = []
+    for t in raw_topics:
+        s = (t or "").strip()
+        if not s:
+            continue
+        low = s.lower()
+        if low in seen:
+            continue
+        seen.add(low)
+        existing.append(s)
+    return {"existing_topics": existing, "site_inventory_lines": inv_lines}
+
+
+def _planning_is_auto_daily(planning: Any) -> bool:
+    if not isinstance(planning, dict):
+        return False
+    wa = planning.get("writter_auto")
+    return isinstance(wa, dict) and str(wa.get("batch") or "").strip() == "daily"
+
+
+def count_auto_daily_articles_on_local_date(db: Session, *, tz_name: str, local_date: str) -> int:
+    """How many auto-daily articles were published on calendar day ``local_date`` in ``tz_name``."""
+    try:
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo((tz_name or "UTC").strip() or "UTC")
+    except Exception:
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo("UTC")
+    y, m, d = [int(x) for x in (local_date or "").split("-")[:3]]
+
+    start_l = datetime(y, m, d, 0, 0, 0, tzinfo=tz)
+    end_l = start_l + timedelta(days=1)
+    start_utc = start_l.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = end_l.astimezone(timezone.utc).replace(tzinfo=None)
+    rows = (
+        db.execute(
+            select(BlogArticle).where(
+                BlogArticle.status == "published",
+                BlogArticle.published_at.isnot(None),
+                BlogArticle.published_at >= start_utc,
+                BlogArticle.published_at < end_utc,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    n = 0
+    for r in rows:
+        if _planning_is_auto_daily(r.planning_json):
+            n += 1
+    return n
+
+
+def writter_auto_expire_stale_running(db: Session, *, max_age_minutes: int = 180) -> int:
+    """Mark old stuck ``running`` rows as failed so a new daily job can start."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=max(30, max_age_minutes))
+    rows = (
+        db.execute(
+            select(WritterAutoRun).where(
+                WritterAutoRun.status == "running",
+                WritterAutoRun.started_at < cutoff,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    n = 0
+    now = datetime.now(timezone.utc)
+    for r in rows:
+        r.status = "failed"
+        r.finished_at = now
+        prev = (r.error_message or "").strip()
+        r.error_message = (prev + " stale run closed automatically." if prev else "stale run closed automatically.")[
+            :8000
+        ]
+        n += 1
+    return n
+
+
+def writter_auto_has_running_job(db: Session, *, max_age_minutes: int = 180) -> bool:
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=max(5, max_age_minutes))
+    row = db.execute(
+        select(WritterAutoRun.id)
+        .where(WritterAutoRun.status == "running", WritterAutoRun.started_at >= cutoff)
+        .limit(1)
+    ).scalar_one_or_none()
+    return row is not None
+
+
+def writter_auto_insert_run(
+    db: Session,
+    *,
+    run_id: str,
+    trigger: str,
+    timezone_str: str,
+    local_date: str,
+    target_count: int,
+) -> WritterAutoRun:
+    row = WritterAutoRun(
+        run_id=run_id[:64],
+        trigger=(trigger or "cron")[:32],
+        timezone=(timezone_str or "UTC")[:64],
+        local_date=(local_date or "")[:10],
+        target_count=max(0, int(target_count)),
+        success_count=0,
+        failed_count=0,
+        skipped_count=0,
+        status="running",
+        log_json=[],
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def writter_auto_finish_run(
+    db: Session,
+    row: WritterAutoRun,
+    *,
+    status: str,
+    success_count: int,
+    failed_count: int,
+    skipped_count: int,
+    log_json: List[Dict[str, Any]],
+    error_message: str = "",
+) -> None:
+    row.status = (status or "completed")[:24]
+    row.success_count = int(success_count)
+    row.failed_count = int(failed_count)
+    row.skipped_count = int(skipped_count)
+    row.log_json = log_json
+    row.error_message = (error_message or "")[:8000] or None
+    row.finished_at = datetime.now(timezone.utc)
+
+
+def list_writter_auto_runs(db: Session, *, limit: int = 30) -> List[Dict[str, Any]]:
+    lim = min(max(1, limit), 200)
+    rows = (
+        db.execute(select(WritterAutoRun).order_by(WritterAutoRun.started_at.desc()).limit(lim))
+        .scalars()
+        .all()
+    )
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "id": r.id,
+                "run_id": r.run_id,
+                "trigger": r.trigger,
+                "timezone": r.timezone,
+                "local_date": r.local_date,
+                "target_count": r.target_count,
+                "success_count": r.success_count,
+                "failed_count": r.failed_count,
+                "skipped_count": r.skipped_count,
+                "status": r.status,
+                "log_json": r.log_json if isinstance(r.log_json, list) else [],
+                "error_message": r.error_message or "",
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            }
+        )
     return out

@@ -597,6 +597,7 @@ async def writter_list_page(request: Request):
       <div class="wt-tabs" role="tablist">
         <button type="button" class="wt-tab wt-tab--on" id="wtTabArticles" role="tab" aria-selected="true">Articles</button>
         <button type="button" class="wt-tab" id="wtTabFuture" role="tab" aria-selected="false">Future articles</button>
+        <button type="button" class="wt-tab" id="wtTabAuto" role="tab" aria-selected="false">Daily auto</button>
       </div>
       <p id="wtFutureHint" style="display:none;color:#94a3b8;font-size:.88rem;margin:0 0 12px;max-width:52rem;">
         <strong>Refresh queue</strong> and <strong>+ 5 topics</strong> only add a short topic line and keywords (ideas for the queue), not article bodies. Approve rows you want, then click <strong>Generate</strong> to draft and publish when SEO overall score is at least {MIN_QUALITY_AUTO_PUBLISH}. <strong>Regenerate</strong> replaces one row with a new full AI brief.
@@ -637,6 +638,51 @@ async def writter_list_page(request: Request):
       </table>
       </div>
       </div>
+      <div id="panelAuto" class="wt-tab-panel" role="tabpanel">
+        <p style="color:#94a3b8;font-size:.88rem;max-width:56rem;margin:0 0 16px;">
+          Scheduled cron should call <code style="color:#cbd5e1;">POST /api/cron/writter-auto-daily</code> with header
+          <code style="color:#cbd5e1;">X-Writter-Cron-Secret</code> (or env <code>WRITTER_AUTO_CRON_SECRET</code>).
+          Optional in-app scheduler: set <code>ENABLE_WRITTER_AUTO_SCHEDULER=1</code> (uses hour/minute + timezone below; restart app after changes).
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;max-width:900px;margin-bottom:20px;">
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Enabled (1/0)
+            <input id="wad_enabled" class="wt-dd" style="max-width:100%" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Articles / day
+            <input id="wad_count" type="number" min="1" max="15" class="wt-dd" style="max-width:100%" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Local hour
+            <input id="wad_hour" type="number" min="0" max="23" class="wt-dd" style="max-width:100%" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Local minute
+            <input id="wad_minute" type="number" min="0" max="59" class="wt-dd" style="max-width:100%" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Timezone (IANA)
+            <input id="wad_tz" class="wt-dd" style="max-width:100%" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Min topic score (0–100)
+            <input id="wad_min_score" type="number" class="wt-dd" style="max-width:100%" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Pause sec between articles
+            <input id="wad_pause" type="number" class="wt-dd" style="max-width:100%" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Max retries / article
+            <input id="wad_retries" type="number" class="wt-dd" style="max-width:100%" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Publish immediately (1/0)
+            <input id="wad_publish" class="wt-dd" style="max-width:100%" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Generation mode
+            <select id="wad_mode" class="wt-dd" style="max-width:100%"><option value="authority">authority</option><option value="standard">standard</option><option value="fast">fast</option></select></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Author email
+            <input id="wad_author" class="wt-dd" style="max-width:100%" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">Allowed types (csv, empty=all)
+            <input id="wad_types" class="wt-dd" style="max-width:100%" placeholder="informational,problem_solving" /></label>
+          <label style="display:flex;flex-direction:column;gap:6px;font-size:.85rem;color:#9ca3af;">New cron secret (optional)
+            <input id="wad_secret" type="password" class="wt-dd" style="max-width:100%" autocomplete="new-password" /></label>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;align-items:center;">
+          <button type="button" class="wt-btn" id="wadSave">Save settings</button>
+          <span id="wadSaveMsg" style="font-size:.85rem;color:#4ade80;"></span>
+          <button type="button" class="wt-btn wt-btn-secondary" id="wadRun1">Run now (1 article, respect quota)</button>
+          <button type="button" class="wt-btn wt-btn-secondary" id="wadRun5">Test full batch (force 5, ignores quota)</button>
+        </div>
+        <h2 style="font-size:1.05rem;margin:24px 0 10px;">Recent runs</h2>
+        <div class="wt-table-wrap"><table class="wt-table" style="min-width:720px;"><thead><tr>
+          <th>Started</th><th>Local date</th><th>Status</th><th>OK / fail / skip</th><th>Run id</th>
+        </tr></thead><tbody id="wadRunsBody"></tbody></table></div>
+      </div>
     </main>
   </div>
   <script>
@@ -645,25 +691,132 @@ async def writter_list_page(request: Request):
   (function() {{
     var tabA = document.getElementById('wtTabArticles');
     var tabF = document.getElementById('wtTabFuture');
+    var tabU = document.getElementById('wtTabAuto');
     var pA = document.getElementById('panelArticles');
     var pF = document.getElementById('panelFuture');
+    var pU = document.getElementById('panelAuto');
     var hint = document.getElementById('wtFutureHint');
     function showArticles() {{
       if (tabA) {{ tabA.classList.add('wt-tab--on'); tabA.setAttribute('aria-selected', 'true'); }}
       if (tabF) {{ tabF.classList.remove('wt-tab--on'); tabF.setAttribute('aria-selected', 'false'); }}
+      if (tabU) {{ tabU.classList.remove('wt-tab--on'); tabU.setAttribute('aria-selected', 'false'); }}
       if (pA) {{ pA.classList.add('wt-on'); }}
       if (pF) {{ pF.classList.remove('wt-on'); }}
+      if (pU) {{ pU.classList.remove('wt-on'); }}
       if (hint) hint.style.display = 'none';
     }}
     function showFuture() {{
       if (tabF) {{ tabF.classList.add('wt-tab--on'); tabF.setAttribute('aria-selected', 'true'); }}
       if (tabA) {{ tabA.classList.remove('wt-tab--on'); tabA.setAttribute('aria-selected', 'false'); }}
+      if (tabU) {{ tabU.classList.remove('wt-tab--on'); tabU.setAttribute('aria-selected', 'false'); }}
       if (pF) {{ pF.classList.add('wt-on'); }}
       if (pA) {{ pA.classList.remove('wt-on'); }}
+      if (pU) {{ pU.classList.remove('wt-on'); }}
       if (hint) hint.style.display = 'block';
+    }}
+    function loadAutoSettings() {{
+      fetch('/api/admin/writter/auto-daily/settings', {{ credentials: 'same-origin' }})
+        .then(function(r) {{ return r.json(); }})
+        .then(function(d) {{
+          function v(id, val) {{ var el = document.getElementById(id); if (el) el.value = val != null ? val : ''; }}
+          v('wad_enabled', d.writter_auto_enabled);
+          v('wad_count', d.writter_auto_daily_count);
+          v('wad_hour', d.writter_auto_local_hour);
+          v('wad_minute', d.writter_auto_local_minute);
+          v('wad_tz', d.writter_auto_timezone);
+          v('wad_min_score', d.writter_auto_min_topic_score);
+          v('wad_pause', d.writter_auto_pause_seconds);
+          v('wad_retries', d.writter_auto_max_retries);
+          v('wad_publish', d.writter_auto_publish_immediately);
+          var m = document.getElementById('wad_mode');
+          if (m && d.writter_auto_generation_mode) m.value = d.writter_auto_generation_mode;
+          v('wad_author', d.writter_auto_author_email);
+          v('wad_types', d.writter_auto_allowed_article_types);
+          var sec = document.getElementById('wad_secret');
+          if (sec) sec.value = '';
+          fetch('/api/admin/writter/auto-daily/runs', {{ credentials: 'same-origin' }})
+            .then(function(r) {{ return r.json(); }})
+            .then(function(r2) {{
+              var tb = document.getElementById('wadRunsBody');
+              if (!tb || !r2.runs) return;
+              tb.innerHTML = r2.runs.map(function(x) {{
+                var st = x.started_at ? x.started_at.slice(0,19).replace('T',' ') : '—';
+                return '<tr><td>' + st + '</td><td>' + (x.local_date || '—') + '</td><td>' + (x.status || '') + '</td><td>' +
+                  x.success_count + ' / ' + x.failed_count + ' / ' + x.skipped_count + '</td><td style="font-size:.75rem;color:#94a3b8;">' + (x.run_id || '') + '</td></tr>';
+              }}).join('');
+            }});
+        }}).catch(function() {{}});
+    }}
+    function showAuto() {{
+      if (tabU) {{ tabU.classList.add('wt-tab--on'); tabU.setAttribute('aria-selected', 'true'); }}
+      if (tabA) {{ tabA.classList.remove('wt-tab--on'); tabA.setAttribute('aria-selected', 'false'); }}
+      if (tabF) {{ tabF.classList.remove('wt-tab--on'); tabF.setAttribute('aria-selected', 'false'); }}
+      if (pU) {{ pU.classList.add('wt-on'); }}
+      if (pA) {{ pA.classList.remove('wt-on'); }}
+      if (pF) {{ pF.classList.remove('wt-on'); }}
+      if (hint) hint.style.display = 'none';
+      loadAutoSettings();
     }}
     if (tabA) tabA.addEventListener('click', showArticles);
     if (tabF) tabF.addEventListener('click', showFuture);
+    if (tabU) tabU.addEventListener('click', showAuto);
+    function wadCollect() {{
+      function g(id) {{ var el = document.getElementById(id); return el ? el.value.trim() : ''; }}
+      return {{
+        writter_auto_enabled: g('wad_enabled'),
+        writter_auto_daily_count: g('wad_count'),
+        writter_auto_local_hour: g('wad_hour'),
+        writter_auto_local_minute: g('wad_minute'),
+        writter_auto_timezone: g('wad_tz'),
+        writter_auto_min_topic_score: g('wad_min_score'),
+        writter_auto_pause_seconds: g('wad_pause'),
+        writter_auto_max_retries: g('wad_retries'),
+        writter_auto_publish_immediately: g('wad_publish'),
+        writter_auto_generation_mode: g('wad_mode'),
+        writter_auto_author_email: g('wad_author'),
+        writter_auto_allowed_article_types: g('wad_types'),
+      }};
+    }}
+    var wadSaveBtn = document.getElementById('wadSave');
+    if (wadSaveBtn) wadSaveBtn.addEventListener('click', function() {{
+      var body = wadCollect();
+      var sec = document.getElementById('wad_secret');
+      if (sec && sec.value.trim()) body.writter_auto_cron_secret = sec.value.trim();
+      fetch('/api/admin/writter/auto-daily/settings', {{
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify(body),
+      }}).then(function(r) {{
+        if (!r.ok) return r.text().then(function(t) {{ throw new Error(t || r.status); }});
+        var m = document.getElementById('wadSaveMsg');
+        if (m) {{ m.textContent = 'Saved'; setTimeout(function() {{ m.textContent = ''; }}, 2500); }}
+        if (sec) sec.value = '';
+      }}).catch(function(e) {{ alert(e.message || 'Save failed'); }});
+    }});
+    function wadRun(force, count) {{
+      setLoad(true);
+      if (loadTitle) loadTitle.textContent = 'Auto-generating articles…';
+      if (loadSub) loadSub.textContent = 'Sequential Writer run — may take several minutes.';
+      fetch('/api/admin/writter/auto-daily/run', {{
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{ force_full: !!force, count: count }}),
+      }}).then(function(r) {{
+        if (!r.ok) return r.text().then(function(t) {{ throw new Error(t || r.status); }});
+        return r.json();
+      }}).then(function(d) {{
+        setLoad(false);
+        alert(JSON.stringify(d, null, 2).slice(0, 3500));
+        loadAutoSettings();
+        location.reload();
+      }}).catch(function(e) {{ alert(e.message || 'Failed'); setLoad(false); }});
+    }}
+    var wadRun1 = document.getElementById('wadRun1');
+    if (wadRun1) wadRun1.addEventListener('click', function() {{ wadRun(false, 1); }});
+    var wadRun5 = document.getElementById('wadRun5');
+    if (wadRun5) wadRun5.addEventListener('click', function() {{ wadRun(true, 5); }});
     var load = document.getElementById('wtLoading');
     var loadTitle = document.getElementById('wtLoadTitle');
     var loadSub = document.getElementById('wtLoadSub');
@@ -1230,6 +1383,44 @@ class FinalizeAutoArticleBody(BaseModel):
     delete_siblings: bool = True
 
 
+_WRITTER_AUTO_SETTING_KEYS = (
+    "writter_auto_enabled",
+    "writter_auto_daily_count",
+    "writter_auto_local_hour",
+    "writter_auto_local_minute",
+    "writter_auto_timezone",
+    "writter_auto_min_topic_score",
+    "writter_auto_publish_immediately",
+    "writter_auto_generation_mode",
+    "writter_auto_pause_seconds",
+    "writter_auto_max_retries",
+    "writter_auto_cron_secret",
+    "writter_auto_allowed_article_types",
+    "writter_auto_author_email",
+)
+
+
+class WritterAutoDailySettingsSave(BaseModel):
+    writter_auto_enabled: Optional[str] = None
+    writter_auto_daily_count: Optional[str] = None
+    writter_auto_local_hour: Optional[str] = None
+    writter_auto_local_minute: Optional[str] = None
+    writter_auto_timezone: Optional[str] = None
+    writter_auto_min_topic_score: Optional[str] = None
+    writter_auto_publish_immediately: Optional[str] = None
+    writter_auto_generation_mode: Optional[str] = None
+    writter_auto_pause_seconds: Optional[str] = None
+    writter_auto_max_retries: Optional[str] = None
+    writter_auto_cron_secret: Optional[str] = None
+    writter_auto_allowed_article_types: Optional[str] = None
+    writter_auto_author_email: Optional[str] = None
+
+
+class WritterAutoDailyRunBody(BaseModel):
+    force_full: bool = False
+    count: Optional[int] = None
+
+
 @router.get("/api/admin/writter/visual-options")
 async def api_visual_options(
     request: Request,
@@ -1617,8 +1808,12 @@ def _auto_article_stream_run(author_email: str):
     batch_id = uuid.uuid4().hex[:24]
     api_key = _settings_openai_key()
     with get_db() as db:
-        existing = repo.list_blog_topics_and_titles(db)
-        brief = suggest_auto_article_brief(api_key, existing_topics=existing)
+        ctx = repo.get_writter_site_context_for_llm(db)
+        brief = suggest_auto_article_brief(
+            api_key,
+            existing_topics=ctx["existing_topics"],
+            site_inventory_lines=ctx["site_inventory_lines"],
+        )
         topic = brief["topic"]
         spam = extended_creation_blocked_message(
             same_topic_count=repo.count_blog_articles_same_topic(db, topic),
@@ -1638,6 +1833,7 @@ def _auto_article_stream_run(author_email: str):
             "article_type": brief["article_type"],
             "primary_goal": brief["primary_goal"],
             "rationale": brief.get("rationale") or "",
+            "fills_site_gap": brief.get("fills_site_gap") or "",
         }
 
         body = CreateArticleBody(
@@ -1977,8 +2173,13 @@ async def api_future_articles_refresh(request: Request):
     api_key = _settings_openai_key()
     with get_db() as db:
         repo.delete_writter_future_articles_by_statuses(db, ("pending", "rejected"))
-        existing = repo.list_blog_topics_and_titles(db)
-        ideas = suggest_future_topics_keywords_only(api_key, existing_topics=existing, count=12)
+        ctx = repo.get_writter_site_context_for_llm(db)
+        ideas = suggest_future_topics_keywords_only(
+            api_key,
+            existing_topics=ctx["existing_topics"],
+            site_inventory_lines=ctx["site_inventory_lines"],
+            count=12,
+        )
         for idea in ideas:
             repo.insert_writter_future_article(
                 db,
@@ -1986,7 +2187,10 @@ async def api_future_articles_refresh(request: Request):
                 keywords=idea.get("keywords") or "",
                 article_type="informational",
                 primary_goal="organic_traffic",
-                briefing_json={"note": "topic+keywords only"},
+                briefing_json={
+                    "note": "topic+keywords+site_gap",
+                    "fills_site_gap": idea.get("fills_site_gap") or "",
+                },
                 status="pending",
             )
         rows = repo.list_writter_future_articles(db)
@@ -2000,9 +2204,13 @@ async def api_future_articles_add_topics(request: Request, count: int = 5):
     api_key = _settings_openai_key()
     n = max(1, min(15, int(count)))
     with get_db() as db:
-        existing = repo.list_blog_topics_and_titles(db)
-        existing.extend(repo.list_future_queue_topics(db))
-        ideas = suggest_future_topics_keywords_only(api_key, existing_topics=existing, count=n)
+        ctx = repo.get_writter_site_context_for_llm(db)
+        ideas = suggest_future_topics_keywords_only(
+            api_key,
+            existing_topics=ctx["existing_topics"],
+            site_inventory_lines=ctx["site_inventory_lines"],
+            count=n,
+        )
         for idea in ideas:
             repo.insert_writter_future_article(
                 db,
@@ -2010,7 +2218,10 @@ async def api_future_articles_add_topics(request: Request, count: int = 5):
                 keywords=idea.get("keywords") or "",
                 article_type="informational",
                 primary_goal="organic_traffic",
-                briefing_json={"note": "topic+keywords only"},
+                briefing_json={
+                    "note": "topic+keywords+site_gap",
+                    "fills_site_gap": idea.get("fills_site_gap") or "",
+                },
                 status="pending",
             )
         rows = repo.list_writter_future_articles(db)
@@ -2056,9 +2267,13 @@ async def api_future_regenerate(request: Request, row_id: int):
             raise HTTPException(404, detail="Not found")
         if (row.status or "") == "done":
             raise HTTPException(400, detail="Already generated")
-        existing = repo.list_blog_topics_and_titles(db)
+        ctx = repo.get_writter_site_context_for_llm(db)
         extra = [row.topic or ""] if row.topic else []
-        brief = suggest_auto_article_brief(api_key, existing_topics=existing + extra)
+        brief = suggest_auto_article_brief(
+            api_key,
+            existing_topics=ctx["existing_topics"] + extra,
+            site_inventory_lines=ctx["site_inventory_lines"],
+        )
         repo.update_writter_future_article(
             db,
             row,
@@ -2066,7 +2281,10 @@ async def api_future_regenerate(request: Request, row_id: int):
             keywords=brief.get("keywords") or "",
             article_type=brief["article_type"],
             primary_goal=brief["primary_goal"],
-            briefing_json={"rationale": brief.get("rationale") or ""},
+            briefing_json={
+                "rationale": brief.get("rationale") or "",
+                "fills_site_gap": brief.get("fills_site_gap") or "",
+            },
         )
         item = repo.get_writter_future_article_dict(db, row_id)
     return JSONResponse({"item": item})
@@ -2091,6 +2309,82 @@ async def api_future_generate(request: Request, row_id: int):
     except Exception as e:
         raise HTTPException(500, detail=str(e)[:500])
     return JSONResponse(out)
+
+
+@router.get("/api/admin/writter/auto-daily/settings")
+async def api_writter_auto_daily_settings_get(request: Request):
+    require_admin_http(request)
+    with get_db() as db:
+        s = repo.get_settings(db)
+    out: Dict[str, Any] = {k: (s.get(k) or "") for k in _WRITTER_AUTO_SETTING_KEYS}
+    cs = (out.get("writter_auto_cron_secret") or "").strip()
+    out["writter_auto_cron_secret"] = ""
+    out["writter_auto_cron_secret_configured"] = bool(cs) or bool((os.getenv("WRITTER_AUTO_CRON_SECRET") or "").strip())
+    return JSONResponse(out)
+
+
+@router.post("/api/admin/writter/auto-daily/settings")
+async def api_writter_auto_daily_settings_post(request: Request, body: WritterAutoDailySettingsSave):
+    require_admin_http(request)
+    patch: Dict[str, str] = {}
+    for k in _WRITTER_AUTO_SETTING_KEYS:
+        v = getattr(body, k, None)
+        if v is not None:
+            patch[k] = str(v)
+    if not patch:
+        raise HTTPException(400, detail="No fields to save")
+    if "writter_auto_cron_secret" in patch and not (patch["writter_auto_cron_secret"] or "").strip():
+        del patch["writter_auto_cron_secret"]
+    with get_db() as db:
+        repo.set_settings(db, patch)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/api/admin/writter/auto-daily/run")
+async def api_writter_auto_daily_run(request: Request, body: WritterAutoDailyRunBody):
+    require_admin_http(request)
+    from .services.writter_auto_job import run_writter_auto_daily
+
+    cnt = body.count
+    if cnt is not None:
+        cnt = max(1, min(15, int(cnt)))
+    out = run_writter_auto_daily(
+        "manual_admin",
+        force_full_count=bool(body.force_full),
+        override_count=cnt,
+    )
+    return JSONResponse(_sanitize_for_json(out))
+
+
+@router.get("/api/admin/writter/auto-daily/runs")
+async def api_writter_auto_daily_runs(request: Request, limit: int = 25):
+    require_admin_http(request)
+    lim = max(1, min(100, int(limit)))
+    with get_db() as db:
+        rows = repo.list_writter_auto_runs(db, limit=lim)
+    return JSONResponse({"runs": rows})
+
+
+@router.post("/api/cron/writter-auto-daily")
+async def api_cron_writter_auto_daily(request: Request):
+    """External cron (e.g. 0 13 * * *). Header ``X-Writter-Cron-Secret`` or query ``secret``."""
+    secret_in = (
+        request.headers.get("x-writter-cron-secret")
+        or request.query_params.get("secret")
+        or ""
+    ).strip()
+    with get_db() as db:
+        settings = repo.get_settings(db)
+    expected = (
+        (os.getenv("WRITTER_AUTO_CRON_SECRET") or "").strip()
+        or (settings.get("writter_auto_cron_secret") or "").strip()
+    )
+    if not expected or secret_in != expected:
+        raise HTTPException(403, detail="Invalid or missing cron secret")
+    from .services.writter_auto_job import run_writter_auto_daily
+
+    out = run_writter_auto_daily("cron")
+    return JSONResponse(_sanitize_for_json(out))
 
 
 @router.get("/api/admin/writter/articles")

@@ -11,3 +11,4 @@ beautifulsoup4
 openai
 authlib
 PyJWT
+apscheduler

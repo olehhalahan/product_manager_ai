@@ -1835,6 +1835,110 @@ def gsc_feedback_suggestions(gsc: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _format_site_inventory_block(lines: Optional[List[str]], *, max_chars: int = 14000) -> str:
+    if not lines:
+        return ""
+    out: List[str] = []
+    total = 0
+    for line in lines:
+        row = (line or "").strip()
+        if not row:
+            continue
+        if total + len(row) + 1 > max_chars:
+            out.append("… (corpus truncated for token limits — oldest rows omitted)")
+            break
+        out.append(row)
+        total += len(row) + 1
+    return "\n".join(out)
+
+
+def _corpus_blob_lower(
+    existing_topics: List[str],
+    inventory_lines: Optional[List[str]] = None,
+) -> str:
+    chunks: List[str] = [" ".join((t or "").strip() for t in existing_topics)]
+    if inventory_lines:
+        chunks.append(" ".join(inventory_lines))
+    return " ".join(chunks).lower()
+
+
+def _pick_fallback_brief(
+    existing_topics: List[str],
+    inventory_lines: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    corpus = _corpus_blob_lower(existing_topics, inventory_lines)
+    existing_lower = {(e or "").strip().lower() for e in existing_topics if (e or "").strip()}
+    scored: List[Tuple[int, Dict[str, str]]] = []
+    for row in _FALLBACK_AUTO_TOPICS:
+        topic = (row.get("topic") or "").strip()
+        if topic.lower() in existing_lower:
+            continue
+        blob = f'{topic} {row.get("keywords") or ""}'
+        words = {w for w in re.findall(r"[a-z]{4,}", blob.lower()) if len(w) > 2}
+        cw = {w for w in re.findall(r"[a-z]{4,}", corpus) if len(w) > 2}
+        overlap = len(words & cw)
+        scored.append((overlap, dict(row)))
+    if not scored:
+        r = dict(_FALLBACK_AUTO_TOPICS[0])
+        r["rationale"] = "Template fallback — corpus may already list every starter template topic."
+        r["fills_site_gap"] = "Manual review required."
+        return r
+    scored.sort(key=lambda x: x[0])
+    best = dict(scored[0][1])
+    best["rationale"] = "Template idea (offline / no API key) — chosen for lower lexical overlap with corpus."
+    best["fills_site_gap"] = "Offline mode: confirm this angle is not already covered in SITE_CORPUS."
+    return best
+
+
+def _pick_fallback_topics_keywords(
+    n: int,
+    existing_topics: List[str],
+    inventory_lines: Optional[List[str]] = None,
+) -> List[Dict[str, str]]:
+    corpus = _corpus_blob_lower(existing_topics, inventory_lines)
+    existing_lower = {(e or "").strip().lower() for e in existing_topics if (e or "").strip()}
+    repeats = max(4, (n + len(_FALLBACK_AUTO_TOPICS) - 1) // len(_FALLBACK_AUTO_TOPICS) + 1)
+    scored: List[Tuple[int, str, str]] = []
+    for row in _FALLBACK_AUTO_TOPICS * repeats:
+        topic = (row.get("topic") or "").strip()
+        if topic.lower() in existing_lower:
+            continue
+        blob = f'{topic} {row.get("keywords") or ""}'
+        words = {w for w in re.findall(r"[a-z]{4,}", blob.lower()) if len(w) > 2}
+        cw = {w for w in re.findall(r"[a-z]{4,}", corpus) if len(w) > 2}
+        overlap = len(words & cw)
+        scored.append((overlap, topic, (row.get("keywords") or "").strip()))
+    scored.sort(key=lambda x: x[0])
+    out: List[Dict[str, str]] = []
+    seen_t: set[str] = set()
+    for _, topic, kw in scored:
+        if len(out) >= n:
+            break
+        tl = topic.lower()
+        if tl in seen_t:
+            continue
+        seen_t.add(tl)
+        out.append(
+            {
+                "topic": topic,
+                "keywords": kw,
+                "fills_site_gap": "Offline template — manually verify against published posts.",
+            }
+        )
+    i = 0
+    while len(out) < n:
+        row = _FALLBACK_AUTO_TOPICS[i % len(_FALLBACK_AUTO_TOPICS)]
+        i += 1
+        out.append(
+            {
+                "topic": row["topic"],
+                "keywords": row["keywords"],
+                "fills_site_gap": "Offline template — manually verify against published posts.",
+            }
+        )
+    return out[:n]
+
+
 _FALLBACK_AUTO_TOPICS: List[Dict[str, str]] = [
     {
         "topic": "Google Merchant Center feed errors: diagnose and fix item issues fast",
@@ -1877,22 +1981,32 @@ def _normalize_brief_dict(raw: Dict[str, Any]) -> Dict[str, str]:
     return {"topic": topic, "keywords": kw, "article_type": at, "primary_goal": pg}
 
 
-def suggest_auto_article_brief(api_key: str, *, existing_topics: List[str]) -> Dict[str, Any]:
+def suggest_auto_article_brief(
+    api_key: str,
+    *,
+    existing_topics: List[str],
+    site_inventory_lines: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
-    Propose one article brief (topic, keywords, type, goal) avoiding overlap with existing topics.
+    Propose one article brief from **site gaps**: compare against full inventory, not only a topic list.
     """
     avoid = "\n".join(f"- {(t or '').strip()}" for t in existing_topics[:80] if (t or "").strip())
+    inv_block = _format_site_inventory_block(site_inventory_lines)
     if not HAS_OPENAI or not (api_key or "").strip():
-        for row in _FALLBACK_AUTO_TOPICS:
-            if not any(row["topic"].lower() == (e or "").strip().lower() for e in existing_topics):
-                return dict(row)
-        return dict(_FALLBACK_AUTO_TOPICS[0])
+        return _pick_fallback_brief(existing_topics, site_inventory_lines)
     client = openai.OpenAI(api_key=api_key)
     sys = (
         "You plan SEO blog articles for Cartozo.ai (AI product feed optimization for e-commerce). "
-        "Return ONLY valid JSON. Propose ONE fresh article that complements—not duplicates—the existing list."
+        "Return ONLY valid JSON. "
+        "You receive SITE_CORPUS: titles, topics, types, and keywords already in the CMS. "
+        "Propose ONE article that fills a **coverage gap**—a merchant question, workflow, channel, policy, or audience "
+        "not adequately answered by current posts. Do not recommend near-duplicates or paraphrases of existing titles. "
+        "Reason explicitly against SITE_CORPUS before choosing the angle."
     )
-    user = f"""Existing topics/titles (do not repeat these themes closely):
+    user = f"""SITE_CORPUS (blog inventory for gap analysis — drafts and published):
+{inv_block or "(no rows yet — propose a flagship pillar)"}
+
+Topic/title phrases already reserved or used (also avoid paraphrases):
 {avoid or "(none — greenfield)"}
 
 Return JSON:
@@ -1901,45 +2015,67 @@ Return JSON:
   "keywords": "comma-separated keywords",
   "article_type": one of {sorted(VALID_ARTICLE_TYPES)},
   "primary_goal": one of {sorted(VALID_PRIMARY_GOALS)},
+  "fills_site_gap": "1–2 sentences naming what is missing on the site that this covers (reference gaps vs SITE_CORPUS)",
   "rationale": "one sentence why this article helps merchants"
 }}"""
     try:
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-            max_tokens=500,
+            max_tokens=650,
             temperature=0.85,
             response_format={"type": "json_object"},
         )
         raw = _parse_json_obj((resp.choices[0].message.content or "").strip()) or {}
         b = _normalize_brief_dict(raw)
         b["rationale"] = str(raw.get("rationale") or "")[:500]
+        b["fills_site_gap"] = str(raw.get("fills_site_gap") or "")[:600]
         return b
     except Exception:
-        return dict(_FALLBACK_AUTO_TOPICS[0])
+        return _pick_fallback_brief(existing_topics, site_inventory_lines)
 
 
-def suggest_future_article_queue(api_key: str, *, existing_topics: List[str], count: int = 12) -> List[Dict[str, Any]]:
-    """Propose several queued article briefs for admin approval."""
+def suggest_future_article_queue(
+    api_key: str,
+    *,
+    existing_topics: List[str],
+    count: int = 12,
+    site_inventory_lines: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Propose several queued article briefs from site coverage gaps (admin approval)."""
     n = max(3, min(20, int(count)))
+    inv_block = _format_site_inventory_block(site_inventory_lines)
     if not HAS_OPENAI or not (api_key or "").strip():
-        out: List[Dict[str, Any]] = []
-        for i, row in enumerate((_FALLBACK_AUTO_TOPICS * 3)[:n]):
-            x = dict(row)
-            x["rationale"] = f"Template idea {i + 1}"
-            out.append(x)
-        return out[:n]
+        raw_kw = _pick_fallback_topics_keywords(n, existing_topics, site_inventory_lines)
+        out0: List[Dict[str, Any]] = []
+        for i, row in enumerate(raw_kw):
+            at = _FALLBACK_AUTO_TOPICS[i % len(_FALLBACK_AUTO_TOPICS)]
+            x = {
+                "topic": row["topic"],
+                "keywords": row["keywords"],
+                "article_type": at["article_type"],
+                "primary_goal": at["primary_goal"],
+                "rationale": f"Template queue item {i + 1} (offline)",
+                "fills_site_gap": row.get("fills_site_gap") or "",
+            }
+            out0.append(x)
+        return out0[:n]
     client = openai.OpenAI(api_key=api_key)
     avoid = "\n".join(f"- {(t or '').strip()}" for t in existing_topics[:100] if (t or "").strip())
     sys = (
         "You plan a content calendar for Cartozo.ai (e-commerce product feed optimization). "
-        f"Return ONLY valid JSON with key \"items\": array of exactly {n} objects."
+        f"Return ONLY valid JSON with key \"items\": array of exactly {n} objects. "
+        "Each idea must plug a **coverage gap** versus SITE_CORPUS—not a rewrite of an existing post."
     )
-    user = f"""Existing topics/titles (avoid duplicating):
+    user = f"""SITE_CORPUS (current blog for gap finding):
+{inv_block or "(empty — propose a diversified starter queue)"}
+
+Topic/title phrases already used or queued (avoid overlap and paraphrase):
 {avoid or "(none)"}
 
 Each item must have:
-topic, keywords, article_type (one of {sorted(VALID_ARTICLE_TYPES)}), primary_goal (one of {sorted(VALID_PRIMARY_GOALS)}), rationale (short).
+topic, keywords, article_type (one of {sorted(VALID_ARTICLE_TYPES)}), primary_goal (one of {sorted(VALID_PRIMARY_GOALS)}),
+rationale (short), fills_site_gap (what the site still lacks that this item adds).
 
 Return: {{ "items": [ ...{n} objects... ] }}"""
     try:
@@ -1958,57 +2094,66 @@ Return: {{ "items": [ ...{n} objects... ] }}"""
                 continue
             b = _normalize_brief_dict(raw)
             b["rationale"] = str(raw.get("rationale") or "")[:500]
+            b["fills_site_gap"] = str(raw.get("fills_site_gap") or "")[:600]
             out.append(b)
         while len(out) < n:
             i = len(out) % len(_FALLBACK_AUTO_TOPICS)
             r = dict(_FALLBACK_AUTO_TOPICS[i])
             r["rationale"] = "Fallback idea"
+            r["fills_site_gap"] = ""
             out.append(r)
         return out[:n]
     except Exception:
-        out2: List[Dict[str, Any]] = []
-        for i in range(n):
-            r = dict(_FALLBACK_AUTO_TOPICS[i % len(_FALLBACK_AUTO_TOPICS)])
-            r["rationale"] = "Fallback idea"
-            out2.append(r)
-        return out2[:n]
+        return suggest_future_article_queue(
+            "",
+            existing_topics=existing_topics,
+            count=n,
+            site_inventory_lines=site_inventory_lines,
+        )
 
 
 def suggest_future_topics_keywords_only(
-    api_key: str, *, existing_topics: List[str], count: int
+    api_key: str,
+    *,
+    existing_topics: List[str],
+    count: int,
+    site_inventory_lines: Optional[List[str]] = None,
 ) -> List[Dict[str, str]]:
     """
-    Light queue seeding: only article topic/title + comma-separated keywords.
+    Light queue seeding: topic + keywords + explicit site-gap note.
     Does not generate outlines, paragraphs, or full articles.
     """
     n = max(1, min(20, int(count)))
+    inv_block = _format_site_inventory_block(site_inventory_lines)
     if not HAS_OPENAI or not (api_key or "").strip():
-        out: List[Dict[str, str]] = []
-        for i in range(n):
-            row = _FALLBACK_AUTO_TOPICS[i % len(_FALLBACK_AUTO_TOPICS)]
-            out.append({"topic": row["topic"], "keywords": row["keywords"]})
-        return out[:n]
+        return _pick_fallback_topics_keywords(n, existing_topics, site_inventory_lines)
     client = openai.OpenAI(api_key=api_key)
     avoid = "\n".join(f"- {(t or '').strip()}" for t in existing_topics[:100] if (t or "").strip())
     sys = (
         "You suggest SEO article ideas for Cartozo.ai (e-commerce product feed optimization). "
         f"Return ONLY valid JSON with key \"items\": an array of exactly {n} objects. "
-        "Each object has ONLY two string fields: \"topic\" and \"keywords\". "
-        "Do NOT write article bodies, outlines, sections, or introductions — titles and keywords only."
+        "Each object has three string fields: \"topic\", \"keywords\", and \"fills_site_gap\". "
+        "You MUST read SITE_CORPUS and propose ideas that cover angles **not** already addressed—"
+        "not reworded duplicates. fills_site_gap = one sentence naming the missing coverage. "
+        "Do NOT write article bodies or outlines—titles, keywords, and gap notes only."
     )
-    user = f"""Already used or planned topics (avoid close duplicates):
+    user = f"""SITE_CORPUS (what the blog already has — find gaps, not echoes):
+{inv_block or "(no articles — propose diverse pillars)"}
+
+Already used or queued topics/titles (avoid overlap and paraphrase):
 {avoid or "(none)"}
 
 For each item:
-- topic: a specific English article title or H1-style question (max ~120 chars).
+- topic: specific English article title or H1-style question (max ~120 chars).
 - keywords: comma-separated SEO phrases (no paragraphs).
+- fills_site_gap: what is still undocumented or thin on the site that this would fix.
 
-Return: {{ \"items\": [ {{ \"topic\": \"...\", \"keywords\": \"...\" }}, ... ] }} — exactly {n} items."""
+Return: {{ \"items\": [ {{ \"topic\": \"...\", \"keywords\": \"...\", \"fills_site_gap\": \"...\" }}, ... ] }} — exactly {n} items."""
     try:
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "system", "content": sys}, {"role": "user", "content": user}],
-            max_tokens=min(2000, 160 + n * 120),
+            max_tokens=min(2400, 220 + n * 140),
             temperature=0.75,
             response_format={"type": "json_object"},
         )
@@ -2020,16 +2165,34 @@ Return: {{ \"items\": [ {{ \"topic\": \"...\", \"keywords\": \"...\" }}, ... ] }
                 continue
             topic = (raw.get("topic") or "").strip()[:500]
             kw = (raw.get("keywords") or "").strip()[:2000]
+            gap = str(raw.get("fills_site_gap") or "").strip()[:600]
             if topic:
-                out2.append({"topic": topic, "keywords": kw})
+                out2.append({"topic": topic, "keywords": kw, "fills_site_gap": gap})
         while len(out2) < n:
-            i = len(out2) % len(_FALLBACK_AUTO_TOPICS)
-            row = _FALLBACK_AUTO_TOPICS[i]
-            out2.append({"topic": row["topic"], "keywords": row["keywords"]})
+            pad = _pick_fallback_topics_keywords(n - len(out2), existing_topics, site_inventory_lines)
+            for p in pad:
+                if len(out2) >= n:
+                    break
+                tl = (p.get("topic") or "").strip()
+                if not tl or any(x["topic"].lower() == tl.lower() for x in out2):
+                    continue
+                out2.append(
+                    {
+                        "topic": tl[:500],
+                        "keywords": (p.get("keywords") or "")[:2000],
+                        "fills_site_gap": (p.get("fills_site_gap") or "")[:600],
+                    }
+                )
+            if len(out2) < n:
+                i = len(out2) % len(_FALLBACK_AUTO_TOPICS)
+                row = _FALLBACK_AUTO_TOPICS[i]
+                out2.append(
+                    {
+                        "topic": row["topic"],
+                        "keywords": row["keywords"],
+                        "fills_site_gap": "Padding fallback — verify gap manually.",
+                    }
+                )
         return out2[:n]
     except Exception:
-        out3: List[Dict[str, str]] = []
-        for i in range(n):
-            row = _FALLBACK_AUTO_TOPICS[i % len(_FALLBACK_AUTO_TOPICS)]
-            out3.append({"topic": row["topic"], "keywords": row["keywords"]})
-        return out3[:n]
+        return _pick_fallback_topics_keywords(n, existing_topics, site_inventory_lines)

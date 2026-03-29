@@ -89,6 +89,52 @@ GTM_BODY = _GTM_BODY
 app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
 
 
+def _maybe_start_writter_auto_scheduler():
+    """Optional in-process cron: set ENABLE_WRITTER_AUTO_SCHEDULER=1 (uses admin timezone + local hour/minute)."""
+    import logging
+    import os
+
+    if os.getenv("ENABLE_WRITTER_AUTO_SCHEDULER", "").strip() != "1":
+        return
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from zoneinfo import ZoneInfo
+
+        from .db import get_db
+        from .services import db_repository as repo
+        from .services.writter_auto_job import run_writter_auto_daily
+
+        with get_db() as db:
+            s = repo.get_settings(db)
+        if (s.get("writter_auto_enabled") or "").strip() != "1":
+            logging.getLogger("uvicorn.error").info("Writter auto scheduler skipped: writter_auto_enabled is off")
+            return
+        tz_name = (s.get("writter_auto_timezone") or "UTC").strip() or "UTC"
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = ZoneInfo("UTC")
+        hour = int((s.get("writter_auto_local_hour") or "13").strip() or "13")
+        minute = int((s.get("writter_auto_local_minute") or "0").strip() or "0")
+
+        def job():
+            try:
+                run_writter_auto_daily("scheduler")
+            except Exception:
+                logging.getLogger("uvicorn.error").exception("writter_auto scheduler job failed")
+
+        sched = BackgroundScheduler(timezone=tz)
+        sched.add_job(job, CronTrigger(hour=hour, minute=minute, timezone=tz))
+        sched.start()
+        app.state.writter_auto_scheduler = sched
+        logging.getLogger("uvicorn.error").info(
+            "Writter auto scheduler started: %02d:%02d %s", hour, minute, tz_name
+        )
+    except Exception:
+        logging.getLogger("uvicorn.error").exception("Could not start Writter auto scheduler")
+
+
 @app.on_event("startup")
 def startup():
     """Create database tables on startup."""
@@ -101,6 +147,7 @@ def startup():
 
     log_google_cloud_startup()
     _sync_ai_from_settings()
+    _maybe_start_writter_auto_scheduler()
 
 
 storage = PostgresStorage()
