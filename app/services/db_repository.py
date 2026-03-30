@@ -23,6 +23,7 @@ from ..db_models import (
     ContentCluster,
     WritterFutureArticle,
     WritterAutoRun,
+    WayforpayPayment,
 )
 
 
@@ -113,6 +114,17 @@ def _settings_dict_from_db(db: Session) -> Dict[str, str]:
         settings["writter_auto_allowed_article_types"] = ""
     if "writter_auto_author_email" not in settings:
         settings["writter_auto_author_email"] = "writter-auto@cartozo.ai"
+    # WayForPay (https://wiki.wayforpay.com/en) — fill after merchant contract
+    if "wayforpay_merchant_account" not in settings:
+        settings["wayforpay_merchant_account"] = ""
+    if "wayforpay_secret_key" not in settings:
+        settings["wayforpay_secret_key"] = ""
+    if "wayforpay_merchant_domain" not in settings:
+        settings["wayforpay_merchant_domain"] = ""
+    if "wayforpay_return_url" not in settings:
+        settings["wayforpay_return_url"] = ""
+    if "wayforpay_subscribe_options_json" not in settings:
+        settings["wayforpay_subscribe_options_json"] = ""
     return settings
 
 
@@ -149,19 +161,78 @@ def set_settings(db: Session, data: Dict[str, str]) -> None:
 
 # ─── Users ───────────────────────────────────────────────────────────────────
 
-def get_user_by_email(db: Session, email: str) -> Optional[Dict]:
-    """Get user by email."""
-    row = db.execute(select(User).where(User.email == email)).scalars().one_or_none()
-    if not row:
+
+def fetch_user_orm_by_email(db: Session, email: str) -> Optional[User]:
+    em = (email or "").strip().lower()
+    if not em:
         return None
-    return {
-        "email": row.email,
-        "name": row.name or "",
-        "provider": row.provider or "",
-        "role": row.role or "customer",
-        "first_seen": row.first_seen.isoformat() if row.first_seen else "",
-        "last_login": row.last_login.isoformat() if row.last_login else "",
-    }
+    return db.execute(select(User).where(func.lower(User.email) == em)).scalars().one_or_none()
+
+
+def ensure_user_subscription_defaults(db: Session, row: User) -> None:
+    """Backfill trial end from first_seen if missing (existing rows after migration)."""
+    if row is None:
+        return
+    paid_until = getattr(row, "subscription_valid_until", None)
+    trial_end = getattr(row, "free_trial_ends_at", None)
+    if trial_end is None and paid_until is None and row.first_seen:
+        row.free_trial_ends_at = row.first_seen + timedelta(days=3)
+        if not getattr(row, "subscription_plan", None):
+            row.subscription_plan = "free"
+        if not getattr(row, "subscription_status", None):
+            row.subscription_status = "trial"
+
+
+def apply_paid_subscription_to_user(db: Session, email: str, plan_id: str) -> None:
+    """After verified WayForPay payment — admins should not rely on this for access (role bypass)."""
+    from .subscription import PAID_SUBSCRIPTION_DAYS
+
+    em = (email or "").strip().lower()
+    if not em or not plan_id:
+        return
+    row = fetch_user_orm_by_email(db, em)
+    if not row:
+        return
+    now = datetime.now(timezone.utc)
+    row.subscription_plan = plan_id.strip()
+    row.subscription_status = "active"
+    row.subscription_paid_at = now
+    row.subscription_valid_until = now + timedelta(days=PAID_SUBSCRIPTION_DAYS)
+
+
+def count_user_products_in_month(db: Session, email: str, ref: Optional[datetime] = None) -> int:
+    """Sum product rows across batches created in the same UTC month as ``ref``."""
+    from ..db_models import Batch as BatchModel
+
+    em = (email or "").strip().lower()
+    if not em:
+        return 0
+    ref = ref or datetime.now(timezone.utc)
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=timezone.utc)
+    y, m = ref.year, ref.month
+    start = datetime(y, m, 1, tzinfo=timezone.utc)
+    if m == 12:
+        end = datetime(y + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        end = datetime(y, m + 1, 1, tzinfo=timezone.utc)
+    rows = (
+        db.execute(
+            select(BatchModel).where(
+                func.lower(BatchModel.user_email) == em,
+                BatchModel.created_at >= start,
+                BatchModel.created_at < end,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    total = 0
+    for r in rows:
+        pj = r.products_json
+        if isinstance(pj, list):
+            total += len(pj)
+    return total
 
 
 def upsert_user(db: Session, user: dict) -> None:
@@ -172,15 +243,24 @@ def upsert_user(db: Session, user: dict) -> None:
     if row:
         row.name = user.get("name", row.name)
         row.last_login = now
+        ensure_user_subscription_defaults(db, row)
     else:
-        db.add(User(
-            email=email,
-            name=user.get("name", ""),
-            provider=user.get("provider", ""),
-            role=user.get("role", "customer"),
-            first_seen=now,
-            last_login=now,
-        ))
+        from .subscription import FREE_TRIAL_DAYS
+
+        trial_end = now + timedelta(days=FREE_TRIAL_DAYS)
+        db.add(
+            User(
+                email=email,
+                name=user.get("name", ""),
+                provider=user.get("provider", ""),
+                role=user.get("role", "customer"),
+                first_seen=now,
+                last_login=now,
+                subscription_plan="free",
+                subscription_status="trial",
+                free_trial_ends_at=trial_end,
+            )
+        )
 
 
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
@@ -235,18 +315,44 @@ def clear_google_merchant_oauth(db: Session, email: str) -> None:
 
 def get_all_users(db: Session) -> List[Dict]:
     """Get all users."""
+    from .subscription import format_admin_subscription_cell_uk
+
     rows = db.execute(select(User).order_by(User.last_login.desc())).scalars().all()
-    return [
-        {
-            "email": r.email,
-            "name": r.name or "",
-            "provider": r.provider or "",
-            "role": r.role or "customer",
-            "first_seen": r.first_seen.isoformat() if r.first_seen else "",
-            "last_login": r.last_login.isoformat() if r.last_login else "",
-        }
-        for r in rows
-    ]
+    now = datetime.now(timezone.utc)
+    out: List[Dict] = []
+    for r in rows:
+        plan = getattr(r, "subscription_plan", None) or "free"
+        status = getattr(r, "subscription_status", None) or "trial"
+        trial_at = getattr(r, "free_trial_ends_at", None)
+        paid_until = getattr(r, "subscription_valid_until", None)
+        out.append(
+            {
+                "email": r.email,
+                "name": r.name or "",
+                "provider": r.provider or "",
+                "role": r.role or "customer",
+                "first_seen": r.first_seen.isoformat() if r.first_seen else "",
+                "last_login": r.last_login.isoformat() if r.last_login else "",
+                "subscription_plan": plan,
+                "subscription_status": status,
+                "free_trial_ends_at": trial_at.isoformat() if trial_at else "",
+                "subscription_valid_until": paid_until.isoformat() if paid_until else "",
+                "subscription_paid_at": (
+                    getattr(r, "subscription_paid_at", None).isoformat()
+                    if getattr(r, "subscription_paid_at", None)
+                    else ""
+                ),
+                "subscription_label_uk": format_admin_subscription_cell_uk(
+                    role=r.role or "customer",
+                    subscription_plan=plan,
+                    subscription_status=status,
+                    free_trial_ends_at=trial_at,
+                    subscription_valid_until=paid_until,
+                    now=now,
+                ),
+            }
+        )
+    return out
 
 
 # ─── Feedback ────────────────────────────────────────────────────────────────
@@ -365,6 +471,7 @@ def create_batch(
     from ..db_models import Batch as BatchModel
 
     owner = (user_email or "").strip().lower() or None
+    n = len(products_json) if isinstance(products_json, list) else 0
     db.add(
         BatchModel(
             batch_id=batch_id,
@@ -372,6 +479,8 @@ def create_batch(
             products_json=products_json,
             product_type=product_type or "standard",
             user_email=owner,
+            processing_done=0,
+            processing_total=n,
         )
     )
 
@@ -410,6 +519,42 @@ def update_batch(db: Session, batch_id: str, status: str, products_json: list, c
     row.products_json = products_json
     if completed_at is not None:
         row.completed_at = datetime.now(timezone.utc) if completed_at else None
+    if status == "ready_for_review" and isinstance(products_json, list):
+        row.processing_done = len(products_json)
+        row.processing_total = len(products_json)
+
+
+def update_batch_processing_progress(db: Session, batch_id: str, done: int) -> None:
+    """Lightweight write for upload progress bar (per finished product row)."""
+    from ..db_models import Batch as BatchModel
+
+    row = db.execute(select(BatchModel).where(BatchModel.batch_id == batch_id)).scalars().one_or_none()
+    if row:
+        row.processing_done = max(0, int(done))
+
+
+def get_batch_progress_snapshot(db: Session, batch_id: str) -> Optional[Dict[str, Any]]:
+    """Owner + processing counters without loading products_json."""
+    from ..db_models import Batch as BatchModel
+
+    if not batch_id:
+        return None
+    r = db.execute(
+        select(
+            BatchModel.user_email,
+            BatchModel.status,
+            BatchModel.processing_done,
+            BatchModel.processing_total,
+        ).where(BatchModel.batch_id == batch_id)
+    ).first()
+    if not r:
+        return None
+    return {
+        "user_email": (r[0] or "") if r[0] is not None else "",
+        "status": (r[1] or "") if r[1] is not None else "",
+        "processing_done": int(r[2] or 0) if r[2] is not None else 0,
+        "processing_total": int(r[3] or 0) if r[3] is not None else 0,
+    }
 
 
 def list_batches_for_user(db: Session, user_email: str, limit: int = 200) -> List[dict]:
@@ -1531,3 +1676,51 @@ def list_writter_auto_runs(db: Session, *, limit: int = 30) -> List[Dict[str, An
             }
         )
     return out
+
+
+# ─── WayForPay payments ────────────────────────────────────────────────────────
+
+
+def create_wayforpay_payment(
+    db: Session,
+    *,
+    order_reference: str,
+    user_email: str,
+    plan_id: str,
+    amount: str,
+    currency: str,
+) -> None:
+    db.add(
+        WayforpayPayment(
+            order_reference=order_reference,
+            user_email=(user_email or "").strip().lower(),
+            plan_id=plan_id,
+            amount=amount,
+            currency=currency,
+            status="pending",
+        )
+    )
+
+
+def get_wayforpay_by_order_ref(db: Session, order_reference: str) -> Optional[WayforpayPayment]:
+    if not order_reference:
+        return None
+    return db.execute(
+        select(WayforpayPayment).where(WayforpayPayment.order_reference == order_reference)
+    ).scalar_one_or_none()
+
+
+def update_wayforpay_from_callback(
+    db: Session,
+    row: WayforpayPayment,
+    *,
+    transaction_status: str,
+    reason_code: str,
+    status: str,
+    raw_json: str,
+) -> None:
+    row.transaction_status = transaction_status or row.transaction_status
+    row.reason_code = reason_code or row.reason_code
+    row.status = status or row.status
+    row.last_callback_json = raw_json
+    row.updated_at = datetime.now(timezone.utc)

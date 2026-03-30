@@ -1,7 +1,7 @@
 """
 /pricing — High-conversion SaaS pricing page. Content from `pricing_plans.json`.
-Payment hooks: `data-plan-id`, `data-paddle-price-id`, `data-paypro-plan-code` on plan CTAs;
-override `window.cartozoPricing.onSelectPlan` before click to integrate Paddle / PayPro.
+Payment hooks: `data-plan-id`, `data-paddle-price-id`, `data-paypro-plan-code`, optional
+`data-wayforpay="1"` when the plan has a `wayforpay` block in JSON (POST to WayForPay).
 """
 from __future__ import annotations
 
@@ -87,6 +87,11 @@ def _render_plan_card(plan: dict[str, Any]) -> str:
     if hook:
         hook_html = f'<p class="pp-hook">👉 {_esc(hook)}</p>'
 
+    wp = plan.get("wayforpay")
+    wayforpay_attr = ""
+    if isinstance(wp, dict) and (str(wp.get("amount") or "").strip()):
+        wayforpay_attr = ' data-wayforpay="1"'
+
     return f"""
       <article class="{cls}" data-plan-id="{pid}">
         {badge_html}
@@ -102,7 +107,7 @@ def _render_plan_card(plan: dict[str, Any]) -> str:
            href="{href}"
            data-plan-id="{pid}"
            data-paddle-price-id="{paddle}"
-           data-paypro-plan-code="{paypro}">{cta}</a>
+           data-paypro-plan-code="{paypro}"{wayforpay_attr}>{cta}</a>
       </article>
     """
 
@@ -190,6 +195,7 @@ def build_pricing_html(
     og_site_name: str = "",
     gtm_head: str,
     gtm_body: str,
+    top_notice_html: str = "",
 ) -> str:
     cfg = load_pricing_config()
     seo_block = head_canonical_social(
@@ -286,6 +292,8 @@ def build_pricing_html(
 
     hiw_title = _esc(hiw.get("title") or "How it works")
 
+    notice = top_notice_html or ""
+
     return (
         f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -331,6 +339,12 @@ a{{color:inherit;text-decoration:none}}
 [data-theme=light] .pp-bg{{background:radial-gradient(ellipse 70% 45% at 50% -10%,rgba(94,106,210,.12),transparent)}}
 
 .pp-wrap{{position:relative;z-index:1;max-width:1120px;margin:0 auto;padding:56px 20px 88px;box-sizing:border-box}}
+
+.pp-notice{{max-width:720px;margin:0 auto 24px;padding:14px 18px;border-radius:12px;font-size:.92rem;line-height:1.55;border:1px solid var(--pp-line)}}
+.pp-notice--ok{{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.35);color:#bbf7d0}}
+.pp-notice--warn{{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.35);color:#fecaca}}
+[data-theme=light] .pp-notice--ok{{color:#166534}}
+[data-theme=light] .pp-notice--warn{{color:#991b1b}}
 
 @@HP_NAV_STYLES@@
 
@@ -568,6 +582,7 @@ a{{color:inherit;text-decoration:none}}
 @@PUBLIC_NAV@@
 
 <div class="pp-wrap">
+  {notice}
   <header class="pp-hero">
     <h1>{h1}</h1>
     <p class="pp-hero-sub">{sub}</p>
@@ -676,15 +691,64 @@ a{{color:inherit;text-decoration:none}}
     }};
   }}
 
+  function postWayforpayCheckout(a, payload) {{
+    fetch('/api/payments/wayforpay/session', {{
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {{ 'Content-Type': 'application/json', 'Accept': 'application/json' }},
+      body: JSON.stringify({{ plan_id: payload.planId }})
+    }}).then(function (r) {{
+      if (r.status === 401) {{
+        window.location.href = payload.href || '/login';
+        return null;
+      }}
+      return r.json().then(function (j) {{ return {{ ok: r.ok, status: r.status, j: j }}; }});
+    }}).then(function (x) {{
+      if (!x) return;
+      if (!x.ok) {{
+        var d = (x.j && x.j.detail) ? x.j.detail : ('Error ' + (x.status || ''));
+        alert(d);
+        return;
+      }}
+      var data = x.j;
+      if (!data || !data.pay_url || !data.fields) {{
+        alert('Invalid response from checkout');
+        return;
+      }}
+      var form = document.createElement('form');
+      form.method = (data.method || 'POST');
+      form.action = data.pay_url;
+      form.acceptCharset = 'UTF-8';
+      form.style.display = 'none';
+      Object.keys(data.fields).forEach(function (k) {{
+        var inp = document.createElement('input');
+        inp.name = k;
+        var v = data.fields[k];
+        inp.value = (v === undefined || v === null) ? '' : String(v);
+        form.appendChild(inp);
+      }});
+      document.body.appendChild(form);
+      form.submit();
+    }}).catch(function () {{ alert('Network error'); }});
+  }}
+
   function attachPlanHooks() {{
     document.querySelectorAll('a[data-plan-id]').forEach(function (a) {{
-      a.addEventListener('click', function () {{
-        window.cartozoPricing.onSelectPlan({{
+      a.addEventListener('click', function (ev) {{
+        var payload = {{
           planId: a.getAttribute('data-plan-id'),
           paddlePriceId: a.getAttribute('data-paddle-price-id') || null,
           payproPlanCode: a.getAttribute('data-paypro-plan-code') || null,
           href: a.getAttribute('href'),
-        }});
+          wayforpay: a.getAttribute('data-wayforpay') === '1'
+        }};
+        if (payload.wayforpay) {{
+          ev.preventDefault();
+        }}
+        window.cartozoPricing.onSelectPlan(payload);
+        if (payload.wayforpay) {{
+          postWayforpayCheckout(a, payload);
+        }}
       }});
     }});
     document.querySelectorAll('.pp-add-line-btn').forEach(function (b) {{

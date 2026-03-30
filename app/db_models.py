@@ -33,6 +33,12 @@ class User(Base):
     merchant_refresh_token = Column(Text, nullable=True)
     merchant_id = Column(String(64), nullable=True)
     merchant_connected_at = Column(DateTime, nullable=True)
+    # Subscription (non-admin customers): 3-day free trial, then paid via WayForPay
+    subscription_plan = Column(String(32), nullable=False, default="free")
+    subscription_status = Column(String(32), nullable=False, default="trial")
+    free_trial_ends_at = Column(DateTime, nullable=True)
+    subscription_valid_until = Column(DateTime, nullable=True)
+    subscription_paid_at = Column(DateTime, nullable=True)
 
 
 class Feedback(Base):
@@ -78,6 +84,9 @@ class Batch(Base):
     user_email = Column(String(255), nullable=True, index=True)
     merchant_pushed_at = Column(DateTime, nullable=True)
     closed_at = Column(DateTime, nullable=True)
+    # UI progress during /batches/run (updated per product; avoids loading huge JSON to poll)
+    processing_done = Column(Integer, nullable=True)
+    processing_total = Column(Integer, nullable=True)
 
 
 class ChatSession(Base):
@@ -205,6 +214,25 @@ class WritterAutoRun(Base):
     error_message = Column(Text, nullable=True)
     started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     finished_at = Column(DateTime, nullable=True)
+
+
+class WayforpayPayment(Base):
+    """Subscription checkout orders (WayForPay Purchase + serviceUrl callbacks)."""
+
+    __tablename__ = "wayforpay_payments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_reference = Column(String(128), unique=True, nullable=False, index=True)
+    user_email = Column(String(255), nullable=False, index=True)
+    plan_id = Column(String(64), nullable=False)
+    amount = Column(String(32), nullable=False)
+    currency = Column(String(16), nullable=False)
+    status = Column(String(32), nullable=False, default="pending")  # pending, approved, declined, …
+    transaction_status = Column(String(64), nullable=True)
+    reason_code = Column(String(32), nullable=True)
+    last_callback_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class BlogArticleVersion(Base):

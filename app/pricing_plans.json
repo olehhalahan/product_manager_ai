@@ -53,10 +53,11 @@
       "highlighted": false,
       "badge": null,
       "tagline": "For testing and small catalogs",
+      "monthly_product_limit": 50,
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
-        "50 products / month",
+        "3-day free trial, 50 products / month",
         "Search-intent positioning (titles)",
         "CSV upload + export",
         "Preview before download"
@@ -78,6 +79,7 @@
       "highlighted": false,
       "badge": null,
       "tagline": "For small stores getting started",
+      "monthly_product_limit": 500,
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
@@ -90,7 +92,12 @@
       "limitations": [],
       "hook_line": null,
       "cta_label": "Upgrade to Starter",
-      "cta_href": "/login?next=/upload&plan=starter"
+      "cta_href": "/login?next=/upload&plan=starter",
+      "wayforpay": {
+        "amount": "790.00",
+        "currency": "UAH",
+        "product_name": "Cartozo Starter — subscription (monthly)"
+      }
     },
     {
       "id": "growth",
@@ -101,6 +108,7 @@
       "highlighted": true,
       "badge": "🔥 MAIN PLAN",
       "tagline": "For stores that want real performance improvements",
+      "monthly_product_limit": 2000,
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
@@ -114,7 +122,12 @@
       "limitations": [],
       "hook_line": "Reduce disapprovals and improve feed performance automatically",
       "cta_label": "Get better results",
-      "cta_href": "/login?next=/upload&plan=growth"
+      "cta_href": "/login?next=/upload&plan=growth",
+      "wayforpay": {
+        "amount": "1990.00",
+        "currency": "UAH",
+        "product_name": "Cartozo Growth — subscription (monthly)"
+      }
     },
     {
       "id": "pro",
@@ -125,6 +138,7 @@
       "highlighted": false,
       "badge": null,
       "tagline": "For high-volume stores and scaling teams",
+      "monthly_product_limit": 6000,
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
@@ -138,7 +152,12 @@
       "limitations": [],
       "hook_line": "Full automation for large catalogs",
       "cta_label": "Scale your feed",
-      "cta_href": "/login?next=/upload&plan=pro"
+      "cta_href": "/login?next=/upload&plan=pro",
+      "wayforpay": {
+        "amount": "3990.00",
+        "currency": "UAH",
+        "product_name": "Cartozo Pro — subscription (monthly)"
+      }
     }
   ],
   "social_proof": {

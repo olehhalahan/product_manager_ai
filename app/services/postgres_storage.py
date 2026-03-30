@@ -20,6 +20,7 @@ from ..services.db_repository import (
     get_batch as db_get_batch,
     update_batch as db_update_batch,
     mark_batch_merchant_pushed as db_mark_batch_merchant_pushed,
+    update_batch_processing_progress as db_update_batch_processing_progress,
 )
 from .ai_provider import AIProvider
 from .positioning import apply_feed_optimization
@@ -119,66 +120,68 @@ class PostgresStorage:
         batch.status = BatchStatus.PROCESSING
         self._save_batch(batch)
 
-        for result in batch.products:
+        for idx, result in enumerate(batch.products):
             if result.action == ProductAction.SKIP:
                 result.status = ProductStatus.SKIPPED
-                continue
-
-            result.status = ProductStatus.PROCESSING
-            try:
-                result.original_score = self._ai.score_optimization(
-                    result.product, result.product.title, result.product.description
-                )
-
-                if result.action in {
-                    ProductAction.GENERATE_NEW,
-                    ProductAction.IMPROVE_EXISTING,
-                    ProductAction.MANUAL_REVIEW,
-                    ProductAction.TRANSLATE,
-                }:
-                    apply_feed_optimization(
-                        result, self._ai, optimize_fields, positioning_mode="fast"
+            else:
+                result.status = ProductStatus.PROCESSING
+                try:
+                    result.original_score = self._ai.score_optimization(
+                        result.product, result.product.title, result.product.description
                     )
 
-                if result.action == ProductAction.TRANSLATE:
-                    title_source = result.optimized_title or result.product.title
-                    desc_source = result.optimized_description or result.product.description
-                    if title_source:
-                        result.translated_title = self._ai.translate_text(
-                            title_source,
-                            target_language=self.default_target_language,
-                        )
-                    if desc_source:
-                        result.translated_description = self._ai.translate_text(
-                            desc_source,
-                            target_language=self.default_target_language,
+                    if result.action in {
+                        ProductAction.GENERATE_NEW,
+                        ProductAction.IMPROVE_EXISTING,
+                        ProductAction.MANUAL_REVIEW,
+                        ProductAction.TRANSLATE,
+                    }:
+                        apply_feed_optimization(
+                            result, self._ai, optimize_fields, positioning_mode="fast"
                         )
 
-                result.score = self._ai.score_optimization(
-                    result.product, result.optimized_title, result.optimized_description
-                )
-                if (
-                    result.positioning
-                    and result.positioning.get("routing") == "skipped_already_strong"
-                ):
-                    result.score = result.original_score
+                    if result.action == ProductAction.TRANSLATE:
+                        title_source = result.optimized_title or result.product.title
+                        desc_source = result.optimized_description or result.product.description
+                        if title_source:
+                            result.translated_title = self._ai.translate_text(
+                                title_source,
+                                target_language=self.default_target_language,
+                            )
+                        if desc_source:
+                            result.translated_description = self._ai.translate_text(
+                                desc_source,
+                                target_language=self.default_target_language,
+                            )
 
-                gmc_errs, gmc_warns = validate_gmc(result, product_type=batch.product_type)
-                result.gmc_errors = gmc_errs
-                result.gmc_warnings = gmc_warns
+                    result.score = self._ai.score_optimization(
+                        result.product, result.optimized_title, result.optimized_description
+                    )
+                    if (
+                        result.positioning
+                        and result.positioning.get("routing") == "skipped_already_strong"
+                    ):
+                        result.score = result.original_score
 
-                all_issues = gmc_errs + gmc_warns
-                if gmc_errs:
-                    result.status = ProductStatus.NEEDS_REVIEW
-                    result.notes = "; ".join(all_issues)
-                elif gmc_warns:
-                    result.status = ProductStatus.DONE
-                    result.notes = "; ".join(all_issues)
-                else:
-                    result.status = ProductStatus.DONE
-            except Exception as exc:  # noqa: BLE001
-                result.status = ProductStatus.FAILED
-                result.error = str(exc)
+                    gmc_errs, gmc_warns = validate_gmc(result, product_type=batch.product_type)
+                    result.gmc_errors = gmc_errs
+                    result.gmc_warnings = gmc_warns
+
+                    all_issues = gmc_errs + gmc_warns
+                    if gmc_errs:
+                        result.status = ProductStatus.NEEDS_REVIEW
+                        result.notes = "; ".join(all_issues)
+                    elif gmc_warns:
+                        result.status = ProductStatus.DONE
+                        result.notes = "; ".join(all_issues)
+                    else:
+                        result.status = ProductStatus.DONE
+                except Exception as exc:  # noqa: BLE001
+                    result.status = ProductStatus.FAILED
+                    result.error = str(exc)
+
+            with get_db() as db:
+                db_update_batch_processing_progress(db, batch_id, idx + 1)
 
         batch.status = BatchStatus.READY_FOR_REVIEW
         self._save_batch(batch)

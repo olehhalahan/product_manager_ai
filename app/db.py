@@ -103,6 +103,52 @@ def init_db():
                     {"good": "5750677992", "bad": "5635309342"},
                 )
 
+    # Migration: users — subscription (trial + paid)
+    if "users" in inspector.get_table_names():
+        from sqlalchemy import text
+
+        ucols = {c["name"] for c in inspector.get_columns("users")}
+        dialect = engine.dialect.name
+        with engine.begin() as conn:
+            if "subscription_plan" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN subscription_plan VARCHAR(32) DEFAULT 'free'"))
+            if "subscription_status" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN subscription_status VARCHAR(32) DEFAULT 'trial'"))
+            if "free_trial_ends_at" not in ucols:
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN free_trial_ends_at TIMESTAMP"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN free_trial_ends_at TIMESTAMP WITH TIME ZONE"))
+            if "subscription_valid_until" not in ucols:
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN subscription_valid_until TIMESTAMP"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN subscription_valid_until TIMESTAMP WITH TIME ZONE"))
+            if "subscription_paid_at" not in ucols:
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN subscription_paid_at TIMESTAMP"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN subscription_paid_at TIMESTAMP WITH TIME ZONE"))
+        ucols2 = {c["name"] for c in inspect(engine).get_columns("users")}
+        if "free_trial_ends_at" in ucols2:
+            with engine.begin() as conn:
+                if dialect == "sqlite":
+                    conn.execute(
+                        text(
+                            "UPDATE users SET subscription_plan = 'free', subscription_status = 'trial', "
+                            "free_trial_ends_at = datetime(first_seen, '+3 days') "
+                            "WHERE free_trial_ends_at IS NULL AND subscription_valid_until IS NULL"
+                        )
+                    )
+                else:
+                    conn.execute(
+                        text(
+                            "UPDATE users SET subscription_plan = 'free', subscription_status = 'trial', "
+                            "free_trial_ends_at = first_seen + interval '3 days' "
+                            "WHERE free_trial_ends_at IS NULL AND subscription_valid_until IS NULL"
+                        )
+                    )
+
     # Migration: batches — user ownership + Merchant push / closed timestamps
     if "batches" in inspector.get_table_names():
         from sqlalchemy import text
@@ -123,6 +169,10 @@ def init_db():
                     conn.execute(text("ALTER TABLE batches ADD COLUMN closed_at TIMESTAMP"))
                 else:
                     conn.execute(text("ALTER TABLE batches ADD COLUMN closed_at TIMESTAMP WITH TIME ZONE"))
+            if "processing_done" not in bcols:
+                conn.execute(text("ALTER TABLE batches ADD COLUMN processing_done INTEGER"))
+            if "processing_total" not in bcols:
+                conn.execute(text("ALTER TABLE batches ADD COLUMN processing_total INTEGER"))
 
     # Migration: blog_articles.planning_json (Writter opportunity + evidence inputs)
     if "blog_articles" in inspector.get_table_names():

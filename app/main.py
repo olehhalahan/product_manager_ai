@@ -45,6 +45,7 @@ from urllib.parse import quote
 from xml.sax.saxutils import escape as _xml_escape
 
 from .writter_routes import register_writter_routes
+from .wayforpay_routes import register_wayforpay_routes
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
 from .how_it_works_page import build_how_it_works_html
 from .pricing_page import build_pricing_html
@@ -203,6 +204,73 @@ def _sync_ai_from_settings() -> None:
     storage._ai.set_api_key(s.get("openai_api_key", "") or "")
     storage._ai.set_prompts(s["prompt_title"], s["prompt_description"])
     storage._ai.set_homepage_chat_system_prompt(s.get("homepage_chat_system_prompt", "") or "")
+
+
+def _subscription_redirect_if_customer_inactive(request: Request) -> Optional[RedirectResponse]:
+    """Non-admins without active trial/paid subscription (or over monthly cap) → pricing."""
+    if is_admin(request):
+        return None
+    user = get_current_user(request)
+    if not user:
+        return None
+    from .db import get_db
+    from .services.subscription import build_subscription_access
+
+    with get_db() as db:
+        acc = build_subscription_access(
+            db,
+            user.get("email") or "",
+            is_admin=False,
+            product_count_hint=0,
+            enforce_monthly_cap=True,
+        )
+    if acc.can_use_service:
+        return None
+    return RedirectResponse(url="/pricing?subscription_expired=1", status_code=302)
+
+
+def _subscription_require_active_api(request: Request, *, incoming_rows: int = 0) -> None:
+    """Abort API if customer has no active subscription or would exceed monthly product cap."""
+    if is_admin(request):
+        return
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    from .db import get_db
+    from .services.subscription import build_subscription_access
+
+    with get_db() as db:
+        acc = build_subscription_access(
+            db,
+            user.get("email") or "",
+            is_admin=False,
+            product_count_hint=incoming_rows,
+            enforce_monthly_cap=True,
+        )
+    if not acc.can_use_service:
+        raise HTTPException(status_code=403, detail=acc.message_uk or "Підписка неактивна.")
+
+
+def _subscription_require_window_api(request: Request) -> None:
+    """Trial/paid time window only (e.g. regenerate, Merchant push) — monthly cap not re-checked."""
+    if is_admin(request):
+        return
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    from .db import get_db
+    from .services.subscription import build_subscription_access
+
+    with get_db() as db:
+        acc = build_subscription_access(
+            db,
+            user.get("email") or "",
+            is_admin=False,
+            product_count_hint=0,
+            enforce_monthly_cap=False,
+        )
+    if not acc.can_use_service:
+        raise HTTPException(status_code=403, detail=acc.message_uk or "Підписка неактивна.")
 
 
 def _build_batch_history_html(current_batch_id: str, user_email: str) -> str:
@@ -955,6 +1023,7 @@ async def api_merchant_select_account(request: Request):
 async def api_batch_merchant_push(request: Request, batch_id: str):
     """Push optimized batch rows to the user's linked Google Merchant Center (Merchant API productInputs.insert)."""
     require_login_http(request)
+    _subscription_require_window_api(request)
     user = get_current_user(request)
     email = (user.get("email") or "").strip()
     if not email:
@@ -2368,12 +2437,19 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     [data-theme="light"] .combo-desc { color: rgba(15,23,42,0.4); }
 
     @media (max-width: 768px) { .container { margin: 40px auto; } }
+
+    .sub-banner { margin: 0 auto 20px; max-width: 600px; padding: 14px 18px; border-radius: 10px; font-size: 0.92rem; line-height: 1.5; border: 1px solid rgba(255,255,255,0.12); }
+    .sub-banner--ok { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.35); color: #86efac; }
+    .sub-banner--info { background: rgba(94,106,210,0.12); border-color: rgba(94,106,210,0.35); color: #c7d2fe; }
+    [data-theme="light"] .sub-banner--ok { color: #166534; background: rgba(34,197,94,0.1); }
+    [data-theme="light"] .sub-banner--info { color: #3730a3; background: rgba(79,70,229,0.08); }
     </style>
 </head>
 <!-- cartozo-upload-ui:3 merchant-in-nav -->
 <body data-upload-ui="3">
 {GTM_BODY}
 {ADMIN_TOP_NAV}
+{SUBSCRIPTION_ALERT}
 
     <div class="container">
         <h1 class="title">Optimize your product catalog</h1>
@@ -2580,7 +2656,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
-def _build_upload_page(user_role: str = "customer") -> str:
+def _build_upload_page(user_role: str = "customer", subscription_alert_html: str = "") -> str:
     nav = admin_top_nav_html(
         active="upload",
         show_admin_links=(user_role == "admin"),
@@ -2589,6 +2665,7 @@ def _build_upload_page(user_role: str = "customer") -> str:
         _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", GTM_HEAD)
         .replace("{GTM_BODY}", GTM_BODY)
         .replace("{ADMIN_TOP_NAV}", nav)
+        .replace("{SUBSCRIPTION_ALERT}", subscription_alert_html)
         .replace("{ADMIN_THEME_SCRIPT}", ADMIN_THEME_SCRIPT.strip())
         .replace("{ADMIN_MERCHANT_SCRIPT}", ADMIN_MERCHANT_SCRIPT.strip())
     )
@@ -3180,6 +3257,13 @@ def pricing_page(request: Request):
     s = _get_settings()
     og_image = (s.get("seo_og_image") or "").strip()
     og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
+    notice = ""
+    if request.query_params.get("subscription_expired"):
+        notice = (
+            '<div class="pp-notice pp-notice--warn" role="alert">'
+            "<strong>Доступ обмежено.</strong> Безкоштовний період (3 дні) закінчився або потрібна активна оплачена підписка. Оберіть тариф нижче."
+            "</div>"
+        )
     return HTMLResponse(
         content=build_pricing_html(
             meta_title=title,
@@ -3191,6 +3275,7 @@ def pricing_page(request: Request):
             og_site_name=og_site,
             gtm_head=GTM_HEAD,
             gtm_body=GTM_BODY,
+            top_notice_html=notice,
         )
     )
 
@@ -3246,9 +3331,37 @@ async def upload_page(request: Request):
     redir = require_login_redirect(request, "/upload")
     if redir:
         return redir
+    sub_redir = _subscription_redirect_if_customer_inactive(request)
+    if sub_redir:
+        return sub_redir
     user = get_current_user(request)
     role = user.get("role", "customer") if user else "customer"
-    r = HTMLResponse(content=_build_upload_page(user_role=role))
+    alert_html = ""
+    if request.query_params.get("subscription") == "success":
+        alert_html = (
+            '<div class="sub-banner sub-banner--ok" role="status">'
+            "<strong>Дякуємо за підписку.</strong> Оплата підтверджена — ви вже можете користуватися сервісом."
+            "</div>"
+        )
+    elif not is_admin(request):
+        from .db import get_db
+        from .services.subscription import build_subscription_access
+
+        with get_db() as db:
+            acc = build_subscription_access(
+                db,
+                (user.get("email") or "") if user else "",
+                is_admin=False,
+                product_count_hint=0,
+                enforce_monthly_cap=True,
+            )
+        if acc.can_use_service and acc.message_uk and acc.effective_plan == "free":
+            import html as _html_mod
+
+            alert_html = (
+                f'<div class="sub-banner sub-banner--info" role="note">{_html_mod.escape(acc.message_uk)}</div>'
+            )
+    r = HTMLResponse(content=_build_upload_page(user_role=role, subscription_alert_html=alert_html))
     r.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     r.headers["Pragma"] = "no-cache"
     r.headers["X-Cartozo-Upload-UI"] = UPLOAD_UI_REVISION
@@ -3262,6 +3375,9 @@ async def upload_continue(request: Request, upload_id: str = Query(...)):
     redir = require_login_redirect(request, f"/upload/continue?upload_id={upload_id}")
     if redir:
         return redir
+    sub_redir = _subscription_redirect_if_customer_inactive(request)
+    if sub_redir:
+        return sub_redir
     from .db import get_db
     from .services.db_repository import get_pending_upload
     with get_db() as db:
@@ -3277,8 +3393,6 @@ async def upload_continue(request: Request, upload_id: str = Query(...)):
     target_language = pending.get("target_language", "") or ""
     product_type = pending.get("product_type", "standard") or "standard"
 
-    user = get_current_user(request)
-    role = user.get("role", "customer") if user else "customer"
     r = HTMLResponse(content=_build_mapping_page(
         upload_id=upload_id,
         csv_columns=csv_columns,
@@ -3288,7 +3402,6 @@ async def upload_continue(request: Request, upload_id: str = Query(...)):
         target_language=target_language,
         total_rows=len(records),
         product_type=product_type,
-        user_role=role,
     ))
     _onboarding_track(request, r, 2)
     return r
@@ -3306,6 +3419,9 @@ async def preview_csv(
     redir = require_login_redirect(request, "/upload")
     if redir:
         return redir
+    sub_r = _subscription_redirect_if_customer_inactive(request)
+    if sub_r:
+        return sub_r
     if file.content_type not in {"text/csv", "application/vnd.ms-excel"}:
         raise HTTPException(status_code=400, detail="Only CSV upload is supported.")
 
@@ -3326,6 +3442,8 @@ async def preview_csv(
     if row_limit > 0:
         records = records[:row_limit]
 
+    _subscription_require_active_api(request, incoming_rows=len(records))
+
     csv_columns = list(records[0].keys())
     guessed = guess_mapping(csv_columns)
     sample_rows = records[:5]
@@ -3336,8 +3454,6 @@ async def preview_csv(
     with get_db() as db:
         save_pending_upload(db, upload_id, records, mode, target_language or "", product_type)
 
-    user = get_current_user(request)
-    role = user.get("role", "customer") if user else "customer"
     r = HTMLResponse(content=_build_mapping_page(
         upload_id=upload_id,
         csv_columns=csv_columns,
@@ -3347,7 +3463,6 @@ async def preview_csv(
         target_language=target_language or "",
         total_rows=len(records),
         product_type=product_type,
-        user_role=role,
     ))
     _onboarding_track(request, r, 2)
     return r
@@ -3366,6 +3481,9 @@ async def confirm_mapping(
     redir = require_login_redirect(request, "/upload")
     if redir:
         return redir
+    sub_r = _subscription_redirect_if_customer_inactive(request)
+    if sub_r:
+        return sub_r
     from .db import get_db
     from .services.db_repository import get_pending_upload
     with get_db() as db:
@@ -3373,9 +3491,11 @@ async def confirm_mapping(
     if not pending:
         raise HTTPException(status_code=400, detail="Upload session expired. Please re-upload your CSV.")
 
+    _subscription_require_active_api(request, incoming_rows=len(pending["records"]))
+
     user = get_current_user(request)
     role = user.get("role", "customer") if user else "customer"
-    r = HTMLResponse(content=_build_processing_page(upload_id, mode, target_language, mappings_json, optimize_fields, product_type=product_type, user_role=role))
+    r = HTMLResponse(content=_build_processing_page(upload_id, mode, target_language, mappings_json, optimize_fields, product_type=product_type))
     _onboarding_track(request, r, 3)
     return r
 
@@ -3393,7 +3513,14 @@ async def run_processing(
     require_login_http(request)  # Returns 401 JSON for fetch
     try:
         from .db import get_db
-        from .services.db_repository import delete_pending_upload
+        from .services.db_repository import delete_pending_upload, get_pending_upload
+
+        with get_db() as db:
+            pending_check = get_pending_upload(db, upload_id)
+        if not pending_check:
+            raise HTTPException(status_code=400, detail="Upload session expired.")
+        _subscription_require_active_api(request, incoming_rows=len(pending_check["records"]))
+
         with get_db() as db:
             pending = delete_pending_upload(db, upload_id)
         if not pending:
@@ -3424,7 +3551,16 @@ async def run_processing(
 
         _sync_ai_from_settings()
 
-        storage.process_batch_synchronously(batch_id, optimize_fields=opt_set)
+        import logging
+        import threading
+
+        def _run_batch() -> None:
+            try:
+                storage.process_batch_synchronously(batch_id, optimize_fields=opt_set)
+            except Exception:
+                logging.getLogger("uvicorn.error").exception("Background batch %s failed", batch_id)
+
+        threading.Thread(target=_run_batch, daemon=True).start()
 
         _onboarding_track(request, None, 4)
         return {"batch_id": batch_id}
@@ -3436,7 +3572,51 @@ async def run_processing(
         raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
 
 
-def _build_processing_page(upload_id: str, mode: str, target_language: str, mappings_json: str, optimize_fields: str = "title,description", product_type: str = "standard", user_role: str = "customer") -> str:
+@app.get("/batches/{batch_id}/processing-progress")
+async def batch_processing_progress(request: Request, batch_id: str):
+    """Real upload progress while `/batches/run` works in the background (lightweight DB read)."""
+    require_login_http(request)
+    from .db import get_db
+    from .services.db_repository import get_batch_progress_snapshot
+
+    with get_db() as db:
+        snap = get_batch_progress_snapshot(db, batch_id)
+    if not snap:
+        raise HTTPException(status_code=404, detail="Batch not found.")
+
+    user = get_current_user(request)
+    email = (user.get("email") or "").strip().lower()
+    owner = (snap["user_email"] or "").strip().lower()
+    if owner and owner != email:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    status = snap["status"] or ""
+    complete = status == "ready_for_review"
+    total_raw = int(snap["processing_total"] or 0)
+    done = max(0, int(snap["processing_done"] or 0))
+    if complete:
+        percent = 100
+        total = max(1, total_raw, done)
+        done = total
+    elif total_raw < 1:
+        total = 0
+        percent = 0
+    else:
+        total = total_raw
+        done = min(done, total)
+        percent = min(99, round(100 * done / total))
+
+    return {
+        "batch_id": batch_id,
+        "status": status,
+        "processing_done": done,
+        "processing_total": total,
+        "percent": percent,
+        "complete": complete,
+    }
+
+
+def _build_processing_page(upload_id: str, mode: str, target_language: str, mappings_json: str, optimize_fields: str = "title,description", product_type: str = "standard") -> str:
     mappings_escaped = mappings_json.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -3447,29 +3627,15 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     <title>Processing &mdash; Cartozo.ai</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
+    <style>@@APP_HP_NAV_STYLES@@</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; padding-top: 72px; }}
+    @media (max-width: 768px) {{ body {{ padding-top: 88px; }} }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     [data-theme="light"] .thinking-sub, [data-theme="light"] .progress-pct {{ color: rgba(15,23,42,0.5); }}
     [data-theme="light"] .spinner {{ border-color: rgba(15,23,42,0.1); border-top-color: #22D3EE; }}
     [data-theme="light"] .progress {{ background: rgba(15,23,42,0.1); }}
-    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); }}
-    [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
-    .nav-logo img {{ height: 32px; }}
-    .nav-logo .logo-light {{ display: block; filter: brightness(0) invert(1); }}
-    .nav-logo .logo-dark {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-light {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-dark {{ display: block; filter: none; }}
-    .theme-btn {{ display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
-    .theme-btn:hover {{ color: #fff; background: rgba(255,255,255,0.08); }}
-    [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .theme-btn:hover {{ color: #0f172a; background: rgba(15,23,42,0.06); }}
-    [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .nav-link:hover {{ color: #0f172a; }}
-    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
-    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
-    .nav-link:hover {{ color: #fff; }}
 
     .main {{ flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }}
     .loader {{ text-align: center; max-width: 460px; width: 100%; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 48px 40px; }}
@@ -3492,19 +3658,11 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     .progress-fill {{ height: 100%; width: 0%; background: linear-gradient(90deg, #4F46E5, #22D3EE); border-radius: 999px; transition: width 0.12s linear; }}
     .progress-pct {{ font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 10px; font-variant-numeric: tabular-nums; }}
 
-    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} }}
     </style>
 </head>
 <body>
 {GTM_BODY}
-    <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-        <div class="nav-links">
-            <a href="/batches/history" class="nav-link">Batch history</a>
-            {_admin_nav_links(user_role=user_role)}
-            <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-        </div>
-    </nav>
+@@PUBLIC_SITE_NAV@@
 
     <main class="main">
         <div class="loader">
@@ -3533,8 +3691,8 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
         "Making descriptions readable",
         "Convincing the algorithm of our value","Almost there!"
     ];
-    let phraseIdx=0, pct=0, batchId=null, serverReady=false;
-    const pageStart=Date.now(), MIN_SHOW=5000;
+    let phraseIdx=0, pct=0, batchId=null, pollTimer=null, pollFailStreak=0;
+    const pageStart=Date.now(), MIN_SHOW=900;
 
     function nextPhrase(){{
         const el=document.getElementById("thinking");
@@ -3543,23 +3701,9 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
         setTimeout(()=>{{el.textContent=phrases[phraseIdx];el.style.opacity=1;}},250);
     }}
     function setBar(val){{
-        pct=Math.min(val,100);
+        pct=Math.min(Math.max(val,0),100);
         document.querySelector(".progress-fill").style.width=pct+"%";
         document.getElementById("pct").textContent=Math.round(pct)+"%";
-    }}
-    let crawlTimer=null;
-    function startCrawl(ceiling){{
-        crawlTimer=setInterval(()=>{{
-            if(pct>=ceiling){{clearInterval(crawlTimer);return;}}
-            setBar(pct+Math.max(0.15,(ceiling-pct)*0.02));
-        }},80);
-    }}
-    function finishBar(cb){{
-        clearInterval(crawlTimer);
-        const fin=setInterval(()=>{{
-            if(pct>=100){{clearInterval(fin);setBar(100);cb();return;}}
-            setBar(pct+1.2);
-        }},30);
     }}
     function showDone(){{
         document.querySelector(".loader").classList.add("done");
@@ -3568,13 +3712,30 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
         setTimeout(()=>{{el.textContent="Done!";el.style.opacity=1;document.querySelector(".thinking-sub").innerHTML="Redirecting to results...";}},300);
         setTimeout(()=>{{window.location.href="/batches/"+batchId+"/review";}},1400);
     }}
-    function tryFinish(){{
-        if(!serverReady)return;
-        setTimeout(()=>{{finishBar(showDone);}},Math.max(0,MIN_SHOW-(Date.now()-pageStart)));
+    function scheduleDone(){{
+        const wait=Math.max(0,MIN_SHOW-(Date.now()-pageStart));
+        setTimeout(()=>{{setBar(100);showDone();}},wait);
+    }}
+    function pollProgress(){{
+        if(!batchId)return;
+        fetch("/batches/"+encodeURIComponent(batchId)+"/processing-progress",{{credentials:"same-origin",headers:{{"Accept":"application/json"}}}})
+            .then(r=>{{if(r.status===401){{window.location.href="/login?next="+encodeURIComponent(window.location.pathname||"/upload");return null;}}if(!r.ok)throw new Error("poll");return r.json();}})
+            .then(d=>{{
+                if(!d)return;
+                pollFailStreak=0;
+                const p=typeof d.percent==="number"?d.percent:0;
+                setBar(d.complete?100:p);
+                if(d.complete){{scheduleDone();return;}}
+                pollTimer=setTimeout(pollProgress,380);
+            }})
+            .catch(()=>{{
+                pollFailStreak+=1;
+                pollTimer=setTimeout(pollProgress,Math.min(2500,800+pollFailStreak*200));
+            }});
     }}
     async function startProcessing(){{
         setInterval(nextPhrase,1800);
-        startCrawl(80);
+        setBar(0);
         const form=new FormData();
         form.append("upload_id","{upload_id}");
         form.append("mode","{mode}");
@@ -3583,23 +3744,23 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
         form.append("product_type","{product_type}");
         form.append("mappings_json",document.getElementById("mj").value);
         try{{
-            const resp=await fetch("/batches/run",{{method:"POST",body:form}});
-            if(!resp.ok){{clearInterval(crawlTimer);if(resp.status===401){{window.location.href="/login?next="+encodeURIComponent(window.location.pathname||"/upload");return;}}const err=await resp.json().catch(()=>({{}}));alert(err.detail||"Processing failed.");window.location.href="/login";return;}}
+            const resp=await fetch("/batches/run",{{method:"POST",body:form,credentials:"same-origin"}});
+            if(!resp.ok){{if(resp.status===401){{window.location.href="/login?next="+encodeURIComponent(window.location.pathname||"/upload");return;}}const err=await resp.json().catch(()=>({{}}));alert(err.detail||"Processing failed.");window.location.href="/upload";return;}}
             const data=await resp.json();
             batchId=data.batch_id;
-            serverReady=true;
-            tryFinish();
-        }}catch(e){{clearInterval(crawlTimer);alert("Something went wrong.");window.location.href="/upload";}}
+            pollProgress();
+        }}catch(e){{alert("Something went wrong.");window.location.href="/upload";}}
     }}
     startProcessing();
-    (function(){{
-        const t=document.getElementById("themeToggle");
-        if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\u2600":"\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
-    }})();
+    {public_site_theme_toggle_script().strip()}
     </script>
     <script src="/static/page-transition.js"></script>
 </body>
-</html>"""
+</html>""".replace(
+        "@@APP_HP_NAV_STYLES@@", HP_NAV_CSS
+    ).replace(
+        "@@PUBLIC_SITE_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
+    )
 
 
 def _build_mapping_page(
@@ -3611,7 +3772,6 @@ def _build_mapping_page(
     target_language: str,
     total_rows: int = 0,
     product_type: str = "standard",
-    user_role: str = "customer",
 ) -> str:
     internal_options = ["-- skip --"] + INTERNAL_FIELDS
     field_labels = {"image_url": "image_link"}
@@ -3642,9 +3802,11 @@ def _build_mapping_page(
     <title>Map columns &mdash; Cartozo.ai</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
+    <style>@@APP_HP_NAV_STYLES@@</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; padding-top: 72px; }}
+    @media (max-width: 768px) {{ body {{ padding-top: 88px; }} }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     [data-theme="light"] .subtitle, [data-theme="light"] .subtitle strong {{ color: rgba(15,23,42,0.8) !important; }}
     [data-theme="light"] .table-container, [data-theme="light"] .options-box {{ background: rgba(255,255,255,0.8); border-color: rgba(15,23,42,0.15); }}
@@ -3657,11 +3819,6 @@ def _build_mapping_page(
     [data-theme="light"] .btn-back {{ border-color: rgba(15,23,42,0.2); color: #0f172a; }}
     [data-theme="light"] .btn-back:hover {{ border-color: rgba(15,23,42,0.4); }}
     [data-theme="light"] .btn-primary {{ background: #0f172a; color: #fff; }}
-    [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); }}
-    [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .nav-link:hover, [data-theme="light"] .nav-link.active {{ color: #0f172a; }}
-    [data-theme="light"] .nav-cta {{ background: #0f172a; color: #fff; }}
-    .nav-cta {{ background: #fff; color: #000; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; }}
 
     .container {{ max-width: 900px; margin: 40px auto; padding: 0 24px; }}
     .title {{ font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; letter-spacing: -0.02em; display: flex; align-items: center; gap: 12px; }}
@@ -3693,19 +3850,12 @@ def _build_mapping_page(
     .btn-primary {{ flex: 2; background: #fff; color: #000; }}
     .btn-primary:hover {{ opacity: 0.9; transform: translateY(-1px); }}
 
-    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ margin: 24px auto; }} .checkboxes {{ gap: 16px; }} }}
+    @media (max-width: 768px) {{ .container {{ margin: 24px auto; }} .checkboxes {{ gap: 16px; }} }}
     </style>
 </head>
 <body>
 {GTM_BODY}
-    <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-        <div class="nav-links">
-            <a href="/batches/history" class="nav-link">Batch history</a>
-            {_admin_nav_links(user_role=user_role)}
-            <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-        </div>
-    </nav>
+@@PUBLIC_SITE_NAV@@
 
     <div class="container">
         <h1 class="title"><span>&#9881;</span> Map your columns</h1>
@@ -3774,14 +3924,15 @@ def _build_mapping_page(
         document.getElementById("optimize_fields").value=fields.join(",");
         document.getElementById("confirm-form").submit();
     }}
-    (function(){{
-        const t=document.getElementById("themeToggle");
-        if(t){{const k="hp-theme";function g(){{return localStorage.getItem(k)||"dark";}}function s(v){{document.documentElement.setAttribute("data-theme",v);localStorage.setItem(k,v);t.textContent=v==="dark"?"\u2600":"\u263E";}}t.onclick=()=>s(g()==="dark"?"light":"dark");s(g());}}
-    }})();
+    {public_site_theme_toggle_script().strip()}
     </script>
     <script src="/static/page-transition.js"></script>
 </body>
-</html>"""
+</html>""".replace(
+        "@@APP_HP_NAV_STYLES@@", HP_NAV_CSS
+    ).replace(
+        "@@PUBLIC_SITE_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
+    )
 
 
 @app.post("/batches", response_model=BatchSummary)
@@ -3807,6 +3958,8 @@ async def create_batch(
         raise HTTPException(status_code=400, detail=security_error)
 
     records = parse_csv_file(io.StringIO(text))
+
+    _subscription_require_active_api(request, incoming_rows=len(records))
 
     batch_id = str(uuid.uuid4())
     normalized_products: List[NormalizedProduct] = normalize_records(records)
@@ -3925,6 +4078,7 @@ async def regenerate_batch_items(request: Request, batch_id: str, product_ids: L
     Expects JSON body: ["id1", "id2", ...]
     """
     require_login_http(request)
+    _subscription_require_window_api(request)
     batch = storage.get_batch(batch_id)
     _ensure_batch_owner_from_batch(request, batch)
 
@@ -4030,7 +4184,6 @@ async def review_batch(request: Request, batch_id: str):
     batch = storage.get_batch(batch_id)
     user = get_current_user(request)
     _ensure_batch_owner_from_batch(request, batch)
-    user_role = user.get("role", "customer") if user else "customer"
     batch_history_html = _build_batch_history_html(batch_id, (user.get("email") or "") if user else "")
 
     total = len(batch.products)
@@ -4405,13 +4558,12 @@ async def review_batch(request: Request, batch_id: str):
     <title>Review &mdash; {batch_id[:8]}</title>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
+    <style>@@APP_HP_NAV_STYLES@@</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; padding-top: 72px; }}
+    @media (max-width: 768px) {{ body {{ padding-top: 88px; }} }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
-    [data-theme="light"] .nav {{ border-bottom-color: rgba(15,23,42,0.08); background: rgba(248,250,252,0.95); }}
-    [data-theme="light"] .nav-link {{ color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .nav-link:hover {{ color: #0f172a; }}
     [data-theme="light"] .header .batch-id {{ color: rgba(15,23,42,0.5); }}
     [data-theme="light"] .btn-outline {{ border-color: rgba(15,23,42,0.2); color: #0f172a; }}
     [data-theme="light"] .btn-outline:hover {{ border-color: rgba(15,23,42,0.4); }}
@@ -4469,19 +4621,6 @@ async def review_batch(request: Request, batch_id: str):
     [data-theme="light"] .feedback-overlay {{ background: rgba(255,255,255,0.5); }}
     [data-theme="light"] .feedback-stars span {{ color: rgba(15,23,42,0.2); }}
     [data-theme="light"] input[type="checkbox"] {{ accent-color: #0f172a; }}
-    .nav {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 48px; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; background: rgba(10,10,10,0.95); backdrop-filter: blur(10px); z-index: 100; }}
-    .nav-logo img {{ height: 32px; }}
-    .nav-logo .logo-light {{ display: block; filter: brightness(0) invert(1); }}
-    .nav-logo .logo-dark {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-light {{ display: none; }}
-    [data-theme="light"] .nav-logo .logo-dark {{ display: block; filter: none; }}
-    .theme-btn {{ display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 1rem; transition: all 0.2s; }}
-    .theme-btn:hover {{ color: #fff; background: rgba(255,255,255,0.08); }}
-    [data-theme="light"] .theme-btn {{ border-color: rgba(15,23,42,0.15); color: rgba(15,23,42,0.6); }}
-    [data-theme="light"] .theme-btn:hover {{ color: #0f172a; background: rgba(15,23,42,0.06); }}
-    .nav-links {{ display: flex; align-items: center; gap: 32px; }}
-    .nav-link {{ color: rgba(255,255,255,0.6); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }}
-    .nav-link:hover {{ color: #fff; }}
 
     .container {{ max-width: 1700px; margin: 0 auto; padding: 32px 48px; }}
 
@@ -4572,7 +4711,7 @@ async def review_batch(request: Request, batch_id: str):
     .scroll-arrow-right::before {{ content: '→'; }}
     
     table {{ width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1800px; }}
-    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 0; }}
+    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 72px; }}
     th:hover {{ color: rgba(255,255,255,0.9); }}
     th.sorted-asc::after {{ content: ' ↑'; color: #fff; }}
     th.sorted-desc::after {{ content: ' ↓'; color: #fff; }}
@@ -4805,19 +4944,12 @@ async def review_batch(request: Request, batch_id: str):
     [data-theme="light"] .review-tab {{ color: rgba(15,23,42,0.45); }}
     [data-theme="light"] .review-tab.is-active {{ color: #0f172a; border-bottom-color: #22D3EE; }}
 
-    @media (max-width: 768px) {{ .nav {{ padding: 16px 24px; }} .container {{ padding: 24px; }} .gmc-panel {{ flex-direction: column; align-items: stretch; }} .gmc-legend {{ flex-wrap: wrap; gap: 8px; }} .review-tab-aux {{ margin-left: 0; width: 100%; padding: 4px 14px 10px; }} }}
+    @media (max-width: 768px) {{ th {{ top: 88px; }} .container {{ padding: 24px; }} .gmc-panel {{ flex-direction: column; align-items: stretch; }} .gmc-legend {{ flex-wrap: wrap; gap: 8px; }} .review-tab-aux {{ margin-left: 0; width: 100%; padding: 4px 14px 10px; }} }}
     </style>
 </head>
 <body>
 {GTM_BODY}
-    <nav class="nav">
-        <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
-        <div class="nav-links">
-            <a href="/batches/history" class="nav-link">Batch history</a>
-            {_admin_nav_links(user_role=user_role)}
-            <button type="button" class="theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-        </div>
-    </nav>
+@@PUBLIC_SITE_NAV@@
 
     <div class="container">
         <div class="header">
@@ -5428,6 +5560,9 @@ async def review_batch(request: Request, batch_id: str):
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
+    html = html.replace("@@APP_HP_NAV_STYLES@@", HP_NAV_CSS).replace(
+        "@@PUBLIC_SITE_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
+    )
     r = HTMLResponse(content=html)
     _onboarding_track(request, r, 5)
     return r
@@ -5519,7 +5654,8 @@ async def settings_page(request: Request):
         role_badge = '<span class="badge badge-admin">admin</span>' if role == "admin" else '<span class="badge badge-customer">customer</span>'
         last_login = u.get("last_login", "")[:19].replace("T", " ") if u.get("last_login") else "—"
         first_seen = u.get("first_seen", "")[:19].replace("T", " ") if u.get("first_seen") else "—"
-        users_rows += f"""<tr><td>{i + 1}</td><td><strong>{name}</strong><br><span class="email">{email}</span></td><td>{provider}</td><td>{role_badge}</td><td class="ts">{first_seen}</td><td class="ts">{last_login}</td></tr>"""
+        sub_lbl = _html.escape(u.get("subscription_label_uk") or "—")
+        users_rows += f"""<tr><td>{i + 1}</td><td><strong>{name}</strong><br><span class="email">{email}</span></td><td>{provider}</td><td>{role_badge}</td><td class="text-cell">{sub_lbl}</td><td class="ts">{first_seen}</td><td class="ts">{last_login}</td></tr>"""
 
     feedback_total = len(feedback_list)
     feedback_avg = round(sum(f.get("rating", 0) for f in feedback_list) / feedback_total, 1) if feedback_total else 0
@@ -5541,7 +5677,7 @@ async def settings_page(request: Request):
         chat_sessions_rows += f'<tr><td>{i + 1}</td><td class="mono">{sid_display}</td><td class="email">{email}</td><td>{msg_count}</td><td class="text-cell">{first_msg}</td><td class="ts">{updated}</td><td><button type="button" class="btn btn-small" onclick="viewChatSession(this)" data-msgs="{msgs_b64}">View</button></td></tr>'
 
     tab_param = request.query_params.get("tab", "prompts")
-    if tab_param not in ("prompts", "api", "seo", "users", "feedback", "chats", "feedurl"):
+    if tab_param not in ("prompts", "api", "seo", "users", "feedback", "chats", "feedurl", "wayforpay"):
         tab_param = "prompts"
     prompt_sub_param = request.query_params.get("sub", "products")
     if prompt_sub_param not in ("products", "writter", "homepage"):
@@ -5558,6 +5694,16 @@ async def settings_page(request: Request):
     wp_uc = _tx_esc(s.get("writter_prompt_use_cases", ""))
     wp_cmp = _tx_esc(s.get("writter_prompt_comparison", ""))
     wp_chk = _tx_esc(s.get("writter_prompt_checklist_template", ""))
+
+    wfp_merchant_esc = _html.escape((s.get("wayforpay_merchant_account") or "").strip())
+    wfp_domain_esc = _html.escape((s.get("wayforpay_merchant_domain") or "").strip())
+    wfp_return_esc = _html.escape((s.get("wayforpay_return_url") or "").strip())
+    wfp_sub_json_esc = _tx_esc(s.get("wayforpay_subscribe_options_json") or "")
+    wfp_service_esc = _html.escape(site_base_url().rstrip("/") + "/api/payments/wayforpay/service")
+    wfp_secret_masked = ""
+    if (s.get("wayforpay_secret_key") or "").strip():
+        _sk = s["wayforpay_secret_key"]
+        wfp_secret_masked = _sk[:4] + "…" + _sk[-4:] if len(_sk) > 12 else "••••••••"
 
     _gen_at_raw = (s.get("sitemap_robots_generated_at") or "").strip()
     _gen_at_disp = (
@@ -5701,6 +5847,7 @@ async def settings_page(request: Request):
             <button class="tab{' active' if tab_param == 'feedback' else ''}" data-tab="tab-feedback" onclick="switchTab('tab-feedback','feedback')">Feedback</button>
             <button class="tab{' active' if tab_param == 'chats' else ''}" data-tab="tab-chats" onclick="switchTab('tab-chats','chats')">Chat Sessions</button>
             <button class="tab{' active' if tab_param == 'feedurl' else ''}" data-tab="tab-feedurl" onclick="switchTab('tab-feedurl','feedurl')">Feed from URL</button>
+            <button class="tab{' active' if tab_param == 'wayforpay' else ''}" data-tab="tab-wayforpay" onclick="switchTab('tab-wayforpay','wayforpay')">WayForPay</button>
         </div>
 
         <div id="tab-prompts" class="tab-content{' active' if tab_param == 'prompts' else ''}">
@@ -5886,7 +6033,7 @@ async def settings_page(request: Request):
                 <div class="stat"><div class="stat-val">{admins}</div><div class="stat-label">Admins</div></div>
                 <div class="stat"><div class="stat-val">{customers}</div><div class="stat-label">Customers</div></div>
             </div>
-            {"<table><thead><tr><th>#</th><th>User</th><th>Provider</th><th>Role</th><th>First seen</th><th>Last login</th></tr></thead><tbody>" + users_rows + "</tbody></table>" if users_total else '<div class="empty">No users have signed in yet.</div>'}
+            {"<table><thead><tr><th>#</th><th>User</th><th>Provider</th><th>Role</th><th>Subscription</th><th>First seen</th><th>Last login</th></tr></thead><tbody>" + users_rows + "</tbody></table>" if users_total else '<div class="empty">No users have signed in yet.</div>'}
         </div>
 
         <div id="tab-feedback" class="tab-content{' active' if tab_param == 'feedback' else ''}">
@@ -5940,6 +6087,48 @@ async def settings_page(request: Request):
                 <span id="feed-scrape-status" class="save-msg">&#10003; Download started</span>
             </div>
             <div id="feed-scrape-warn" class="note-box" style="display:none;margin-top:20px;"></div>
+        </div>
+
+        <div id="tab-wayforpay" class="tab-content{' active' if tab_param == 'wayforpay' else ''}">
+            <p class="group-desc" style="margin-bottom:18px;">
+                <a href="https://wiki.wayforpay.com/en/view/852102" target="_blank" rel="noopener">WayForPay Purchase</a>
+                integration for subscription checkout. After your merchant contract is active, paste <strong>merchantAccount</strong>,
+                <strong>SecretKey</strong>, and the <strong>merchant domain</strong> (as registered in WayForPay). The server signs each order and receives payments on <code>serviceUrl</code>.
+            </p>
+            <div class="group">
+                <div class="group-title">serviceUrl (webhook)</div>
+                <p class="group-desc">Set this exact URL in the WayForPay merchant cabinet if required. Must be reachable over HTTPS in production.</p>
+                <p class="key-status">Endpoint: <code id="wfp_service_url_display">{wfp_service_esc}</code></p>
+            </div>
+            <div class="group">
+                <div class="group-title">Merchant account</div>
+                <input type="text" id="wfp_merchant" placeholder="merchantLogin from WayForPay" value="{wfp_merchant_esc}" autocomplete="off" />
+            </div>
+            <div class="group">
+                <div class="group-title">Merchant domain</div>
+                <p class="group-desc">Same value as <code>merchantDomainName</code> in the signature (your site domain as approved by WayForPay).</p>
+                <input type="text" id="wfp_domain" placeholder="example.com" value="{wfp_domain_esc}" autocomplete="off" />
+            </div>
+            <div class="group">
+                <div class="group-title">Secret key</div>
+                <p class="group-desc">Stored encrypted at rest only if your deployment secures the DB. Leave blank to keep the current key; enter a new value to replace.</p>
+                <p class="key-status" id="wfp_key_wrap" style="display:{'block' if wfp_secret_masked else 'none'};">Saved key: <code id="wfp_key_display">{_html.escape(wfp_secret_masked)}</code></p>
+                <input type="password" id="wfp_secret" placeholder="New secret key (optional)" autocomplete="new-password" />
+            </div>
+            <div class="group">
+                <div class="group-title">Return URL (optional)</div>
+                <p class="group-desc">After payment, the customer is redirected here. If empty, defaults to <code>/upload?subscription=success</code> on this site.</p>
+                <input type="url" id="wfp_return" placeholder="" value="{wfp_return_esc}" autocomplete="off" />
+            </div>
+            <div class="group">
+                <div class="group-title">Subscription / regular payment (JSON, optional)</div>
+                <p class="group-desc">Optional extra Purchase fields, e.g. <code>regularMode</code>, <code>regularAmount</code>, <code>dateNext</code>, <code>regularOn</code>. See WayForPay &quot;Regular payments&quot; in the wiki. Valid JSON object only.</p>
+                <textarea id="wfp_sub_json" style="min-height:100px;font-family:monospace;">{wfp_sub_json_esc}</textarea>
+            </div>
+            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:12px;">
+                <button type="button" class="btn btn-primary" onclick="saveWayforpay()">Save WayForPay</button>
+                <span id="wfp-status" class="save-msg">&#10003; Saved</span>
+            </div>
         </div>
     </div>
 
@@ -6043,6 +6232,30 @@ async def settings_page(request: Request):
             showSaved('apikey-status');
             if(key){{document.getElementById('key-display').textContent=key.substring(0,7)+'...'+key.slice(-4);document.getElementById('key-display').style.display='inline';document.getElementById('no-key').style.display='none';}}
             document.getElementById('openai_key').value='';
+        }}
+    }}
+    async function saveWayforpay(){{
+        const body={{
+            wayforpay_merchant_account:(document.getElementById('wfp_merchant')||{{}}).value||'',
+            wayforpay_merchant_domain:(document.getElementById('wfp_domain')||{{}}).value||'',
+            wayforpay_return_url:(document.getElementById('wfp_return')||{{}}).value||'',
+            wayforpay_subscribe_options_json:(document.getElementById('wfp_sub_json')||{{}}).value||''
+        }};
+        const skEl=document.getElementById('wfp_secret');
+        const sk=skEl?skEl.value.trim():'';
+        if(sk)body.wayforpay_secret_key=sk;
+        const resp=await fetch('/api/admin/wayforpay',{{method:'POST',headers:{{'Content-Type':'application/json'}},credentials:'same-origin',body:JSON.stringify(body)}});
+        let j={{}};try{{j=await resp.json();}}catch(e){{}}
+        if(resp.ok){{
+            showSaved('wfp-status');
+            if(sk&&skEl){{skEl.value='';}}
+            if(sk){{
+                const wrap=document.getElementById('wfp_key_wrap');
+                const disp=document.getElementById('wfp_key_display');
+                if(wrap&&disp){{wrap.style.display='block';disp.textContent=sk.substring(0,4)+'…'+sk.slice(-4);}}
+            }}
+        }}else{{
+            alert((j&&j.detail)?j.detail:'Could not save');
         }}
     }}
     function showSaved(id){{const el=document.getElementById(id);el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2500);}}
@@ -6279,11 +6492,34 @@ async def api_me(request: Request):
     user = get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not logged in")
+    from .db import get_db
+    from .services.subscription import build_subscription_access
+
+    with get_db() as db:
+        acc = build_subscription_access(
+            db,
+            user.get("email") or "",
+            is_admin=is_admin(request),
+            product_count_hint=0,
+            enforce_monthly_cap=True,
+        )
     return {
         "email": user.get("email", ""),
         "name": user.get("name", ""),
         "role": user.get("role", "customer"),
         "provider": user.get("provider", ""),
+        "subscription": {
+            "can_use_service": acc.can_use_service,
+            "effective_plan": acc.effective_plan,
+            "subscription_plan": acc.subscription_plan,
+            "subscription_status": acc.subscription_status,
+            "free_trial_ends_at": acc.free_trial_ends_at,
+            "subscription_valid_until": acc.subscription_valid_until,
+            "monthly_product_limit": acc.monthly_product_limit,
+            "products_used_this_month": acc.products_used_this_month,
+            "message_uk": acc.message_uk,
+            "is_admin_bypass": acc.is_admin_bypass,
+        },
     }
 
 
@@ -7090,6 +7326,7 @@ async def robots_txt(request: Request):
     return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
 
+register_wayforpay_routes(app)
 register_writter_routes(app)
 
 # Registered after all other routers so /terms is never shadowed by a catch-all elsewhere.

@@ -122,7 +122,7 @@ a{{text-decoration:none;color:inherit}}
 @@HP_NAV_STYLES@@
 
 /* ── layout ──────────────────────────────────────── */
-.w{{position:relative;z-index:1;max-width:1160px;margin:0 auto;padding:72px 28px 100px;box-sizing:border-box}}
+.w{{position:relative;z-index:1;max-width:1160px;margin:0 auto;padding:58px 28px 100px;box-sizing:border-box}}
 
 /* ── scroll reveal ───────────────────────────────── */
 .rv{{opacity:0;transform:translateY(22px);transition:opacity .7s cubic-bezier(.22,1,.36,1),transform .7s cubic-bezier(.22,1,.36,1)}}
@@ -174,15 +174,14 @@ a{{text-decoration:none;color:inherit}}
 ═══════════════════════════════════════ */
 .hero{{
   display:grid;grid-template-columns:1fr 1.18fr;
-  gap:clamp(28px,4vw,64px);align-items:center;
-  padding:clamp(44px,8vh,88px) 0 clamp(44px,7vh,72px);
-  min-height:calc(100svh - 80px);
+  gap:clamp(20px,3.2vw,48px);align-items:start;
+  padding:clamp(12px,2.5vh,36px) 0 clamp(16px,3.5vh,44px);
 }}
-@media(max-width:980px){{.hero{{grid-template-columns:1fr;min-height:auto;gap:40px;padding:40px 0 52px}}}}
+@media(max-width:980px){{.hero{{grid-template-columns:1fr;gap:32px;padding:24px 0 40px}}}}
 .hero-copy{{
   max-width:544px;
   display:flex;flex-direction:column;align-items:stretch;
-  gap:clamp(22px,3.2vw,32px);
+  gap:clamp(14px,2.2vw,26px);
   isolation:isolate;
 }}
 
@@ -259,7 +258,7 @@ a{{text-decoration:none;color:inherit}}
 
 /* one calm “value” card — less visual noise than stacked orange + black */
 .hero-support{{
-  padding:20px 22px;border-radius:14px;border:1px solid var(--line);
+  padding:16px 20px;border-radius:14px;border:1px solid var(--line);
   background:var(--s1);max-width:100%;
   display:flex;flex-direction:column;gap:14px;
 }}
@@ -295,7 +294,7 @@ a{{text-decoration:none;color:inherit}}
 }}
 /* proof: separated scan-friendly list */
 .hero-proof{{
-  padding-top:clamp(16px,2.5vw,22px);margin:0;border-top:1px solid var(--line);
+  padding-top:clamp(12px,1.8vw,18px);margin:0;border-top:1px solid var(--line);
 }}
 .hero-proof .hero-kicker{{margin-bottom:11px}}
 .trust-chips{{display:flex;flex-direction:column;align-items:flex-start;gap:11px;margin:0;padding:0}}
@@ -317,6 +316,12 @@ a{{text-decoration:none;color:inherit}}
   filter:
     drop-shadow(0 22px 44px rgba(79,70,229,.22))
     drop-shadow(0 8px 20px rgba(30,27,75,.14));
+}}
+/* Right column: .ann-tl uses negative top so badge straddles card corner; offset .pw-wrap so badge still lines up with .h1 first line */
+@media(min-width:981px){{
+  .hero .pw-wrap{{
+    margin-top:max(0px,calc(14px + 0.69rem * 1.35 + clamp(14px,2.2vw,26px) + 14px));
+  }}
 }}
 .pw{{
   border-radius:16px;overflow:hidden;
@@ -351,7 +356,12 @@ a{{text-decoration:none;color:inherit}}
 }}
 
 /* window content = scoped real app UI */
-.pw-body{{padding:14px 16px 16px;max-height:min(430px,55vw);overflow:hidden}}
+.pw-body{{padding:12px 14px 14px;max-height:min(360px,min(44vw,54vh));overflow:hidden}}
+@media(min-width:981px) and (max-height:820px){{
+  .pw-body{{max-height:min(300px,50vh)}}
+  .hero .h1{{font-size:clamp(2.05rem,4.5vw,3.2rem)}}
+  .trust-chips{{gap:8px}}
+}}
 
 /* annotation badges */
 .ann{{
