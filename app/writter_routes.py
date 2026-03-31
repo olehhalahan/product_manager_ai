@@ -2884,6 +2884,8 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
     show_admin = is_admin(request)
     schedule_og = False
     article_id = 0
+    og_status = ""
+    og_gen_error = ""
     with get_db() as db:
         row = repo.get_blog_article_by_slug(db, slug)
         if not row or row.status != "published":
@@ -2892,6 +2894,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
         repo.increment_blog_views(db, slug)
         article_id = int(row.id)
         schedule_og = blog_article_needs_og_banner(row)
+        og_status = (getattr(row, "image_generation_status", None) or "").strip()
         title_esc = html_module.escape(row.title or "")
         meta_esc = html_module.escape((row.meta_description or "")[:300])
         content = row.content_html or ""
@@ -2927,7 +2930,27 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
         ts_mod = getattr(row, "updated_at", None) or ts_pub
 
     if schedule_og and article_id:
-        background_tasks.add_task(_schedule_blog_og_generation, article_id, False)
+        # Background-only often never completes on some hosts, or Chromium is missing — try sync first.
+        use_sync = os.getenv("BLOG_OG_SYNC_ON_PAGE_LOAD", "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
+        if use_sync:
+            from .services.blog_og_image import generate_blog_og_image_for_article_id
+
+            gen_out = generate_blog_og_image_for_article_id(article_id, force=False)
+            if gen_out.get("success"):
+                with get_db() as db:
+                    row_img = repo.get_blog_article_by_id(db, article_id)
+                    if row_img:
+                        hero_rel = (getattr(row_img, "image_url", None) or "").strip()
+                        og_status = (getattr(row_img, "image_generation_status", None) or "").strip()
+            else:
+                og_gen_error = (gen_out.get("error") or "OG banner generation failed").strip()[:500]
+        if not hero_rel:
+            background_tasks.add_task(_schedule_blog_og_generation, article_id, False)
 
     base_origin = site_base_url().rstrip("/")
     og_image_abs = f"{base_origin}{hero_rel}" if hero_rel else default_og
@@ -3057,6 +3080,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
         <h2 class="bar-title">Insights</h2>
         <p class="bar-sub">Visible only to you · not shown to readers</p>
       </div>
+      {og_banner_hint}
       {quality_block}
       {engage_block}
       {proj_block}
@@ -3083,6 +3107,23 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
         is_active = (r.get("slug") or "") == slug
         li_cls = ' class="wt-sb-active"' if is_active else ""
         nav_li += f"<li{li_cls}><a href=\"/blog/{s_esc}\">{t}</a></li>"
+
+    og_banner_hint = ""
+    if show_admin and not hero_rel:
+        bits: List[str] = []
+        if og_gen_error:
+            bits.append(html_module.escape(og_gen_error))
+        if og_status:
+            bits.append(f"DB status: <code>{html_module.escape(og_status)}</code>")
+        bits.append(
+            "Server: run <code>python -m playwright install chromium</code>, keep <code>static/blog-images/</code> writable, "
+            "and do not set <code>BLOG_OG_IMAGE_DISABLE</code>."
+        )
+        og_banner_hint = f"""
+      <div class="bar-card" style="border-color:#f87171;">
+        <h3 class="bar-h3">Hero / OG image missing</h3>
+        <p class="bar-narr" style="font-size:0.82rem;">{" ".join(bits)}</p>
+      </div>"""
 
     regen_script = ""
     if show_admin:

@@ -142,7 +142,11 @@ def generate_blog_og_image_for_article_id(article_id: int, *, force: bool = Fals
                         image_template_version=BLOG_OG_TEMPLATE_VERSION,
                         image_hash=content_hash,
                     )
-            return {"success": False, "error": "Screenshot failed (Playwright / Chromium?)", "article_id": article_id}
+            return {
+                "success": False,
+                "error": "Screenshot failed — run on server: python -m playwright install chromium (and ensure playwright package is installed).",
+                "article_id": article_id,
+            }
 
         fs_path2 = fs_path_for_slug(slug)
         tmp_path = fs_path2 + ".tmp"

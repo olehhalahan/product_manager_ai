@@ -21,7 +21,9 @@ def html_to_png_bytes(
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        _log.warning("playwright not installed; skip blog banner PNG render")
+        _log.warning(
+            "playwright package missing — install playwright and run: python -m playwright install chromium"
+        )
         return None
     try:
         with sync_playwright() as p:
