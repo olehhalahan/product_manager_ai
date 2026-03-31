@@ -213,7 +213,7 @@ PAGE = r"""<!DOCTYPE html>
           <h3 style="font-size:.95rem;color:#94a3b8;margin:20px 0 8px;">Evidence (optional)</h3>
           <div class="wt-inline-row">
             <label><input type="checkbox" id="ev_use_sh" /> Use product screenshots</label>
-            <label><input type="checkbox" id="ev_add_dia" /> Add diagram note</label>
+            <label><input type="checkbox" id="ev_add_dia" /> Add workflow note (prose only)</label>
             <label><input type="checkbox" id="ev_add_met" /> Add metrics</label>
             <label><input type="checkbox" id="ev_add_uc" /> Add use-case example</label>
           </div>
@@ -228,7 +228,7 @@ PAGE = r"""<!DOCTYPE html>
           </div>
           <div id="evBlockDia" class="wt-ev-block">
             <label>Diagram / workflow note</label>
-            <textarea id="diagram_note" placeholder="What the diagram should show"></textarea>
+            <textarea id="diagram_note" placeholder="What the workflow should explain (no figure will be embedded)"></textarea>
           </div>
           <div id="evBlockMet" class="wt-ev-block">
             <label>Metrics / numbers to cite</label>
@@ -257,7 +257,7 @@ PAGE = r"""<!DOCTYPE html>
           </div>
           <div id="visualAutoBlock">
             <div class="wt-visual-head">
-              <label style="margin:0;">Pick a diagram variant</label>
+              <label style="margin:0;">Diagram variants (disabled)</label>
               <div class="wt-visual-actions">
                 <button type="button" class="wt-btn-ghost" id="btnRegenVisual" title="New variants">Regenerate</button>
                 <button type="button" class="wt-btn-ghost" id="btnMoreVisual" aria-expanded="false" aria-controls="visualMorePanel">Layout</button>
@@ -581,17 +581,21 @@ PAGE = r"""<!DOCTYPE html>
         el.innerHTML = '';
         var pick = parseInt(document.getElementById('visual_index').value, 10) || 0;
         if (pick >= opts.length) pick = 0;
-        opts.forEach(function(opt, i) {
-          var d = document.createElement('div');
-          d.className = 'visual-opt' + (i === pick ? ' selected' : '');
-          d.innerHTML = '<div>' + opt.html + '</div><div style="font-size:.75rem;margin-top:6px;color:#9ca3af;">' + (opt.label || '') + '</div>';
-          d.onclick = function() {
-            document.querySelectorAll('.visual-opt').forEach(function(x) { x.classList.remove('selected'); });
-            d.classList.add('selected');
-            document.getElementById('visual_index').value = String(i);
-          };
-          el.appendChild(d);
-        });
+        if (opts.length === 0) {
+          el.innerHTML = '<p class="wt-visual-disabled-note" style="font-size:.85rem;color:#94a3b8;margin:0;">Inline SVG diagrams are disabled. The live article uses the generated hero / OG image instead.</p>';
+        } else {
+          opts.forEach(function(opt, i) {
+            var d = document.createElement('div');
+            d.className = 'visual-opt' + (i === pick ? ' selected' : '');
+            d.innerHTML = '<div>' + opt.html + '</div><div style="font-size:.75rem;margin-top:6px;color:#9ca3af;">' + (opt.label || '') + '</div>';
+            d.onclick = function() {
+              document.querySelectorAll('.visual-opt').forEach(function(x) { x.classList.remove('selected'); });
+              d.classList.add('selected');
+              document.getElementById('visual_index').value = String(i);
+            };
+            el.appendChild(d);
+          });
+        }
         document.getElementById('visual_index').value = String(pick);
       });
   }

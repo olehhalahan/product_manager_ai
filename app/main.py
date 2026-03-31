@@ -110,6 +110,62 @@ def _maybe_start_writter_auto_scheduler():
         logging.getLogger("uvicorn.error").exception("Could not start Writter auto scheduler")
 
 
+def _maybe_start_blog_og_backfill():
+    """After deploy: generate missing blog OG/hero PNGs for published articles (daemon thread)."""
+    import logging
+    import os
+    import threading
+
+    v = os.getenv("BLOG_OG_BACKFILL_ON_STARTUP", "1").strip().lower()
+    if v in ("0", "false", "no", "off"):
+        return
+
+    def worker():
+        try:
+            from .services.blog_og_image import generate_missing_blog_og_images
+
+            raw = (os.getenv("BLOG_OG_BACKFILL_STARTUP_LIMIT") or "200").strip()
+            lim = max(1, min(int(raw or "200"), 500))
+            out = generate_missing_blog_og_images(limit=lim)
+            logging.getLogger("uvicorn.error").info(
+                "Blog OG image backfill (startup): processed=%s success=%s failed=%s",
+                out.get("processed"),
+                out.get("success"),
+                out.get("failed"),
+            )
+        except Exception:
+            logging.getLogger("uvicorn.error").exception("Blog OG image startup backfill failed")
+
+    threading.Thread(target=worker, daemon=True, name="blog-og-backfill").start()
+
+
+def _maybe_strip_blog_legacy_diagrams():
+    """One-time-safe: remove old writter-visual / writter-cheap-visual blocks from article HTML in DB."""
+    import logging
+    import os
+    import threading
+
+    if _os.getenv("BLOG_STRIP_LEGACY_DIAGRAMS_ON_STARTUP", "1").strip().lower() in ("0", "false", "no", "off"):
+        return
+
+    def worker():
+        try:
+            from .db import get_db
+            from .services import db_repository as repo
+
+            with get_db() as db:
+                out = repo.strip_legacy_inline_diagrams_from_all_blog_articles(db)
+            logging.getLogger("uvicorn.error").info(
+                "Blog legacy inline diagrams stripped: scanned=%s updated=%s",
+                out.get("scanned"),
+                out.get("updated"),
+            )
+        except Exception:
+            logging.getLogger("uvicorn.error").exception("Blog legacy diagram strip failed")
+
+    threading.Thread(target=worker, daemon=True, name="blog-strip-diagrams").start()
+
+
 @app.on_event("startup")
 def startup():
     """Create database tables on startup."""
@@ -123,6 +179,8 @@ def startup():
     log_google_cloud_startup()
     _sync_ai_from_settings()
     _maybe_start_writter_auto_scheduler()
+    _maybe_start_blog_og_backfill()
+    _maybe_strip_blog_legacy_diagrams()
 
 
 storage = PostgresStorage()

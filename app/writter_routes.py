@@ -10,7 +10,7 @@ import math
 import os
 import traceback
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional
@@ -71,6 +71,7 @@ from .services.writter_service import (
     publish_blocked_by_quality,
     refresh_article_partial,
     route_cheap_visual,
+    strip_legacy_writter_inline_diagrams,
     RULE_PRESET_MESSAGES,
     run_seo_quality_audit,
     score_article_opportunity,
@@ -101,7 +102,7 @@ def _blog_article_end_cta_html() -> str:
     return """<section class="blog-article-end-cta writter-cta" aria-labelledby="blog-end-cta-title">
   <h2 id="blog-end-cta-title" class="blog-article-end-cta-title">Ready to optimize your feed?</h2>
   <p class="blog-article-end-cta-sub">Upload your product catalog and improve titles, descriptions, and visibility with AI.</p>
-  <a href="/upload" class="blog-article-end-cta-btn">Get Started Now</a>
+  <a href="/upload" class="blog-article-end-cta-btn cta-banner" data-cta="footer_banner" data-location="blog_article">Start optimizing your feed</a>
 </section>"""
 
 
@@ -350,6 +351,12 @@ async def writter_list_page(request: Request):
     with get_db() as db:
         rows = repo.list_blog_articles_admin(db)
         future_rows = repo.list_writter_future_articles(db)
+        now_utc = datetime.now(timezone.utc)
+        day_start_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start_utc = now_utc - timedelta(days=7)
+        agg_views_today = repo.count_blog_view_events_since(db, day_start_utc)
+        agg_views_week = repo.count_blog_view_events_since(db, week_start_utc)
+        agg_views_all_time = repo.sum_blog_article_total_views(db)
     tr = ""
     for r in rows:
         title_esc = html_module.escape(r.get("title") or "")
@@ -469,6 +476,25 @@ async def writter_list_page(request: Request):
     if not tr_f:
         tr_f = '<tr><td colspan="7" class="wt-empty">No queued ideas yet. Click <strong>Refresh queue</strong> to generate suggestions.</td></tr>'
 
+    def _fmt_view_n(n: int) -> str:
+        return f"{int(n):,}".replace(",", " ")
+
+    view_stats_html = f"""<div class="wt-view-stats" aria-label="Загальні перегляди блогу">
+  <div class="wt-view-stat">
+    <span class="wt-view-stat-val">{_fmt_view_n(agg_views_today)}</span>
+    <span class="wt-view-stat-lbl">Сьогодні (UTC)</span>
+  </div>
+  <div class="wt-view-stat">
+    <span class="wt-view-stat-val">{_fmt_view_n(agg_views_week)}</span>
+    <span class="wt-view-stat-lbl">7 днів (UTC)</span>
+  </div>
+  <div class="wt-view-stat">
+    <span class="wt-view-stat-val">{_fmt_view_n(agg_views_all_time)}</span>
+    <span class="wt-view-stat-lbl">За весь час</span>
+  </div>
+  <p class="wt-view-stats-hint">«Сьогодні» і «7 днів» рахуються з журналу переглядів після оновлення; «За весь час» — сума полів Views у всіх статтях (історія до журналу врахована).</p>
+</div>"""
+
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -491,6 +517,14 @@ async def writter_list_page(request: Request):
   .wt-main {{ flex:1; min-width:0; padding:32px clamp(16px,3vw,40px); }}
   .wt-h1 {{ font-size:1.6rem; font-weight:700; margin:0 0 8px; }}
   .wt-toolbar {{ margin:24px 0; display:flex; gap:12px; align-items:center; }}
+  .wt-view-stats {{ display:flex; flex-wrap:wrap; gap:12px 28px; align-items:stretch; margin:0 0 18px; padding:14px 16px; border-radius:10px; border:1px solid rgba(255,255,255,.1); background:rgba(15,23,42,.45); }}
+  [data-theme="light"] .wt-view-stats {{ background:#f1f5f9; border-color:rgba(15,23,42,.12); }}
+  .wt-view-stat {{ display:flex; flex-direction:column; gap:3px; min-width:7rem; }}
+  .wt-view-stat-val {{ font-size:1.35rem; font-weight:700; font-variant-numeric:tabular-nums; color:#e2e8f0; line-height:1.2; }}
+  [data-theme="light"] .wt-view-stat-val {{ color:#0f172a; }}
+  .wt-view-stat-lbl {{ font-size:.68rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:#64748b; }}
+  .wt-view-stats-hint {{ flex:1 1 100%; margin:4px 0 0; font-size:.72rem; line-height:1.45; color:#64748b; max-width:42rem; }}
+  [data-theme="light"] .wt-view-stats-hint {{ color:#64748b; }}
   .wt-btn {{ display:inline-flex; align-items:center; gap:8px; padding:10px 18px; border-radius:8px; background:#4F46E5; color:#fff; font-weight:600; text-decoration:none; border:none; cursor:pointer; font-size:.9rem; }}
   .wt-btn:hover {{ filter:brightness(1.05); }}
   .wt-table-wrap {{ width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-inline-end:20px; box-sizing:border-box; }}
@@ -618,6 +652,7 @@ async def writter_list_page(request: Request):
         <strong>Refresh queue</strong> and <strong>+ 5 topics</strong> only add a short topic line and keywords (ideas for the queue), not article bodies. Approve rows you want, then click <strong>Generate</strong> to draft and publish when SEO overall score is at least {MIN_QUALITY_AUTO_PUBLISH}. <strong>Regenerate</strong> replaces one row with a new full AI brief.
       </p>
       <div id="panelArticles" class="wt-tab-panel wt-on" role="tabpanel">
+      {view_stats_html}
       <div class="wt-table-wrap">
       <table class="wt-table">
         <thead><tr>
@@ -2449,7 +2484,7 @@ async def api_update_article(
             db,
             row,
             title=body.title,
-            content_html=body.content_html,
+            content_html=strip_legacy_writter_inline_diagrams(body.content_html or ""),
             meta_description=body.meta_description,
             status=body.status,
         )
@@ -2842,16 +2877,21 @@ async def blog_index_page(request: Request, q: str = Query("", max_length=500)):
 
 
 @router.get("/blog/{slug}", response_class=HTMLResponse)
-async def blog_public_page(request: Request, slug: str):
+async def blog_public_page(request: Request, slug: str, background_tasks: BackgroundTasks):
     """Public SEO article. Right-hand analytics panel only for logged-in admin."""
+    from .services.blog_og_image import blog_article_needs_og_banner
+
     show_admin = is_admin(request)
+    schedule_og = False
+    article_id = 0
     with get_db() as db:
         row = repo.get_blog_article_by_slug(db, slug)
         if not row or row.status != "published":
             raise HTTPException(404, detail="Article not found")
         sidebar_rows = repo.list_blog_articles_published(db, limit=80)
         repo.increment_blog_views(db, slug)
-        article_id = row.id
+        article_id = int(row.id)
+        schedule_og = blog_article_needs_og_banner(row)
         title_esc = html_module.escape(row.title or "")
         meta_esc = html_module.escape((row.meta_description or "")[:300])
         content = row.content_html or ""
@@ -2885,6 +2925,9 @@ async def blog_public_page(request: Request, slug: str):
         # Materialize dates while session is open (avoid DetachedInstanceError on lazy refresh).
         ts_pub = row.published_at or row.created_at
         ts_mod = getattr(row, "updated_at", None) or ts_pub
+
+    if schedule_og and article_id:
+        background_tasks.add_task(_schedule_blog_og_generation, article_id, False)
 
     base_origin = site_base_url().rstrip("/")
     og_image_abs = f"{base_origin}{hero_rel}" if hero_rel else default_og
@@ -3086,8 +3129,12 @@ async def blog_public_page(request: Request, slug: str):
     hero_figure = ""
     if hero_rel:
         hero_figure = (
-            f'<figure class="blog-article-hero"><img src="{html_module.escape(hero_rel)}" '
-            f'width="{og_w}" height="{og_h}" alt="{title_esc}" loading="lazy" decoding="async" /></figure>'
+            f'<figure class="blog-article-hero">'
+            f'<a href="/upload" class="cta-banner blog-article-hero-link" data-cta="hero_banner" '
+            f'data-location="blog_article" aria-label="Start optimizing your feed">'
+            f'<img src="{html_module.escape(hero_rel)}" '
+            f'width="{og_w}" height="{og_h}" alt="{title_esc}" loading="lazy" decoding="async" />'
+            f"</a></figure>"
         )
     _bh = gtm_head_for_path(str(request.url.path))
     _bb = gtm_body_for_path(str(request.url.path))
@@ -3121,6 +3168,8 @@ async def blog_public_page(request: Request, slug: str):
   .blog-center {{ flex:1; min-width:0; padding:clamp(10px,2.5vw,20px) clamp(16px,4vw,40px) 80px; margin-inline:auto; }}
   .blog-article-hero {{ margin:0 0 24px; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,.08); background:#111827; }}
   [data-theme="light"] .blog-article-hero {{ border-color:rgba(15,23,42,.1); }}
+  a.blog-article-hero-link {{ display:block; text-decoration:none; color:inherit; outline-offset:4px; }}
+  a.blog-article-hero-link:focus-visible {{ border-radius:12px; box-shadow:0 0 0 3px rgba(129,140,248,.45); }}
   .blog-article-hero img {{ width:100%; height:auto; display:block; vertical-align:middle; }}
   .writter-cta a, .blog-main .writter-cta a {{ color:#4F46E5; font-weight:600; }}
   .blog-admin-r {{ width:320px; flex-shrink:0; padding:16px 20px 48px; border-left:1px solid rgba(255,255,255,.08); position:sticky; top:72px; align-self:flex-start; max-height:calc(100vh - 72px); overflow-y:auto; background:linear-gradient(180deg, rgba(79,70,229,.06) 0%, transparent 120px); }}
@@ -3205,7 +3254,7 @@ async def blog_public_page(request: Request, slug: str):
                   <li>Position titles &amp; descriptions on intents</li>
                   <li>Push to Google Merchant Center</li>
                 </ol>
-                <a href="/upload" class="blog-article-mid-cta-btn"><span class="blog-article-mid-cta-btn-label">Upload your feed</span></a>
+                <a href="/upload" class="blog-article-mid-cta-btn cta-banner" data-cta="inline_banner" data-location="blog_article">Upload your feed</a>
               </div>
             </section>
           </template>
@@ -3233,7 +3282,7 @@ async def blog_public_page(request: Request, slug: str):
       navigator.sendBeacon('/api/blog/{html_module.escape(slug)}/analytics', new Blob([JSON.stringify({{ time_ms: t, scroll_pct: maxScroll, cta_click: false }})], {{ type: 'application/json' }}));
     }});
     document.addEventListener('click', function(ev) {{
-      var a = ev.target && ev.target.closest && ev.target.closest('.writter-cta a[href]');
+      var a = ev.target && ev.target.closest && ev.target.closest('.writter-cta a[href], a.cta-banner[href]');
       if (!a) return;
       fetch('/api/blog/{html_module.escape(slug)}/analytics', {{
         method: 'POST',
@@ -3540,6 +3589,7 @@ async def api_refresh_article(request: Request, article_id: int, body: RefreshAc
             new_html = patches.get("content_html") or new_html
         elif action in ("cta", "faq", "evidence"):
             new_html = _merge_refresh_html(action, new_html, patches)
+        new_html = strip_legacy_writter_inline_diagrams(new_html)
         repo.update_blog_article(db, row, title=new_title, content_html=new_html, meta_description=new_meta)
         if row.status == "published":
             metrics = _only_dict(row.metrics_json or {})

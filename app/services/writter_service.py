@@ -100,7 +100,7 @@ RULE_PRESET_MESSAGES: Dict[str, str] = {
     "preset_practical_tone": "Keep tone practical and specific; prefer steps and examples over adjectives.",
     "preset_no_hype": "Avoid hype, superlatives, and vague claims.",
     "preset_faq_if_relevant": "Add a short FAQ or objection-handling subsection if it fits the topic.",
-    "preset_cta_end": "Place a clear CTA paragraph near the end (class writter-cta).",
+    "preset_cta_end": "Place a clear CTA near the end (writter-cta); the link must use class cta-banner, data-cta=article_body, data-location=blog_article.",
 }
 
 # Default section headings for outline preview (user does not pick blueprint — type drives this)
@@ -236,6 +236,31 @@ def rules_to_prompt_lines(rules: Optional[List[Dict[str, Any]]]) -> str:
     return "\n".join(lines)
 
 
+_FIGURE_WRITTER_CHEAP_RE = re.compile(
+    r'<figure\b[^>]*\bwritter-cheap-visual\b[^>]*>.*?</figure>',
+    re.IGNORECASE | re.DOTALL,
+)
+_FIGURE_WRITTER_VISUAL_RE = re.compile(
+    r'<figure\b[^>]*\bwritter-visual\b[^>]*>.*?</figure>',
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def strip_legacy_writter_inline_diagrams(html: Optional[str]) -> str:
+    """Remove legacy inline SVG/HTML flow figures (replaced by OG/hero PNG only). Safe to run repeatedly."""
+    if not html or not isinstance(html, str):
+        return html or ""
+    out = html
+    for _ in range(40):
+        prev = out
+        out = _FIGURE_WRITTER_CHEAP_RE.sub("", out)
+        out = _FIGURE_WRITTER_VISUAL_RE.sub("", out)
+        if out == prev:
+            break
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
+
+
 def build_visual_options(
     topic: str,
     keywords: str,
@@ -243,103 +268,9 @@ def build_visual_options(
     seed: int = 0,
     layout: str = "horizontal",
 ) -> List[Dict[str, str]]:
-    """
-    Token-efficient: predefined SVG diagrams (no image API).
-    `seed` rotates palettes/labels; `layout` is horizontal | vertical | compact.
-    Returns 3 variants with label + html for preview/embed.
-    """
-    base = ((topic or "") + (keywords or "")).strip() or "feed"
-    h0 = int(hashlib.md5(base.encode("utf-8")).hexdigest()[:8], 16)
-    mix = (h0 + int(seed) * 7919) & 0xFFFFFFFF
-    t_short = (topic or "Product flow")[:48]
-    layout = (layout or "horizontal").lower().strip()
-    if layout not in ("horizontal", "vertical", "compact"):
-        layout = "horizontal"
-
-    palettes = [
-        [("#4F46E5", "#22D3EE"), ("#6366f1", "#a78bfa"), ("#0ea5e9", "#4ade80")],
-        [("#7c3aed", "#38bdf8"), ("#db2777", "#f472b6"), ("#059669", "#34d399")],
-        [("#1d4ed8", "#fbbf24"), ("#b45309", "#fcd34d"), ("#0e7490", "#67e8f9")],
-        [("#4338ca", "#a5b4fc"), ("#be123c", "#fda4af"), ("#047857", "#6ee7b7")],
-    ]
-    pal = palettes[(mix + seed) % len(palettes)]
-
-    label_sets = [
-        ["Feed → optimization → channel", "Pipeline: ingest, enrich, publish", "Data flow overview"],
-        ["Source → process → destination", "Sync, map, publish", "End-to-end flow"],
-        ["Ingest → enrich → export", "Rules & AI layer", "Channel output"],
-        ["Upload → optimize → live", "Quality gates", "Performance path"],
-    ]
-    labels = label_sets[(mix // 7 + seed) % len(label_sets)]
-
-    def pick_colors(variant: int) -> Tuple[str, str]:
-        i = (variant + seed + mix) % 3
-        return pal[i][0], pal[i][1]
-
-    def svg_horizontal(variant: int, uid: str) -> str:
-        c1, c2 = pick_colors(variant)
-        return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 140" role="img" aria-label="Diagram">
-  <rect width="480" height="140" fill="transparent"/>
-  <rect x="10" y="40" width="100" height="48" rx="8" fill="{c1}" opacity="0.9"/>
-  <text x="60" y="70" text-anchor="middle" fill="white" font-size="11" font-family="system-ui,sans-serif">CSV / Feed</text>
-  <path d="M120 64 L160 64" stroke="{c2}" stroke-width="3" marker-end="url(#{uid}m)"/>
-  <rect x="170" y="40" width="110" height="48" rx="8" fill="{c2}" opacity="0.85"/>
-  <text x="225" y="70" text-anchor="middle" fill="#0f172a" font-size="11" font-family="system-ui,sans-serif">Optimize</text>
-  <path d="M290 64 L330 64" stroke="{c1}" stroke-width="3" marker-end="url(#{uid}m)"/>
-  <rect x="340" y="40" width="120" height="48" rx="8" fill="{c1}" opacity="0.75"/>
-  <text x="400" y="70" text-anchor="middle" fill="white" font-size="11" font-family="system-ui,sans-serif">Merchant</text>
-  <defs><marker id="{uid}m" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="{c1}"/></marker></defs>
-  <text x="240" y="120" text-anchor="middle" fill="#64748b" font-size="10" font-family="system-ui,sans-serif">{t_short}</text>
-</svg>"""
-
-    def svg_vertical(variant: int, uid: str) -> str:
-        c1, c2 = pick_colors(variant)
-        return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 200" role="img" aria-label="Diagram">
-  <rect width="280" height="200" fill="transparent"/>
-  <rect x="70" y="8" width="140" height="44" rx="8" fill="{c1}" opacity="0.92"/>
-  <text x="140" y="36" text-anchor="middle" fill="white" font-size="11" font-family="system-ui,sans-serif">CSV / Feed</text>
-  <path d="M140 52 L140 72" stroke="{c2}" stroke-width="3" marker-end="url(#{uid}mv)"/>
-  <rect x="65" y="76" width="150" height="44" rx="8" fill="{c2}" opacity="0.88"/>
-  <text x="140" y="104" text-anchor="middle" fill="#0f172a" font-size="11" font-family="system-ui,sans-serif">Optimize</text>
-  <path d="M140 120 L140 140" stroke="{c1}" stroke-width="3" marker-end="url(#{uid}mv)"/>
-  <rect x="60" y="144" width="160" height="44" rx="8" fill="{c1}" opacity="0.78"/>
-  <text x="140" y="172" text-anchor="middle" fill="white" font-size="11" font-family="system-ui,sans-serif">Merchant</text>
-  <defs><marker id="{uid}mv" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><polygon points="0 0, 8 4, 0 8" fill="{c1}"/></marker></defs>
-</svg>"""
-
-    def svg_compact(variant: int, uid: str) -> str:
-        c1, c2 = pick_colors(variant)
-        return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 100" role="img" aria-label="Diagram">
-  <rect width="480" height="100" fill="transparent"/>
-  <rect x="12" y="28" width="88" height="36" rx="6" fill="{c1}"/>
-  <text x="56" y="50" text-anchor="middle" fill="white" font-size="10" font-family="system-ui,sans-serif">Feed</text>
-  <text x="108" y="52" fill="#64748b" font-size="14">→</text>
-  <rect x="124" y="28" width="96" height="36" rx="6" fill="{c2}"/>
-  <text x="172" y="50" text-anchor="middle" fill="#0f172a" font-size="10" font-family="system-ui,sans-serif">AI</text>
-  <text x="232" y="52" fill="#64748b" font-size="14">→</text>
-  <rect x="248" y="28" width="100" height="36" rx="6" fill="{c1}" opacity="0.85"/>
-  <text x="298" y="50" text-anchor="middle" fill="white" font-size="10" font-family="system-ui,sans-serif">GMC</text>
-  <text x="240" y="84" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui,sans-serif">{t_short[:40]}</text>
-</svg>"""
-
-    def svg_for_variant(i: int) -> str:
-        uid = f"w{abs(seed)}_{layout}_{i}_{mix % 10000}"
-        if layout == "vertical":
-            return svg_vertical(i, uid)
-        if layout == "compact":
-            return svg_compact(i, uid)
-        return svg_horizontal(i, uid)
-
-    out = []
-    for i in range(3):
-        out.append(
-            {
-                "id": str(i),
-                "label": labels[i % len(labels)],
-                "html": f'<figure class="writter-visual" data-variant="{i}" data-layout="{layout}">{svg_for_variant(i)}</figure>',
-            }
-        )
-    return out
+    """Inline SVG diagram picker disabled — public articles use generated hero/OG images only."""
+    _ = (topic, keywords, seed, layout)
+    return []
 
 
 def estimate_metrics_heuristic(keywords: str, topic: str) -> Dict[str, Any]:
@@ -625,7 +556,7 @@ def build_article_plan(
 
     checklist = [
         {"id": "screenshots", "label": "Use product / UI screenshots", "default_on": True},
-        {"id": "diagram", "label": "Include a workflow diagram", "default_on": True},
+        {"id": "diagram", "label": "Workflow note (prose only — no inline diagram HTML)", "default_on": False},
         {"id": "metrics", "label": "Add one numeric example or metric", "default_on": True},
         {"id": "use_case", "label": "Add a short use-case scenario", "default_on": False},
     ]
@@ -779,13 +710,21 @@ def evidence_to_prompt_fragment(evidence: Optional[Dict[str, Any]]) -> str:
         lines.append("Quote / testimonial to attribute: " + q[:1500])
     d = (evidence.get("diagram_note") or "").strip()
     if d:
-        lines.append("Diagram / workflow note (align narrative with this): " + d[:1500])
+        lines.append(
+            "Workflow note for prose only (do NOT add <figure>, SVG, writter-visual, or writter-cheap-visual): "
+            + d[:1500]
+        )
     elif add_dia:
-        lines.append("Include a clear workflow or before/after diagram (can use the existing figure/visual section).")
+        lines.append(
+            "Describe the workflow in plain paragraphs or a short ordered list — no embedded diagram HTML or SVG."
+        )
 
     if not lines:
         return ""
-    return "EVIDENCE / PROOF (must appear in the article — at least one concrete block: example, metric, scenario, quote, or diagram callout):\n" + "\n".join(lines)
+    return (
+        "EVIDENCE / PROOF (must appear in the article — at least one concrete block: example, metric, scenario, quote, or short workflow in prose — no inline diagram HTML):\n"
+        + "\n".join(lines)
+    )
 
 
 def suggest_internal_link_placements(
@@ -1108,7 +1047,7 @@ Business goal: {business_goal or "(not specified)"}
         evidence_block = (
             "EVIDENCE / PROOF: No evidence was provided in the form. "
             "Still include at least one concrete block: a numeric example, a mini before/after, a short FAQ addressing objections, "
-            "or a labeled figure description (not generic filler)."
+            "or a short walkthrough in prose (no inline diagram HTML; not generic filler)."
         )
 
     shot_rows = _collect_screenshot_rows(evidence)
@@ -1158,7 +1097,8 @@ NON-NEGOTIABLE — USER SCREENSHOTS ({shot_n}):
     system = """You are an expert SEO content writer for Cartozo.ai (e-commerce product feed optimization).
 Write in English unless the topic clearly requires another language.
 Return ONLY valid JSON, no markdown. All HTML must be safe semantic tags: section, h2, h3, p, ul, li, strong, a (href only relative /blog/... or https://).
-You MUST respect the user's topic, keywords, editor rules, evidence, and visual description — never ignore them in favor of generic filler."""
+You MUST respect the user's topic, keywords, editor rules, evidence, and visual description — never ignore them in favor of generic filler.
+Never emit <figure class="writter-visual">, <figure class="writter-cheap-visual">, or raw SVG flow diagrams (Feed→Optimize→Merchant style); the site renders a single hero/OG image. If a workflow helps readers, describe it in prose or a list only."""
     if shot_n > 0:
         system += (
             f"\n\nThe user supplied {shot_n} product screenshot URL(s). "
@@ -1185,7 +1125,7 @@ Related posts for internal linking (use 2–4 links where relevant):
 Prioritized internal link suggestions (use these slugs first when relevant):
 {sug_lines or "- (no suggestions)"}
 
-Visual placed in article (describe near top; align copy with this diagram): {visual_label}
+Hero / social image theme (align intro copy with this; do not paste an inline diagram): {visual_label}
 {type_extra_block}
 
 {evidence_block}
@@ -1199,7 +1139,7 @@ JSON schema:
   "meta_description": "150-160 chars, compelling",
   "h1": "main heading",
   "structure_outline": [{{"level": 2, "title": "..."}}, ...],
-  "content_html": "full HTML body (no html/head/body wrapper). Include sections matching the structure. Add one CTA with class=writter-cta linking to / or /upload in the body (e.g. mid-article). The public blog page already appends a large end-of-article CTA — do NOT end content_html with another writter-cta block or repeat the same primary button text (e.g. Get Started Now) as the last element.",
+  "content_html": "full HTML body (no html/head/body wrapper). Include sections matching the structure. FORBIDDEN: writter-visual, writter-cheap-visual, and SVG/canvas feed-flow diagrams. Add one CTA with class=writter-cta linking to / or /upload in the body (e.g. mid-article); the main CTA anchor must include class cta-banner, data-cta=article_body, and data-location=blog_article (GTM click tracking). The public blog page already appends a large end-of-article CTA — do NOT end content_html with another writter-cta block or repeat the same primary button copy (e.g. Get Started Now / Start optimizing your feed) as the last element.",
   "cta_html": "optional short CTA block HTML",
   "metrics": {{
     "estimated_impressions": <integer>,
@@ -1249,6 +1189,7 @@ The "metrics" object must be analytically reasoned from: the topic and search in
 
     raw_html = data.get("content_html") or ""
     merged_html = _ensure_screenshot_figures_in_html(raw_html, shot_rows)
+    merged_html = strip_legacy_writter_inline_diagrams(merged_html)
 
     payload = {
         "seo_title": (data.get("seo_title") or topic)[:200],
@@ -1267,7 +1208,7 @@ def _fallback_article(topic: str, keywords: str, blueprint: str, metrics: Dict[s
     body = f"""<section><h2>Overview</h2><p>This article covers <strong>{topic}</strong> for teams working on product feeds and e-commerce SEO. Keywords: {kws}.</p></section>
 <section><h2>Structure</h2><p>We follow this blueprint: {blueprint[:400]}.</p></section>
 <section><h2>Key takeaways</h2><ul><li>Clarify the problem and context.</li><li>Apply structured optimization to titles and descriptions.</li><li>Measure results in Merchant Center.</li></ul></section>
-<section class="writter-cta"><p><a href="/upload">Try Cartozo.ai</a> — optimize your feed with AI.</p></section>"""
+<section class="writter-cta"><p><a href="/upload" class="cta-banner" data-cta="article_body" data-location="blog_article">Try Cartozo.ai</a> — optimize your feed with AI.</p></section>"""
     return {
         "seo_title": (topic[:110] + " | Cartozo.ai")[:120],
         "meta_description": f"Learn about {topic[:120]}. Practical guidance for e-commerce feeds.",
@@ -1639,13 +1580,9 @@ def render_cheap_visual_html(template: str, topic: str, keywords: str, seed: int
 
 
 def route_cheap_visual(description: str, topic: str, keywords: str, seed: int = 0) -> Dict[str, Any]:
-    """LLM-free: classify + render."""
-    tpl = classify_cheap_visual_template(description, topic)
-    return {
-        "template": tpl,
-        "label": CHEAP_VISUAL_LABELS.get(tpl, tpl),
-        "html": render_cheap_visual_html(tpl, topic, keywords, seed=seed),
-    }
+    """Deprecated: inline cheap diagrams are not embedded in articles."""
+    _ = (description, topic, keywords, seed)
+    return {"template": "none", "label": "Disabled", "html": ""}
 
 
 # ─── Extended anti-spam (message or None) ───────────────────────────────────────
@@ -1696,7 +1633,7 @@ Return ONLY JSON:
   "title_variants": ["...", "...", "..."],
   "meta_variants": ["...", "...", "..."],
   "intro_hooks": ["...", "..."],
-  "cta_styles": ["<p class=\\"writter-cta\\">...</p>", "<p class=\\"writter-cta\\">...</p>"]
+  "cta_styles": ["<p class=\\"writter-cta\\"><a href=\\"/upload\\" class=\\"cta-banner\\" data-cta=\\"article_body\\" data-location=\\"blog_article\\">...</a></p>", "..."]
 }}
 Each title ≤120 chars; meta ~150–165 chars; hooks 1–2 sentences."""
     try:
@@ -1767,13 +1704,16 @@ Return ONLY JSON with keys depending on action:
 - evidence: {{ "evidence_html": "<section>...</section>" }}
 - clarity: {{ "content_html": "full revised HTML body preserving structure" }}
 
-Use semantic HTML: section, h2, h3, p, ul, li, class writter-cta for CTAs."""
+Use semantic HTML: section, h2, h3, p, ul, li, class writter-cta for CTA blocks. On CTA links use class cta-banner plus data-cta and data-location=\"blog_article\" (data-cta e.g. article_body)."""
     try:
         client = openai.OpenAI(api_key=api_key)
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You improve SEO blog HTML for Cartozo.ai. JSON only."},
+                {
+                    "role": "system",
+                    "content": "You improve SEO blog HTML for Cartozo.ai. JSON only. Never add writter-visual, writter-cheap-visual, or SVG flow diagrams — hero image is separate.",
+                },
                 {"role": "user", "content": user},
             ],
             max_tokens=3000 if action == "clarity" else 1800,
@@ -1789,6 +1729,10 @@ Use semantic HTML: section, h2, h3, p, ul, li, class writter-cta for CTAs."""
             v = data.get(k)
             if isinstance(v, str) and v.strip():
                 out[k] = v.strip()
+        strip_keys = frozenset({"content_html", "content_html_prefix", "cta_html", "faq_html", "evidence_html"})
+        for k in list(out.keys()):
+            if k in strip_keys:
+                out[k] = strip_legacy_writter_inline_diagrams(out[k])
         return out or None
     except Exception:
         return None
@@ -1799,9 +1743,9 @@ def conversion_blocks_html() -> str:
     return """<section class="writter-conversion-blocks" data-writter-conversion="1">
 <h2>Next steps</h2>
 <div class="writter-conv-grid">
-  <div class="writter-conv-card"><h3>Try the tool</h3><p>Upload a sample feed and see optimized titles in minutes.</p><p class="writter-cta"><a href="/upload">Start free</a></p></div>
-  <div class="writter-conv-card"><h3>See example output</h3><p>Preview how enriched attributes look before publishing.</p><p class="writter-cta"><a href="/">View product</a></p></div>
-  <div class="writter-conv-card"><h3>Book a walkthrough</h3><p>Short demo tailored to your catalog and channels.</p><p class="writter-cta"><a href="/contact">Contact</a></p></div>
+  <div class="writter-conv-card"><h3>Try the tool</h3><p>Upload a sample feed and see optimized titles in minutes.</p><p class="writter-cta"><a href="/upload" class="cta-banner" data-cta="conversion_try" data-location="blog_article">Start free</a></p></div>
+  <div class="writter-conv-card"><h3>See example output</h3><p>Preview how enriched attributes look before publishing.</p><p class="writter-cta"><a href="/" class="cta-banner" data-cta="conversion_product" data-location="blog_article">View product</a></p></div>
+  <div class="writter-conv-card"><h3>Book a walkthrough</h3><p>Short demo tailored to your catalog and channels.</p><p class="writter-cta"><a href="/contact" class="cta-banner" data-cta="conversion_contact" data-location="blog_article">Contact</a></p></div>
 </div>
 </section>"""
 

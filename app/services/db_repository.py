@@ -19,6 +19,7 @@ from ..db_models import (
     ContactSubmission,
     OnboardingSession,
     BlogArticle,
+    BlogArticleViewEvent,
     BlogArticleVersion,
     ContentCluster,
     WritterFutureArticle,
@@ -991,12 +992,13 @@ def get_blog_article_by_id(db: Session, article_id: int) -> Optional[BlogArticle
 
 
 def list_blog_articles_needing_og_image(db: Session, limit: int = 500) -> List[BlogArticle]:
-    """Articles without a successful OG banner (for batch backfill)."""
+    """Published articles without a successful OG banner (for batch backfill)."""
     lim = min(max(1, limit), 2000)
     st = BlogArticle.image_generation_status
     u = BlogArticle.image_url
     stmt = (
         select(BlogArticle)
+        .where(BlogArticle.status == "published")
         .where(
             or_(
                 u.is_(None),
@@ -1009,6 +1011,21 @@ def list_blog_articles_needing_og_image(db: Session, limit: int = 500) -> List[B
         .limit(lim)
     )
     return list(db.execute(stmt).scalars().all())
+
+
+def strip_legacy_inline_diagrams_from_all_blog_articles(db: Session) -> Dict[str, int]:
+    """Remove writter-visual / writter-cheap-visual figures from content_html (idempotent)."""
+    from .writter_service import strip_legacy_writter_inline_diagrams
+
+    rows = db.execute(select(BlogArticle)).scalars().all()
+    updated = 0
+    for row in rows:
+        old = row.content_html or ""
+        new = strip_legacy_writter_inline_diagrams(old)
+        if new != old:
+            row.content_html = new
+            updated += 1
+    return {"scanned": len(rows), "updated": updated}
 
 
 def get_published_slugs_titles_excluding(
@@ -1167,6 +1184,24 @@ def increment_blog_views(db: Session, slug: str) -> None:
         return
     row.views = (row.views or 0) + 1
     row.updated_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    db.add(BlogArticleViewEvent(article_id=int(row.id), viewed_at=now))
+
+
+def sum_blog_article_total_views(db: Session) -> int:
+    """Sum of per-article lifetime counters (includes history before view events existed)."""
+    n = db.execute(select(func.coalesce(func.sum(BlogArticle.views), 0))).scalar_one()
+    return int(n or 0)
+
+
+def count_blog_view_events_since(db: Session, since_utc: datetime) -> int:
+    """Count raw page views with timestamp >= since_utc (UTC)."""
+    n = db.execute(
+        select(func.count())
+        .select_from(BlogArticleViewEvent)
+        .where(BlogArticleViewEvent.viewed_at >= since_utc)
+    ).scalar_one()
+    return int(n or 0)
 
 
 def record_blog_analytics(

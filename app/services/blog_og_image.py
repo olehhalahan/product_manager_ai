@@ -50,6 +50,21 @@ def _safe_slug_segment(slug: str) -> str:
     return (s[:180] or "article")
 
 
+def blog_article_needs_og_banner(row: BlogArticle) -> bool:
+    """Published article missing a successful on-disk OG/hero PNG — queue generation."""
+    if (getattr(row, "status", None) or "") != "published":
+        return False
+    u = (getattr(row, "image_url", None) or "").strip()
+    st = (getattr(row, "image_generation_status", None) or "").strip()
+    slug = getattr(row, "slug", None) or ""
+    if st == "success" and u:
+        try:
+            return not os.path.isfile(fs_path_for_slug(slug))
+        except Exception:
+            return True
+    return (not u) or (st != "success")
+
+
 def compute_image_hash(row: BlogArticle) -> str:
     payload = "|".join(
         [

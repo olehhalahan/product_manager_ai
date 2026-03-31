@@ -239,4 +239,10 @@ def init_db():
 
         WritterAutoRun.__table__.create(bind=engine, checkfirst=True)
 
+    inspector = inspect(engine)
+    if "blog_article_view_events" not in inspector.get_table_names():
+        from .db_models import BlogArticleViewEvent
+
+        BlogArticleViewEvent.__table__.create(bind=engine, checkfirst=True)
+
     Base.metadata.create_all(bind=engine)

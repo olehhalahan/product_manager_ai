@@ -182,6 +182,16 @@ class BlogArticle(Base):
     image_hash = Column(String(64), nullable=True)
 
 
+class BlogArticleViewEvent(Base):
+    """One row per public page view (for today / rolling week aggregates; see blog_articles.views for lifetime totals)."""
+
+    __tablename__ = "blog_article_view_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    article_id = Column(Integer, ForeignKey("blog_articles.id", ondelete="CASCADE"), nullable=False, index=True)
+    viewed_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class WritterFutureArticle(Base):
     """Admin queue: AI-suggested article briefs pending approval before generation."""
 
