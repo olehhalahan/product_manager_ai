@@ -57,36 +57,10 @@ from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, publ
 
 app = FastAPI(title="Product Content Optimizer", docs_url=None)
 
-# Favicon + GTM container (GA4 via GTM: Google Tag / GA4 Config, Trigger: All Pages)
 import os as _os
-_GTM_ID = _os.getenv("GTM_CONTAINER_ID", "GTM-W25B668S")
-# Google Search Console — HTML tag verification (homepage <head>); override via GOOGLE_SITE_VERIFICATION in .env
-_GOOGLE_SITE_VERIFICATION = _os.getenv("GOOGLE_SITE_VERIFICATION", "PBIv7Juyd9qX3pFJ-8NbZXkVKhMy0jdQZd3YvG1WiB8").strip()
-_GSC_META_LINE = (
-    f'    <meta name="google-site-verification" content="{_GOOGLE_SITE_VERIFICATION}" />\n'
-    if _GOOGLE_SITE_VERIFICATION
-    else ""
-)
-_GTM_HEAD = f"""    <link rel="icon" href="/assets/favicon.png" type="image/png" />
-    <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
-{_GSC_META_LINE}    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <!-- Google Tag Manager -->
-    <script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':
-new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],
-j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-}})(window,document,'script','dataLayer','{_GTM_ID}');</script>
-    <!-- End Google Tag Manager -->
-"""
-_GTM_BODY = f"""    <!-- Google Tag Manager (noscript) -->
-    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id={_GTM_ID}"
-height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-    <!-- End Google Tag Manager (noscript) -->
-"""
-GTM_HEAD = _GTM_HEAD
-GTM_BODY = _GTM_BODY
+
+from .gtm import GTM_BODY, GTM_HEAD, gtm_body_for_path, gtm_head_for_path
+
 app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
 
 
@@ -356,10 +330,12 @@ def _build_batch_history_html(current_batch_id: str, user_email: str) -> str:
 def _wrap_batches_history_shell(*, page_title: str, body_inner: str, user_role: str) -> str:
     """Full HTML document for /batches/history (shared nav + batch-history styles)."""
     admin_nav = _admin_nav_links(active="", user_role=user_role)
+    _gh = gtm_head_for_path("/batches/history")
+    _gb = gtm_body_for_path("/batches/history")
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-{GTM_HEAD}
+{_gh}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{page_title} &mdash; Cartozo.ai</title>
@@ -427,7 +403,7 @@ def _wrap_batches_history_shell(*, page_title: str, body_inner: str, user_role: 
     </style>
 </head>
 <body class="loaded">
-{GTM_BODY}
+{_gb}
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
@@ -529,16 +505,23 @@ def _onboarding_export_done(request: Request) -> None:
         complete_onboarding(db, sid)
 
 
-def _build_error_page(status_code: int = 404, message: str = "Page not found") -> str:
+def _build_error_page(
+    status_code: int = 404,
+    message: str = "Page not found",
+    *,
+    path: str = "/",
+) -> str:
     """Build 404/error page HTML for any bad result."""
     import html as _html
 
     title = "Page not found" if status_code == 404 else "Something went wrong"
     safe_msg = _html.escape(message)
+    gh = gtm_head_for_path(path)
+    gb = gtm_body_for_path(path)
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-{GTM_HEAD}
+{gh}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title} &mdash; Cartozo.ai</title>
@@ -558,7 +541,7 @@ def _build_error_page(status_code: int = 404, message: str = "Page not found") -
     </style>
 </head>
 <body>
-{GTM_BODY}
+{gb}
     @@ERR_PUBLIC_NAV@@
     <div class="err-box">
         <div class="err-code">{status_code}</div>
@@ -593,7 +576,10 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     """Show custom 404/error page for browser requests."""
     if _wants_html(request):
         msg = str(exc.detail) if isinstance(exc.detail, str) else "Something went wrong"
-        return HTMLResponse(content=_build_error_page(exc.status_code, msg), status_code=exc.status_code)
+        return HTMLResponse(
+            content=_build_error_page(exc.status_code, msg, path=str(request.url.path)),
+            status_code=exc.status_code,
+        )
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
@@ -623,7 +609,10 @@ async def generic_exception_handler(request: Request, exc: Exception):
             msg = f"Error id: {rid}. {type(exc).__name__}: {exc}"
         else:
             msg = f"An unexpected error occurred. Error id: {rid}. Please try again."
-        return HTMLResponse(content=_build_error_page(500, msg), status_code=500)
+        return HTMLResponse(
+            content=_build_error_page(500, msg, path=str(request.url.path)),
+            status_code=500,
+        )
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error", "request_id": rid},
@@ -2283,10 +2272,12 @@ def _build_login_page(
         )
     elif oauth_err:
         oauth_alert_html = f'<div class="oauth-alert" role="alert">{_html.escape(oauth_err)}</div>'
+    _lg_h = gtm_head_for_path("/login")
+    _lg_b = gtm_body_for_path("/login")
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-{GTM_HEAD}
+{_lg_h}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sign in &mdash; Cartozo.ai</title>
@@ -2317,7 +2308,7 @@ def _build_login_page(
     </style>
 </head>
 <body>
-{GTM_BODY}
+{_lg_b}
     @@LOGIN_PUBLIC_NAV@@
     <div class="login-box">
         <h1>Sign in to continue</h1>
@@ -2662,8 +2653,8 @@ def _build_upload_page(user_role: str = "customer", subscription_alert_html: str
         show_admin_links=(user_role == "admin"),
     )
     return (
-        _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", GTM_HEAD)
-        .replace("{GTM_BODY}", GTM_BODY)
+        _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", gtm_head_for_path("/upload"))
+        .replace("{GTM_BODY}", gtm_body_for_path("/upload"))
         .replace("{ADMIN_TOP_NAV}", nav)
         .replace("{SUBSCRIPTION_ALERT}", subscription_alert_html)
         .replace("{ADMIN_THEME_SCRIPT}", ADMIN_THEME_SCRIPT.strip())
@@ -2695,7 +2686,7 @@ def _build_contact_page(request: Request) -> str:
     _contact_html = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-""" + GTM_HEAD + """
+""" + gtm_head_for_path(str(request.url.path)) + """
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Contact us &mdash; Cartozo.ai</title>
@@ -2777,7 +2768,7 @@ __CONTACT_META_SEO__
     </style>
 </head>
 <body class="loaded">
-""" + GTM_BODY + """
+""" + gtm_body_for_path(str(request.url.path)) + """
     <div class="cp-stars">
         <div class="cp-star"></div><div class="cp-star"></div><div class="cp-star"></div>
         <div class="cp-star"></div><div class="cp-star"></div><div class="cp-star"></div>
@@ -2898,7 +2889,7 @@ def _build_presentation_page(request: Request) -> str:
     _html = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-""" + GTM_HEAD + """
+""" + gtm_head_for_path(str(request.url.path)) + """
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Features &mdash; Cartozo.ai</title>
@@ -2983,7 +2974,7 @@ __PRESENTATION_META_SEO__
     </style>
 </head>
 <body>
-""" + GTM_BODY + """
+""" + gtm_body_for_path(str(request.url.path)) + """
     <div class="pp-bg">
         <div class="pp-bg-gradient"></div>
         <div class="pp-bg-grid"></div>
@@ -3618,10 +3609,12 @@ async def batch_processing_progress(request: Request, batch_id: str):
 
 def _build_processing_page(upload_id: str, mode: str, target_language: str, mappings_json: str, optimize_fields: str = "title,description", product_type: str = "standard") -> str:
     mappings_escaped = mappings_json.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+    _ph = gtm_head_for_path("/batches/processing")
+    _pb = gtm_body_for_path("/batches/processing")
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-{GTM_HEAD}
+{_ph}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Processing &mdash; Cartozo.ai</title>
@@ -3661,7 +3654,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     </style>
 </head>
 <body>
-{GTM_BODY}
+{_pb}
 @@PUBLIC_SITE_NAV@@
 
     <main class="main">
@@ -3793,10 +3786,12 @@ def _build_mapping_page(
             <td><select data-col="{col}">{opts}</select></td>
         </tr>"""
 
+    _mh = gtm_head_for_path("/batches/preview")
+    _mb = gtm_body_for_path("/batches/preview")
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-{GTM_HEAD}
+{_mh}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Map columns &mdash; Cartozo.ai</title>
@@ -3854,7 +3849,7 @@ def _build_mapping_page(
     </style>
 </head>
 <body>
-{GTM_BODY}
+{_mb}
 @@PUBLIC_SITE_NAV@@
 
     <div class="container">
@@ -4549,10 +4544,12 @@ async def review_batch(request: Request, batch_id: str):
         </tr>
         """
 
+    _rv_h = gtm_head_for_path(str(request.url.path))
+    _rv_b = gtm_body_for_path(str(request.url.path))
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-{GTM_HEAD}
+{_rv_h}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Review &mdash; {batch_id[:8]}</title>
@@ -4948,7 +4945,7 @@ async def review_batch(request: Request, batch_id: str):
     </style>
 </head>
 <body>
-{GTM_BODY}
+{_rv_b}
 @@PUBLIC_SITE_NAV@@
 
     <div class="container">
@@ -5712,10 +5709,12 @@ async def settings_page(request: Request):
         else "—"
     )
 
+    _st_h = gtm_head_for_path(str(request.url.path))
+    _st_b = gtm_body_for_path(str(request.url.path))
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-{GTM_HEAD}
+{_st_h}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Settings &mdash; Cartozo.ai</title>
@@ -5833,7 +5832,7 @@ async def settings_page(request: Request):
     </style>
 </head>
 <body>
-{GTM_BODY}
+{_st_b}
     {admin_top_nav_html('settings')}
 
     <div class="container">
@@ -6565,10 +6564,12 @@ async def admin_contact_results_page(request: Request):
         phone = _html.escape(s.get("phone", "") or "—")
         ts = s.get("created_at", "")[:19].replace("T", " ") if s.get("created_at") else "—"
         rows += f"<tr><td>{i + 1}</td><td><strong>{name} {surname}</strong></td><td class=\"email\">{email}</td><td>{phone}</td><td class=\"ts\">{ts}</td></tr>"
+    _cr_h = gtm_head_for_path(str(request.url.path))
+    _cr_b = gtm_body_for_path(str(request.url.path))
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-{GTM_HEAD}
+{_cr_h}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Contact results &mdash; Cartozo.ai</title>
@@ -6605,7 +6606,7 @@ async def admin_contact_results_page(request: Request):
     </style>
 </head>
 <body>
-{GTM_BODY}
+{_cr_b}
     <nav class="nav">
         <a href="/" class="nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="nav-links">
@@ -7002,10 +7003,12 @@ async def admin_onboarding_analytics_page(
         {"q": q, "source": source, "status": status}
     )
 
+    _oa_h = gtm_head_for_path(str(request.url.path))
+    _oa_b = gtm_body_for_path(str(request.url.path))
     html = f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-{GTM_HEAD}
+{_oa_h}
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Dashboard — Cartozo.ai</title>
@@ -7128,7 +7131,7 @@ async def admin_onboarding_analytics_page(
     </style>
 </head>
 <body>
-{GTM_BODY}
+{_oa_b}
     {admin_top_nav_html('dashboard')}
     <div class="oa-layout">
       <aside class="oa-sidebar">

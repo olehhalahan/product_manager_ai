@@ -32,6 +32,7 @@ from .seo import (
     head_canonical_social,
 )
 from .writter_new_article_page import render_writter_new_article_html
+from .gtm import gtm_body_for_path, gtm_head_for_path
 
 _log = logging.getLogger("uvicorn.error")
 from .services.writter_service import (
@@ -2637,6 +2638,8 @@ def _blog_index_page_html(
     page_title: str,
     og_image: str,
     og_site_name: str,
+    gtm_head: str,
+    gtm_body: str,
 ) -> str:
     """Public blog listing with keyword search (matches title, topic, keywords, meta)."""
     q_esc = html_module.escape(q_raw)
@@ -2684,6 +2687,7 @@ def _blog_index_page_html(
     return f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+  {gtm_head}
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title_esc}</title>
@@ -2717,6 +2721,7 @@ def _blog_index_page_html(
   </style>
 </head>
 <body>
+  {gtm_body}
   {public_site_nav_html()}
   <div class="blog-page-with-nav">
   <main class="blog-idx-wrap">
@@ -2765,6 +2770,8 @@ async def blog_index_page(request: Request, q: str = Query("", max_length=500)):
         page_title=page_title,
         og_image=og_image,
         og_site_name=og_site,
+        gtm_head=gtm_head_for_path(str(request.url.path)),
+        gtm_body=gtm_body_for_path(str(request.url.path)),
     )
     return HTMLResponse(content=html)
 
@@ -3004,10 +3011,13 @@ async def blog_public_page(request: Request, slug: str):
         date_published=str(ts_pub) if ts_pub else "",
         date_modified=str(ts_mod) if ts_mod else None,
     )
+    _bh = gtm_head_for_path(str(request.url.path))
+    _bb = gtm_body_for_path(str(request.url.path))
     html = (
         f"""<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+  {_bh}
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title_esc} — Cartozo.ai</title>
@@ -3074,6 +3084,7 @@ async def blog_public_page(request: Request, slug: str):
   </style>
 </head>
 <body class="blog-article-body">
+  {_bb}
   {public_site_nav_html()}
   <div class="blog-page-with-nav">
   <div class="blog-layout">
