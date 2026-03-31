@@ -2955,6 +2955,22 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
     base_origin = site_base_url().rstrip("/")
     og_image_abs = f"{base_origin}{hero_rel}" if hero_rel else default_og
     og_w, og_h = banner_dimensions()
+    og_banner_hint = ""
+    if show_admin and not hero_rel:
+        bits: List[str] = []
+        if og_gen_error:
+            bits.append(html_module.escape(og_gen_error))
+        if og_status:
+            bits.append(f"DB status: <code>{html_module.escape(og_status)}</code>")
+        bits.append(
+            "Server: run <code>python -m playwright install chromium</code>, keep <code>static/blog-images/</code> writable, "
+            "and do not set <code>BLOG_OG_IMAGE_DISABLE</code>."
+        )
+        og_banner_hint = f"""
+      <div class="bar-card" style="border-color:#f87171;">
+        <h3 class="bar-h3">Hero / OG image missing</h3>
+        <p class="bar-narr" style="font-size:0.82rem;">{" ".join(bits)}</p>
+      </div>"""
     admin_aside = ""
     if show_admin:
         q = estimate_article_quality(
@@ -3107,23 +3123,6 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
         is_active = (r.get("slug") or "") == slug
         li_cls = ' class="wt-sb-active"' if is_active else ""
         nav_li += f"<li{li_cls}><a href=\"/blog/{s_esc}\">{t}</a></li>"
-
-    og_banner_hint = ""
-    if show_admin and not hero_rel:
-        bits: List[str] = []
-        if og_gen_error:
-            bits.append(html_module.escape(og_gen_error))
-        if og_status:
-            bits.append(f"DB status: <code>{html_module.escape(og_status)}</code>")
-        bits.append(
-            "Server: run <code>python -m playwright install chromium</code>, keep <code>static/blog-images/</code> writable, "
-            "and do not set <code>BLOG_OG_IMAGE_DISABLE</code>."
-        )
-        og_banner_hint = f"""
-      <div class="bar-card" style="border-color:#f87171;">
-        <h3 class="bar-h3">Hero / OG image missing</h3>
-        <p class="bar-narr" style="font-size:0.82rem;">{" ".join(bits)}</p>
-      </div>"""
 
     regen_script = ""
     if show_admin:
