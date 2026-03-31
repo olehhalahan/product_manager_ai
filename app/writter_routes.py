@@ -15,7 +15,7 @@ from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -30,11 +30,25 @@ from .seo import (
     canonical_url_blog_article,
     canonical_url_for_request,
     head_canonical_social,
+    site_base_url,
 )
+from .blog_banner import prompt_visual_label_for_theme, resolve_theme_key
+from .blog_banner.screenshot import banner_dimensions
 from .writter_new_article_page import render_writter_new_article_html
 from .gtm import gtm_body_for_path, gtm_head_for_path
 
 _log = logging.getLogger("uvicorn.error")
+
+
+def _schedule_blog_og_generation(article_id: int, *, force: bool = False) -> None:
+    try:
+        from .services.blog_og_image import generate_blog_og_image_for_article_id
+
+        generate_blog_og_image_for_article_id(article_id, force=force)
+    except Exception:
+        _log.exception("blog OG image background task failed article_id=%s", article_id)
+
+
 from .services.writter_service import (
     ARTICLE_TYPE_LABELS,
     MIN_QUALITY_AUTO_PUBLISH,
@@ -1625,33 +1639,15 @@ def _build_article_bundle(
 
     vseed = int(visual_seed_effective) if visual_seed_effective is not None else int(body.visual_seed or 0)
 
-    vm = (body.visual_mode or "auto").strip().lower()
-    if vm == "none":
-        v: Dict[str, Any] = {"html": "", "label": ""}
-        wrap = ""
-    elif vm == "describe" and (body.visual_description or "").strip():
-        cv = route_cheap_visual(
-            body.visual_description or "",
-            body.topic,
-            body.keywords,
-            seed=vseed,
-        )
-        v = {"html": cv.get("html") or "", "label": cv.get("label") or "Diagram"}
-        wrap = f'<div class="writter-visual-wrap">{v["html"]}</div>' if v.get("html") else ""
-    else:
-        layout = body.visual_layout or "horizontal"
-        rv = full_plan.get("recommended_visual") if isinstance(full_plan, dict) else None
-        if isinstance(rv, dict) and rv.get("layout"):
-            layout = str(rv["layout"])
-        visuals = build_visual_options(
-            body.topic,
-            body.keywords,
-            seed=vseed,
-            layout=layout,
-        )
-        vi = max(0, min(body.visual_index, len(visuals) - 1)) if visuals else 0
-        v = visuals[vi] if visuals else {"html": "", "label": ""}
-        wrap = f'<div class="writter-visual-wrap">{v["html"]}</div>' if v.get("html") else ""
+    # Inline cheap SVG diagrams removed — unique OG/hero PNGs via Playwright after save.
+    theme_key = resolve_theme_key(
+        (body.topic or "")[:500],
+        body.topic or "",
+        body.keywords or "",
+        at,
+    )
+    v = {"html": "", "label": prompt_visual_label_for_theme(theme_key)}
+    wrap = ""
 
     payload, metrics = generate_article_with_ai(
         api_key=api_key,
@@ -2007,6 +2003,12 @@ def _generate_from_future_row(db: Any, row: Any, author_email: str) -> Dict[str,
                 status="done",
                 generated_article_id=art.id,
             )
+            try:
+                from .services.blog_og_image import generate_blog_og_image_for_article_id
+
+                generate_blog_og_image_for_article_id(int(art.id), force=False)
+            except Exception:
+                _log.exception("blog OG image after future-article publish failed article_id=%s", art.id)
             out = repo.blog_article_to_dict(art)
             out["metrics"] = metrics
             out["attempts_used"] = attempt + 1
@@ -2038,6 +2040,12 @@ def _generate_from_future_row(db: Any, row: Any, author_email: str) -> Dict[str,
         published_at=None,
     )
     db.flush()
+    try:
+        from .services.blog_og_image import generate_blog_og_image_for_article_id
+
+        generate_blog_og_image_for_article_id(int(art.id), force=False)
+    except Exception:
+        _log.exception("blog OG image after future-article draft failed article_id=%s", art.id)
     repo.update_writter_future_article(
         db,
         row,
@@ -2054,7 +2062,9 @@ def _generate_from_future_row(db: Any, row: Any, author_email: str) -> Dict[str,
 
 
 @router.post("/api/admin/writter/articles")
-async def api_create_article(request: Request, body: CreateArticleBody):
+async def api_create_article(
+    request: Request, body: CreateArticleBody, background_tasks: BackgroundTasks
+):
     require_admin_http(request)
     user = get_current_user(request)
     email = (user.get("email") or "") if user else ""
@@ -2064,11 +2074,16 @@ async def api_create_article(request: Request, body: CreateArticleBody):
         raise
     except Exception as e:
         raise HTTPException(500, detail=str(e)[:500])
+    aid = out.get("id")
+    if aid is not None:
+        background_tasks.add_task(_schedule_blog_og_generation, int(aid), False)
     return JSONResponse(out)
 
 
 @router.post("/api/admin/writter/articles/batch")
-async def api_batch_articles(request: Request, body: BatchCreateBody):
+async def api_batch_articles(
+    request: Request, body: BatchCreateBody, background_tasks: BackgroundTasks
+):
     require_admin_http(request)
     user = get_current_user(request)
     email = (user.get("email") or "") if user else ""
@@ -2079,6 +2094,10 @@ async def api_batch_articles(request: Request, body: BatchCreateBody):
             results.append(_create_article_from_body(item, email))
         except Exception as e:
             errors.append({"index": i, "error": str(e)[:300]})
+    for r in results:
+        aid = r.get("id")
+        if aid is not None:
+            background_tasks.add_task(_schedule_blog_og_generation, int(aid), False)
     return JSONResponse({"created": results, "errors": errors})
 
 
@@ -2108,7 +2127,9 @@ async def api_auto_article_stream(request: Request):
 
 
 @router.post("/api/admin/writter/auto-article/finalize")
-async def api_auto_article_finalize(request: Request, body: FinalizeAutoArticleBody):
+async def api_auto_article_finalize(
+    request: Request, body: FinalizeAutoArticleBody, background_tasks: BackgroundTasks
+):
     """Publish one chosen draft from an auto batch; optional delete other drafts in the batch."""
     require_admin_http(request)
     user = get_current_user(request)
@@ -2135,6 +2156,7 @@ async def api_auto_article_finalize(request: Request, body: FinalizeAutoArticleB
         if body.delete_siblings:
             repo.delete_drafts_in_auto_batch_except(db, bid_row, body.article_id)
         out = repo.blog_article_to_dict(row)
+    background_tasks.add_task(_schedule_blog_og_generation, body.article_id, False)
     return JSONResponse(out)
 
 
@@ -2397,7 +2419,9 @@ async def api_list_articles(request: Request):
 
 
 @router.put("/api/admin/writter/articles/{article_id}")
-async def api_update_article(request: Request, article_id: int, body: UpdateArticleBody):
+async def api_update_article(
+    request: Request, article_id: int, body: UpdateArticleBody, background_tasks: BackgroundTasks
+):
     require_admin_http(request)
     user = get_current_user(request)
     email = (user.get("email") or "") if user else ""
@@ -2429,7 +2453,10 @@ async def api_update_article(request: Request, article_id: int, body: UpdateArti
             meta_description=body.meta_description,
             status=body.status,
         )
+        st_after = row.status or ""
         out = repo.blog_article_to_dict(row)
+    if st_after == "published":
+        background_tasks.add_task(_schedule_blog_og_generation, article_id, False)
     return JSONResponse(out)
 
 
@@ -2493,26 +2520,18 @@ def _regenerate_article_by_id(article_id: int) -> Dict[str, Any]:
             row.topic or "", row.keywords or "", siblings, limit=8
         )
 
-        vm = str(inputs.get("visual_mode") or "auto").strip().lower()
         seed = int(inputs.get("visual_seed") or 0)
         vi = int(inputs.get("visual_index") or 0)
         layout = str(inputs.get("visual_layout") or "horizontal")
-        vdesc = str(inputs.get("visual_description") or "").strip()
-        if vm == "none":
-            v: Dict[str, Any] = {"html": "", "label": ""}
-            wrap = ""
-        elif vm == "describe" and vdesc:
-            cv = route_cheap_visual(vdesc, row.topic or "", row.keywords or "", seed=seed)
-            v = {"html": cv.get("html") or "", "label": cv.get("label") or "Diagram"}
-            wrap = f'<div class="writter-visual-wrap">{v["html"]}</div>' if v.get("html") else ""
-        else:
-            rv = full_plan.get("recommended_visual") if isinstance(full_plan, dict) else None
-            if isinstance(rv, dict) and rv.get("layout"):
-                layout = str(rv["layout"])
-            visuals = build_visual_options(row.topic or "", row.keywords or "", seed=seed, layout=layout)
-            pick = max(0, min(vi, len(visuals) - 1)) if visuals else 0
-            v = visuals[pick] if visuals else {"html": "", "label": ""}
-            wrap = f'<div class="writter-visual-wrap">{v["html"]}</div>' if v.get("html") else ""
+        theme_key = resolve_theme_key(
+            row.title or "",
+            row.topic or "",
+            row.keywords or "",
+            at,
+        )
+        v = {"html": "", "label": prompt_visual_label_for_theme(theme_key)}
+        wrap = ""
+        _ = (seed, vi, layout)  # preserved in planning_json; no inline diagram HTML
 
         rules = row.rules_json if isinstance(row.rules_json, list) else []
         payload, metrics = generate_article_with_ai(
@@ -2607,7 +2626,9 @@ def _regenerate_article_by_id(article_id: int) -> Dict[str, Any]:
 
 
 @router.post("/api/admin/writter/articles/{article_id}/regenerate")
-async def api_regenerate_article(request: Request, article_id: int):
+async def api_regenerate_article(
+    request: Request, article_id: int, background_tasks: BackgroundTasks
+):
     require_admin_http(request)
     try:
         out = _regenerate_article_by_id(article_id)
@@ -2615,7 +2636,38 @@ async def api_regenerate_article(request: Request, article_id: int):
         raise
     except Exception as e:
         raise HTTPException(500, detail=str(e)[:500])
+    background_tasks.add_task(_schedule_blog_og_generation, article_id, False)
     return JSONResponse(out)
+
+
+@router.post("/api/admin/writter/articles/{article_id}/generate-blog-image")
+async def api_generate_blog_image(request: Request, article_id: int):
+    require_admin_http(request)
+    from .services.blog_og_image import generate_blog_og_image_for_article_id
+
+    out = generate_blog_og_image_for_article_id(article_id, force=False)
+    if not out.get("success"):
+        raise HTTPException(500, detail=out.get("error") or "Image generation failed")
+    return JSONResponse(out)
+
+
+@router.post("/api/admin/writter/articles/{article_id}/regenerate-blog-image")
+async def api_regenerate_blog_image(request: Request, article_id: int):
+    require_admin_http(request)
+    from .services.blog_og_image import generate_blog_og_image_for_article_id
+
+    out = generate_blog_og_image_for_article_id(article_id, force=True)
+    if not out.get("success"):
+        raise HTTPException(500, detail=out.get("error") or "Image regeneration failed")
+    return JSONResponse(out)
+
+
+@router.post("/api/admin/writter/articles/generate-missing-blog-images")
+async def api_generate_missing_blog_images(request: Request, limit: int = Query(200, ge=1, le=500)):
+    require_admin_http(request)
+    from .services.blog_og_image import generate_missing_blog_og_images
+
+    return JSONResponse(generate_missing_blog_og_images(limit=limit))
 
 
 @router.get("/articles/{slug}")
@@ -2660,12 +2712,22 @@ def _blog_index_page_html(
         kw_line = f'<p class="blog-idx-card-kw">{kw}</p>' if kw else ""
         meta_line = f'<p class="blog-idx-card-meta">{meta_esc}</p>' if meta_esc else ""
         date_line = f'<time class="blog-idx-card-date" datetime="{date_esc}">{date_esc}</time>' if date_esc else ""
+        img_u = (r.get("image_url") or "").strip()
+        thumb = ""
+        if img_u:
+            thumb = (
+                f'<div class="blog-idx-card-thumb"><img src="{html_module.escape(img_u)}" alt="" '
+                'width="800" height="420" loading="lazy" decoding="async" /></div>'
+            )
         cards.append(
             f"""<li class="blog-idx-card"><a class="blog-idx-card-link" href="/blog/{slug}">
+  {thumb}
+  <div class="blog-idx-card-body">
   <h2 class="blog-idx-card-title">{title}</h2>
   {date_line}
   {meta_line}
   {kw_line}
+  </div>
 </a></li>"""
         )
     if cards:
@@ -2710,7 +2772,10 @@ def _blog_index_page_html(
   .blog-idx-card {{ border-radius:14px; border:1px solid rgba(255,255,255,.08); background:rgba(17,24,39,.85); overflow:hidden; transition:border-color .15s, box-shadow .15s; }}
   [data-theme="light"] .blog-idx-card {{ background:#fff; border-color:rgba(15,23,42,.1); }}
   .blog-idx-card:hover {{ border-color:rgba(129,140,248,.35); box-shadow:0 8px 32px rgba(0,0,0,.2); }}
-  .blog-idx-card-link {{ display:block; padding:22px 24px; text-decoration:none; color:inherit; }}
+  .blog-idx-card-link {{ display:block; padding:0; text-decoration:none; color:inherit; }}
+  .blog-idx-card-thumb {{ width:100%; aspect-ratio:1200/630; background:#111827; overflow:hidden; }}
+  .blog-idx-card-thumb img {{ width:100%; height:100%; object-fit:cover; display:block; }}
+  .blog-idx-card-body {{ padding:22px 24px; }}
   .blog-idx-card-title {{ font-size:1.2rem; font-weight:600; margin:0 0 12px; line-height:1.35; color:#F1F5F9; }}
   [data-theme="light"] .blog-idx-card-title {{ color:#0f172a; }}
   .blog-idx-card-date {{ display:block; font-size:.78rem; color:#64748b; margin-bottom:10px; }}
@@ -2814,12 +2879,16 @@ async def blog_public_page(request: Request, slug: str):
         topic_plain = row.topic or ""
         display_content = _strip_trailing_writter_cta_block(content)
         s_seo = get_settings(db)
-        og_image = (s_seo.get("seo_og_image") or "").strip()
+        default_og = (s_seo.get("seo_og_image") or "").strip()
+        hero_rel = (getattr(row, "image_url", None) or "").strip()
         og_site = (s_seo.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
         # Materialize dates while session is open (avoid DetachedInstanceError on lazy refresh).
         ts_pub = row.published_at or row.created_at
         ts_mod = getattr(row, "updated_at", None) or ts_pub
 
+    base_origin = site_base_url().rstrip("/")
+    og_image_abs = f"{base_origin}{hero_rel}" if hero_rel else default_og
+    og_w, og_h = banner_dimensions()
     admin_aside = ""
     if show_admin:
         q = estimate_article_quality(
@@ -3000,9 +3069,11 @@ async def blog_public_page(request: Request, slug: str):
         canonical_url=article_url,
         og_title=(title_plain or "Article") + " — Cartozo.ai",
         og_description=og_desc_for_social,
-        og_image=og_image,
+        og_image=og_image_abs,
         og_site_name=og_site,
         og_type="article",
+        og_image_width=og_w if hero_rel else None,
+        og_image_height=og_h if hero_rel else None,
     )
     ld = blog_posting_json_ld(
         headline=title_plain or "",
@@ -3010,7 +3081,14 @@ async def blog_public_page(request: Request, slug: str):
         description=meta_plain or "",
         date_published=str(ts_pub) if ts_pub else "",
         date_modified=str(ts_mod) if ts_mod else None,
+        image=og_image_abs if (og_image_abs or "").strip() else None,
     )
+    hero_figure = ""
+    if hero_rel:
+        hero_figure = (
+            f'<figure class="blog-article-hero"><img src="{html_module.escape(hero_rel)}" '
+            f'width="{og_w}" height="{og_h}" alt="{title_esc}" loading="lazy" decoding="async" /></figure>'
+        )
     _bh = gtm_head_for_path(str(request.url.path))
     _bb = gtm_body_for_path(str(request.url.path))
     html = (
@@ -3041,6 +3119,9 @@ async def blog_public_page(request: Request, slug: str):
   [data-theme="light"] .blog-side a {{ color:#475569; }}
   [data-theme="light"] .blog-side li.wt-sb-active a {{ color:#4338ca; background:rgba(79,70,229,.1); border-color:rgba(79,70,229,.2); }}
   .blog-center {{ flex:1; min-width:0; padding:clamp(10px,2.5vw,20px) clamp(16px,4vw,40px) 80px; margin-inline:auto; }}
+  .blog-article-hero {{ margin:0 0 24px; border-radius:16px; overflow:hidden; border:1px solid rgba(255,255,255,.08); background:#111827; }}
+  [data-theme="light"] .blog-article-hero {{ border-color:rgba(15,23,42,.1); }}
+  .blog-article-hero img {{ width:100%; height:auto; display:block; vertical-align:middle; }}
   .writter-cta a, .blog-main .writter-cta a {{ color:#4F46E5; font-weight:600; }}
   .blog-admin-r {{ width:320px; flex-shrink:0; padding:16px 20px 48px; border-left:1px solid rgba(255,255,255,.08); position:sticky; top:72px; align-self:flex-start; max-height:calc(100vh - 72px); overflow-y:auto; background:linear-gradient(180deg, rgba(79,70,229,.06) 0%, transparent 120px); }}
   [data-theme="light"] .blog-admin-r {{ border-color:rgba(15,23,42,.1); background:linear-gradient(180deg, rgba(79,70,229,.04) 0%, transparent 120px); }}
@@ -3106,6 +3187,7 @@ async def blog_public_page(request: Request, slug: str):
             <h1 class="blog-article-title">{title_esc}</h1>
             {subtitle_block}
           </header>
+          {hero_figure}
         </div>
         <nav class="blog-toc" id="blogToc" aria-label="On this page">
           <p class="blog-toc-label">On this page</p>

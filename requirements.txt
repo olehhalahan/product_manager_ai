@@ -12,3 +12,5 @@ openai
 authlib
 PyJWT
 apscheduler
+jinja2
+playwright

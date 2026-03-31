@@ -4,7 +4,7 @@ from __future__ import annotations
 import html
 import json
 import os
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import quote
 
 from fastapi import Request
@@ -67,6 +67,8 @@ def head_canonical_social(
     og_image: str = "",
     og_site_name: str = "",
     og_type: str = "website",
+    og_image_width: Optional[int] = None,
+    og_image_height: Optional[int] = None,
 ) -> str:
     """Canonical + og:url/type + optional og:image/site_name + Twitter card (full block)."""
     cu = esc_attr(canonical_url)
@@ -89,6 +91,10 @@ def head_canonical_social(
     )
     if og_image.strip():
         lines.append(f'    <meta property="og:image" content="{oi}"/>')
+        if og_image_width is not None:
+            lines.append(f'    <meta property="og:image:width" content="{int(og_image_width)}"/>')
+        if og_image_height is not None:
+            lines.append(f'    <meta property="og:image:height" content="{int(og_image_height)}"/>')
     lines.extend(
         [
             '    <meta name="twitter:card" content="summary_large_image"/>',
@@ -139,6 +145,7 @@ def blog_posting_json_ld(
     description: str,
     date_published: str,
     date_modified: str | None = None,
+    image: Optional[str] = None,
 ) -> str:
     obj: dict[str, Any] = {
         "@context": "https://schema.org",
@@ -151,4 +158,6 @@ def blog_posting_json_ld(
         obj["datePublished"] = date_published[:10]
     if date_modified and len(date_modified) >= 10:
         obj["dateModified"] = date_modified[:10]
+    if image and str(image).strip():
+        obj["image"] = str(image).strip()
     return json_ld_script(obj)

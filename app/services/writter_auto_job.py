@@ -445,6 +445,12 @@ def run_writter_auto_daily(
                     )
                     db.flush()
                     aid = int(row.id)
+                    try:
+                        from ..services.blog_og_image import generate_blog_og_image_for_article_id
+
+                        generate_blog_og_image_for_article_id(aid, force=False)
+                    except Exception:
+                        _log.exception("blog OG image after writter_auto failed article_id=%s", aid)
                     item_log["article_id"] = aid
                     slug_s = last_bundle["final_slug"]
                     item_log["url"] = f"{site_base}/blog/{slug_s}" if site_base else f"/blog/{slug_s}"

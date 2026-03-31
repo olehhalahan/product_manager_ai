@@ -923,6 +923,11 @@ def blog_article_to_dict(row: BlogArticle) -> Dict[str, Any]:
         "cluster_role": row.cluster_role or "",
         "writter_refresh_status": row.writter_refresh_status or "",
         "auto_generation_batch_id": getattr(row, "auto_generation_batch_id", None) or "",
+        "image_url": getattr(row, "image_url", None) or "",
+        "image_generation_status": getattr(row, "image_generation_status", None) or "",
+        "image_template_version": getattr(row, "image_template_version", None) or "",
+        "image_generated_at": row.image_generated_at.isoformat() if getattr(row, "image_generated_at", None) else None,
+        "image_hash": getattr(row, "image_hash", None) or "",
     }
 
 
@@ -985,6 +990,27 @@ def get_blog_article_by_id(db: Session, article_id: int) -> Optional[BlogArticle
     return db.execute(select(BlogArticle).where(BlogArticle.id == article_id)).scalars().one_or_none()
 
 
+def list_blog_articles_needing_og_image(db: Session, limit: int = 500) -> List[BlogArticle]:
+    """Articles without a successful OG banner (for batch backfill)."""
+    lim = min(max(1, limit), 2000)
+    st = BlogArticle.image_generation_status
+    u = BlogArticle.image_url
+    stmt = (
+        select(BlogArticle)
+        .where(
+            or_(
+                u.is_(None),
+                u == "",
+                st.is_(None),
+                st != "success",
+            )
+        )
+        .order_by(BlogArticle.updated_at.desc())
+        .limit(lim)
+    )
+    return list(db.execute(stmt).scalars().all())
+
+
 def get_published_slugs_titles_excluding(
     db: Session, exclude_slug: Optional[str] = None, limit: int = 50
 ) -> List[Dict[str, str]]:
@@ -1030,6 +1056,11 @@ def create_blog_article(
     cluster_role: Optional[str] = None,
     writter_refresh_status: Optional[str] = None,
     auto_generation_batch_id: Optional[str] = None,
+    image_url: Optional[str] = None,
+    image_generation_status: Optional[str] = None,
+    image_template_version: Optional[str] = None,
+    image_generated_at: Optional[datetime] = None,
+    image_hash: Optional[str] = None,
 ) -> BlogArticle:
     row = BlogArticle(
         slug=slug,
@@ -1052,6 +1083,11 @@ def create_blog_article(
         cluster_role=cluster_role,
         writter_refresh_status=writter_refresh_status,
         auto_generation_batch_id=(auto_generation_batch_id or None),
+        image_url=image_url,
+        image_generation_status=image_generation_status or "pending",
+        image_template_version=image_template_version,
+        image_generated_at=image_generated_at,
+        image_hash=image_hash,
     )
     db.add(row)
     db.flush()
@@ -1075,6 +1111,11 @@ def update_blog_article(
     cluster_id: Any = _UNSET,
     cluster_role: Any = _UNSET,
     writter_refresh_status: Any = _UNSET,
+    image_url: Any = _UNSET,
+    image_generation_status: Any = _UNSET,
+    image_template_version: Any = _UNSET,
+    image_generated_at: Any = _UNSET,
+    image_hash: Any = _UNSET,
 ) -> None:
     now = datetime.now(timezone.utc)
     if title is not None:
@@ -1099,6 +1140,16 @@ def update_blog_article(
         row.cluster_role = cluster_role
     if writter_refresh_status is not _UNSET:
         row.writter_refresh_status = writter_refresh_status
+    if image_url is not _UNSET:
+        row.image_url = image_url
+    if image_generation_status is not _UNSET:
+        row.image_generation_status = image_generation_status
+    if image_template_version is not _UNSET:
+        row.image_template_version = image_template_version
+    if image_generated_at is not _UNSET:
+        row.image_generated_at = image_generated_at
+    if image_hash is not _UNSET:
+        row.image_hash = image_hash
     if status is not None:
         row.status = status
         if status == "draft":

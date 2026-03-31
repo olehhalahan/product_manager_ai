@@ -202,6 +202,19 @@ def init_db():
                 conn.execute(text("ALTER TABLE blog_articles ADD COLUMN writter_refresh_status VARCHAR(64)"))
             if "auto_generation_batch_id" not in bcols:
                 conn.execute(text("ALTER TABLE blog_articles ADD COLUMN auto_generation_batch_id VARCHAR(64)"))
+            if "image_url" not in bcols:
+                conn.execute(text("ALTER TABLE blog_articles ADD COLUMN image_url VARCHAR(512)"))
+            if "image_generation_status" not in bcols:
+                conn.execute(text("ALTER TABLE blog_articles ADD COLUMN image_generation_status VARCHAR(32)"))
+            if "image_template_version" not in bcols:
+                conn.execute(text("ALTER TABLE blog_articles ADD COLUMN image_template_version VARCHAR(16)"))
+            if "image_generated_at" not in bcols:
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE blog_articles ADD COLUMN image_generated_at TIMESTAMP"))
+                else:
+                    conn.execute(text("ALTER TABLE blog_articles ADD COLUMN image_generated_at TIMESTAMP WITH TIME ZONE"))
+            if "image_hash" not in bcols:
+                conn.execute(text("ALTER TABLE blog_articles ADD COLUMN image_hash VARCHAR(64)"))
 
     inspector = inspect(engine)
     if "content_clusters" not in inspector.get_table_names():

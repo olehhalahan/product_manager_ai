@@ -174,6 +174,12 @@ class BlogArticle(Base):
     cluster_role = Column(String(32), nullable=True)
     writter_refresh_status = Column(String(64), nullable=True)
     auto_generation_batch_id = Column(String(64), nullable=True, index=True)
+    # Open Graph / social hero — generated PNG under /static/blog-images/{slug}.png
+    image_url = Column(String(512), nullable=True)
+    image_generation_status = Column(String(32), nullable=True)  # pending, success, failed
+    image_template_version = Column(String(16), nullable=True)
+    image_generated_at = Column(DateTime, nullable=True)
+    image_hash = Column(String(64), nullable=True)
 
 
 class WritterFutureArticle(Base):
