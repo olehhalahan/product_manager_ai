@@ -40,7 +40,7 @@ from .gtm import gtm_body_for_path, gtm_head_for_path
 _log = logging.getLogger("uvicorn.error")
 
 
-def _schedule_blog_og_generation(article_id: int, *, force: bool = False) -> None:
+def _schedule_blog_og_generation(article_id: int, force: bool = False) -> None:
     try:
         from .services.blog_og_image import generate_blog_og_image_for_article_id
 
