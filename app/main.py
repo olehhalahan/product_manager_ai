@@ -2493,6 +2493,17 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     .sub-banner--info { background: rgba(94,106,210,0.12); border-color: rgba(94,106,210,0.35); color: #c7d2fe; }
     [data-theme="light"] .sub-banner--ok { color: #166534; background: rgba(34,197,94,0.1); }
     [data-theme="light"] .sub-banner--info { color: #3730a3; background: rgba(79,70,229,0.08); }
+
+    .pay-success { margin: 0 auto 28px; max-width: 640px; padding: 28px 24px 24px; border-radius: 16px; text-align: center; border: 1px solid rgba(34,197,94,0.35); background: linear-gradient(180deg, rgba(34,197,94,0.14), rgba(34,197,94,0.05)); box-shadow: 0 12px 40px -20px rgba(34,197,94,0.35); }
+    .pay-success-icon { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 50%; background: rgba(34,197,94,0.25); border: 2px solid rgba(34,197,94,0.5); color: #4ade80; font-size: 1.75rem; font-weight: 700; line-height: 52px; }
+    .pay-success-title { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 10px; color: #ecfdf5; }
+    .pay-success-text { font-size: 0.95rem; line-height: 1.55; color: rgba(229,231,235,0.88); max-width: 46ch; margin: 0 auto 12px; }
+    .pay-success-sub { font-size: 0.88rem; line-height: 1.5; color: rgba(229,231,235,0.65); max-width: 48ch; margin: 0 auto; }
+    [data-theme="light"] .pay-success { border-color: rgba(22,101,52,0.25); background: linear-gradient(180deg, rgba(34,197,94,0.12), rgba(34,197,94,0.04)); box-shadow: 0 8px 28px -12px rgba(15,23,42,0.12); }
+    [data-theme="light"] .pay-success-title { color: #14532d; }
+    [data-theme="light"] .pay-success-text { color: rgba(15,23,42,0.85); }
+    [data-theme="light"] .pay-success-sub { color: rgba(15,23,42,0.6); }
+    [data-theme="light"] .pay-success-icon { color: #166534; background: rgba(34,197,94,0.2); border-color: rgba(22,101,52,0.35); }
     </style>
 </head>
 <!-- cartozo-upload-ui:3 merchant-in-nav -->
@@ -3409,22 +3420,42 @@ async def api_contact(request: Request):
     return JSONResponse({"status": "ok"})
 
 
-@app.get("/upload", response_class=HTMLResponse)
+@app.api_route("/upload", methods=["GET", "POST"], response_class=HTMLResponse)
 async def upload_page(request: Request):
-    redir = require_login_redirect(request, "/upload")
+    # WayForPay (and similar) often POSTs to returnUrl; GET-only route caused 405 Method Not Allowed.
+    if request.method == "POST":
+        try:
+            await request.form()
+        except Exception:
+            pass
+
+    upload_next = "/upload"
+    if request.query_params.get("subscription") == "success":
+        upload_next = "/upload?subscription=success"
+
+    redir = require_login_redirect(request, upload_next)
     if redir:
         return redir
+
+    payment_return_ok = request.query_params.get("subscription") == "success"
     sub_redir = _subscription_redirect_if_customer_inactive(request)
-    if sub_redir:
+    if sub_redir and not payment_return_ok:
         return sub_redir
+
     user = get_current_user(request)
     role = user.get("role", "customer") if user else "customer"
     alert_html = ""
-    if request.query_params.get("subscription") == "success":
+    if payment_return_ok:
         alert_html = (
-            '<div class="sub-banner sub-banner--ok" role="status">'
-            "<strong>Дякуємо за підписку.</strong> Оплата підтверджена — ви вже можете користуватися сервісом."
+            '<div class="pay-success" role="status">'
+            '<div class="pay-success-icon" aria-hidden="true">&#10003;</div>'
+            "<h2 class=\"pay-success-title\">Payment successful — thank you</h2>"
+            "<p class=\"pay-success-text\">Your subscription payment was received. Access usually updates within a minute; "
+            "if the upload form below is still locked, refresh this page shortly.</p>"
+            "<p class=\"pay-success-sub\"><strong>Дякуємо за оплату.</strong> "
+            "Підписка підтверджується автоматично — можете завантажувати фід нижче.</p>"
             "</div>"
+            "<script>try{history.replaceState({},\"\",\"/upload\");}catch(e){}</script>"
         )
     elif not is_admin(request):
         from .db import get_db
