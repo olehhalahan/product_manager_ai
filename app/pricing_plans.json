@@ -1,47 +1,50 @@
 {
   "hero": {
-    "h1": "Fix your product feed. Increase your Google Shopping performance.",
-    "subheadline": "Detects feed issues and disapprovals, then positions each SKU on shopper search intents—score, select, assemble—not a plain AI rewrite—so Shopping listings match real queries.",
-    "cta_primary_label": "Start optimizing your feed",
+    "h1": "Stop losing money to a broken product feed.",
+    "subheadline": "Disapproved products, weak titles, and low CTR are costing you sales every day. Cartozo fixes your Google Merchant feed automatically—so every SKU gets seen, clicked, and bought.",
+    "cta_primary_label": "Upload your feed now",
     "cta_primary_href": "/login?next=/upload",
     "cta_secondary_label": "See how it works",
     "cta_secondary_href": "/how-it-works",
     "trust_line": "No setup. No spreadsheets. No guesswork."
   },
   "header": {
-    "title": "Fix your product feed. Increase your Google Shopping performance.",
-    "subtitle": "Detects feed issues and disapprovals, then runs search-intent positioning for titles and descriptions—decision layer, not generic rewrite—so products get seen and clicked."
+    "title": "Stop losing money to a broken product feed.",
+    "subtitle": "Disapproved products, weak titles, and low CTR are costing you sales every day. Cartozo fixes your Google Merchant feed automatically—so every SKU gets seen, clicked, and bought."
   },
   "pain_solution": {
-    "title": "Your product feed is silently killing your performance",
+    "title": "Your product feed is silently bleeding money",
     "items": [
       {
-        "label": "Disapprovals",
-        "text": "Products get rejected in Google Merchant — and you don't know why."
+        "label": "Products get rejected",
+        "text": "Google Merchant disapproves your listings for reasons you can't easily trace. Traffic drops. Budget burns."
       },
       {
-        "label": "Low CTR",
-        "text": "Your titles don't attract clicks, even when your ads are running."
+        "label": "Titles don't attract clicks",
+        "text": "Generic titles miss the search terms buyers use. Your ads show but nobody clicks—and you pay for impressions anyway."
       },
       {
-        "label": "Manual work",
-        "text": "You spend hours fixing feeds in spreadsheets instead of growing your business."
+        "label": "Fixing it takes forever",
+        "text": "Manual feed cleanup in spreadsheets is slow, error-prone, and has to be redone every time you add products."
+      },
+      {
+        "label": "You have no visibility",
+        "text": "You can't tell which products perform or why. No score, no baseline, no way to improve what you can't measure."
       }
     ],
-    "solution": "Cartozo fixes this automatically — in minutes, not days."
+    "solution": "Cartozo fixes all of this in minutes. Upload a CSV, get an optimized feed."
   },
   "how_it_works": {
-    "title": "How it works",
+    "title": "From broken feed to live in 3 steps",
     "steps": [
-      "Upload your product feed (CSV or API)",
-      "Cartozo detects issues and weak points",
-      "Search-intent pipeline: pick winning intents, assemble titles & descriptions",
-      "Export ready-to-use feed for Google Merchant"
+      "Upload your product feed CSV—no template required",
+      "Cartozo detects errors, scores quality, and rebuilds titles around real search intents",
+      "Export your clean, Merchant-ready feed and push it straight to Google"
     ]
   },
   "pricing_section": {
-    "title": "Simple pricing. Built for real growth.",
-    "subtitle": "Start small, scale as your product catalog grows."
+    "title": "Straightforward pricing. Cancel anytime.",
+    "subtitle": "Start at $5. Scale only when you need to. No surprises."
   },
   "plans": [
     {
@@ -52,23 +55,23 @@
       "price_period": "/ month",
       "highlighted": false,
       "badge": null,
-      "tagline": "Perfect for testing and small stores",
+      "tagline": "Test it on your real products. Risk nothing.",
       "monthly_product_limit": 100,
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
         "100 products / month",
-        "Search-intent positioning (titles + descriptions)",
-        "CSV upload + export",
-        "Feed quality check",
-        "Preview before download"
+        "Search-intent title + description rewrite",
+        "Feed quality check & scoring",
+        "CSV upload + Merchant-ready export",
+        "Preview results before you download"
       ],
       "limitations": [
-        "No Merchant Center integration",
+        "No bulk batch processing",
         "No advanced analytics"
       ],
       "hook_line": null,
-      "cta_label": "Get started for $5",
+      "cta_label": "Start for $5",
       "cta_href": "/login?next=/upload&plan=basic",
       "wayforpay": {
         "amount": "199.00",
@@ -84,21 +87,20 @@
       "price_period": "/ month",
       "highlighted": false,
       "badge": null,
-      "tagline": "For small stores getting started",
+      "tagline": "For growing stores with real product catalogs.",
       "monthly_product_limit": 500,
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
         "500 products / month",
-        "Search-intent positioning (titles + descriptions)",
-        "Bulk processing",
-        "Feed issue detection",
-        "CSV + export",
-        "Batch history"
+        "Search-intent titles + descriptions",
+        "Bulk processing for entire catalogs",
+        "Feed issue detection & auto-fix suggestions",
+        "CSV export + batch history"
       ],
       "limitations": [],
       "hook_line": null,
-      "cta_label": "Upgrade to Starter",
+      "cta_label": "Start with Starter",
       "cta_href": "/login?next=/upload&plan=starter",
       "wayforpay": {
         "amount": "790.00",
@@ -113,23 +115,22 @@
       "price_display": "$49",
       "price_period": "/ month",
       "highlighted": true,
-      "badge": "🔥 MAIN PLAN",
-      "tagline": "For stores that want real performance improvements",
+      "badge": "🔥 MOST POPULAR",
+      "tagline": "For performance marketers who need results, not excuses.",
       "monthly_product_limit": 2000,
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
         "2,000 products / month",
-        "Advanced intent positioning",
-        "Feed issue detection (GMC-ready)",
-        "Regenerate specific products",
-        "CSV export",
+        "Advanced search-intent positioning",
+        "Full feed issue detection (GMC-ready output)",
+        "Regenerate individual products anytime",
         "Priority processing",
-        "Batch analytics"
+        "Batch analytics & quality history"
       ],
       "limitations": [],
-      "hook_line": "Reduce disapprovals and improve feed performance automatically",
-      "cta_label": "Get better results",
+      "hook_line": "Fewer disapprovals. Higher CTR. Better ROAS.",
+      "cta_label": "Improve your ROAS",
       "cta_href": "/login?next=/upload&plan=growth",
       "wayforpay": {
         "amount": "1990.00",
@@ -145,7 +146,7 @@
       "price_period": "/ month",
       "highlighted": false,
       "badge": null,
-      "tagline": "For high-volume stores and scaling teams",
+      "tagline": "For agencies and high-volume catalogs. Built to scale.",
       "monthly_product_limit": 6000,
       "paddle_price_id": null,
       "paypro_plan_code": null,
@@ -153,14 +154,14 @@
         "6,000 products / month",
         "Full intent positioning pipeline",
         "Google Merchant Center integration",
-        "Advanced batch analytics",
-        "Regenerate anytime",
-        "Priority support",
-        "Custom prompts"
+        "Advanced batch analytics & reporting",
+        "Regenerate any product anytime",
+        "Custom AI prompts for your brand voice",
+        "Priority support"
       ],
       "limitations": [],
-      "hook_line": "Full automation for large catalogs",
-      "cta_label": "Scale your feed",
+      "hook_line": "Full automation. Zero manual work.",
+      "cta_label": "Scale your catalog",
       "cta_href": "/login?next=/upload&plan=pro",
       "wayforpay": {
         "amount": "3990.00",
@@ -170,21 +171,21 @@
     }
   ],
   "social_proof": {
-    "title": "Real impact on product feeds",
+    "title": "Built for real Google Merchant workflows",
     "stats": [
-      "Up to 32% fewer disapprovals",
-      "Higher CTR from intent-led titles",
-      "Better visibility in Google Shopping"
+      "Up to 32% fewer disapprovals after first optimization",
+      "Higher CTR from search-intent titles vs. generic rewrites",
+      "Works with any catalog size—from 10 to 10,000 SKUs"
     ],
     "stat_prefixes": ["down", "up", "up"],
-    "quote": "Cartozo helped us fix our feed issues in hours instead of weeks."
+    "quote": "We cleaned up 3 months of feed issues in one afternoon. Cartozo did what our team couldn't find time to do."
   },
   "roi": {
-    "text": "Even small improvements in your product feed can significantly increase ad performance and reduce wasted budget."
+    "text": "Even a 10% improvement in your feed quality can mean significantly more clicks, lower CPCs, and higher ROAS—without touching your bids or budget."
   },
   "comparison": {
-    "title": "What you get at each level",
-    "subtitle": "Clear limits and features — pick what matches your store.",
+    "title": "What you get at each plan",
+    "subtitle": "No tricks. Pick what fits your catalog size.",
     "column_plan_ids": ["basic", "starter", "growth", "pro"],
     "rows": [
       {
@@ -196,26 +197,26 @@
         "cells": ["Yes", "Yes", "Advanced", "Full pipeline"]
       },
       {
-        "label": "Descriptions",
+        "label": "Optimized descriptions",
         "cells": ["✓", "✓", "✓", "✓"]
+      },
+      {
+        "label": "Feed issue detection",
+        "cells": ["Basic", "✓", "✓ GMC-ready", "✓ GMC-ready"]
       },
       {
         "label": "Bulk processing",
         "cells": ["—", "✓", "✓", "✓"]
       },
       {
-        "label": "Feed issue detection",
-        "cells": ["—", "—", "✓", "✓"]
-      },
-      {
-        "label": "AI assistant",
+        "label": "Custom AI prompts",
         "cells": ["—", "—", "—", "✓"]
       }
     ]
   },
   "addons_section": {
-    "title": "Scale when you need more",
-    "subtitle": "Add capacity instantly as your catalog grows"
+    "title": "Need more capacity? Add it instantly.",
+    "subtitle": "Top up your plan without upgrading."
   },
   "addons": [
     {
@@ -242,17 +243,17 @@
   ],
   "trust_commitments": {
     "lines": [
-      "Cancel anytime",
-      "Secure payments",
-      "No long-term commitment"
+      "Cancel anytime — no questions asked",
+      "Your data is never sold or shared",
+      "No long-term contracts"
     ]
   },
   "final_cta": {
-    "title": "Start optimizing your product feed today",
-    "cta_label": "Try Cartozo on your real data",
+    "title": "Your competitors are already optimizing their feeds.",
+    "cta_label": "Upload your feed and see the difference",
     "cta_href": "/login?next=/upload"
   },
   "seo_footer": {
-    "text": "Cartozo helps e-commerce businesses improve product feeds and reduce Google Merchant disapprovals using a search-intent decision layer—titles and descriptions are assembled from scored intents, not blind rewrites—with structured data ready for export."
+    "text": "Cartozo helps e-commerce managers, performance marketers, and agencies fix Google Merchant Center disapprovals, optimize product titles for real search intent, and export clean feeds at scale—without manual spreadsheet work or technical setup."
   }
 }

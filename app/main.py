@@ -1675,10 +1675,10 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             <div class="hp-hero-ai-fade"></div>
         </div>
 
-        <div class="hp-badge">AI-Powered E-commerce</div>
-        <h1 class="hp-title">Optimize Every Product<br/>for Maximum Visibility</h1>
+        <div class="hp-badge">Google Shopping Feed Optimization</div>
+        <h1 class="hp-title">Your products are losing sales<br/>because of a broken feed</h1>
         <p class="hp-sub">
-            Beyond a plain AI rewrite: we detect shopper search intents, score and pick the strongest ones, then assemble titles and descriptions for Google Shopping—so listings match how people actually search.
+            Cartozo fixes disapproved products, rewrites weak titles, and positions every SKU on real search intents—so your Google Shopping listings get seen, clicked, and bought.
         </p>
         <div class="hp-chat-anchor" id="hpChatAnchor">
         <div class="hp-chat-spacer" id="hpChatSpacer" aria-hidden="true"></div>
@@ -1694,8 +1694,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <input type="file" id="hpChatFileInput" accept=".csv,text/csv,application/vnd.ms-excel" style="display:none" />
                 <span class="hp-chat-plus" title="Upload file" id="hpChatPlus" role="button" tabindex="0">+</span>
                 <div class="hp-chat-input-wrap">
-                    <input type="text" class="hp-chat-input" id="hpChatInput" placeholder="Ask about feeds and search positioning" autocomplete="off" />
-                    <span class="hp-chat-placeholder" id="hpChatPlaceholder">Ask about feeds and search positioning</span>
+                    <input type="text" class="hp-chat-input" id="hpChatInput" placeholder="Ask how to fix disapprovals or upload your feed" autocomplete="off" />
+                    <span class="hp-chat-placeholder" id="hpChatPlaceholder">Ask how to fix disapprovals or upload your feed</span>
                 </div>
                 <span class="hp-chat-mic" title="Voice (coming soon)" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
                 <button type="button" class="hp-chat-send" id="hpChatSend" title="Send" aria-label="Send message"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="14" width="3" height="6" rx="1"/><rect x="10" y="10" width="3" height="10" rx="1"/><rect x="16" y="6" width="3" height="14" rx="1"/></svg></button>
@@ -1712,8 +1712,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         </div>
         <div class="hp-container">
             <div class="hp-features-header">
-                <h2 class="hp-features-title">Complete feed optimization platform</h2>
-                <p class="hp-features-sub">A decision layer for search positioning—not just regenerated text</p>
+                <h2 class="hp-features-title">Everything your feed needs to perform</h2>
+                <p class="hp-features-sub">Not a rewriter. A positioning engine built for Google Shopping.</p>
             </div>
             <div class="hp-features-grid">
             <div class="hp-feature">
@@ -1723,8 +1723,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <div class="hp-feature-ring hp-feature-ring-2"></div>
                     <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></div>
                 </div>
-                <div class="hp-feature-title">Search-intent positioning</div>
-                <div class="hp-feature-desc">Intents are inferred from your catalog facts, ranked, and merged into titles—so you cover real queries without blind keyword stuffing.</div>
+                <div class="hp-feature-title">Fix disapprovals automatically</div>
+                <div class="hp-feature-desc">Cartozo detects what Google Merchant rejects and why—then fixes it. Stop manually hunting errors one by one.</div>
             </div>
             <div class="hp-feature">
                 <div class="hp-feature-visual">
@@ -1733,8 +1733,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <div class="hp-feature-ring hp-feature-ring-2"></div>
                     <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg></div>
                 </div>
-                <div class="hp-feature-title">Compelling descriptions</div>
-                <div class="hp-feature-desc">Descriptions are built from the same selected intents—aligned with the title and grounded in what you actually sell.</div>
+                <div class="hp-feature-title">Titles that win clicks</div>
+                <div class="hp-feature-desc">We score real shopper search intents and assemble titles that match. More relevant = higher CTR = better ROAS.</div>
             </div>
             <div class="hp-feature">
                 <div class="hp-feature-visual">
@@ -1743,8 +1743,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <div class="hp-feature-ring hp-feature-ring-2"></div>
                     <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg></div>
                 </div>
-                <div class="hp-feature-title">Multi-Language Translation</div>
-                <div class="hp-feature-desc">Translate optimized content to German, Swedish, French, Spanish, Polish, and more.</div>
+                <div class="hp-feature-title">Scale to thousands of SKUs</div>
+                <div class="hp-feature-desc">Process your entire catalog in minutes—not days. One upload, every product gets optimized titles and descriptions.</div>
             </div>
             <div class="hp-feature">
                 <div class="hp-feature-visual">
@@ -1753,8 +1753,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <div class="hp-feature-ring hp-feature-ring-2"></div>
                     <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
                 </div>
-                <div class="hp-feature-title">Quality Scoring</div>
-                <div class="hp-feature-desc">Each optimization gets a quality score (1тАУ100) so you see the improvement level.</div>
+                <div class="hp-feature-title">Before/After quality score</div>
+                <div class="hp-feature-desc">Every product gets a quality score (1-100) so you see exactly how much it improved and can prioritize what to review.</div>
             </div>
             <div class="hp-feature">
                 <div class="hp-feature-visual">
@@ -1763,8 +1763,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <div class="hp-feature-ring hp-feature-ring-2"></div>
                     <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg></div>
                 </div>
-                <div class="hp-feature-title">Custom Prompts</div>
-                <div class="hp-feature-desc">Customize AI prompts to match your brand voice and SEO strategy.</div>
+                <div class="hp-feature-title">No technical setup required</div>
+                <div class="hp-feature-desc">Upload a CSV. That's it. No API keys, no developer, no spreadsheet wizardry. Results in the browser, ready to export.</div>
             </div>
             <div class="hp-feature">
                 <div class="hp-feature-visual">
@@ -1773,8 +1773,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     <div class="hp-feature-ring hp-feature-ring-2"></div>
                     <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></div>
                 </div>
-                <div class="hp-feature-title">CSV Import/Export</div>
-                <div class="hp-feature-desc">Upload CSV, review intent-aware results (with optional debug export), then download a Merchant-ready feed.</div>
+                <div class="hp-feature-title">Export Merchant-ready in one click</div>
+                <div class="hp-feature-desc">Download a clean CSV formatted to Google's product data spec. Upload directly to Merchant Center—no reformatting needed.</div>
             </div>
             </div>
         </div>
@@ -1783,9 +1783,9 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     <section class="hp-feed-section" id="feed-structure">
         <div class="hp-container">
             <div class="hp-feed-header">
-                <span class="hp-feed-label">Feed Structure</span>
-                <h2 class="hp-feed-title">Perfectly structured for Google Merchant</h2>
-                <p class="hp-feed-sub">We map your feed to Google product data spec, then run intent-aware positioning for titles and descriptions</p>
+                <span class="hp-feed-label">Before &rarr; After</span>
+                <h2 class="hp-feed-title">See what a clean feed looks like</h2>
+                <p class="hp-feed-sub">Cartozo maps your data to Google's product spec and rewrites every title and description for real search intent—not generic AI filler.</p>
             </div>
             <div class="hp-feed-block">
                 <div class="hp-feed-block-inner">
@@ -1857,23 +1857,23 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             <div class="circle-1"></div>
         </div>
         <div class="hp-container">
-            <h2 class="hp-steps-title">How it works</h2>
-            <p class="hp-steps-sub">From CSV to Shopping-intent titles and descriptions in three steps</p>
+            <h2 class="hp-steps-title">From broken feed to live in 3 steps</h2>
+            <p class="hp-steps-sub">No setup, no dev work, no waiting. Just results.</p>
             <div class="hp-steps-grid">
                 <div class="hp-step">
                     <div class="hp-step-num">1</div>
-                    <div class="hp-step-title">Upload CSV</div>
-                    <div class="hp-step-desc">Drag your feed file and map columns to standard fields.</div>
+                    <div class="hp-step-title">Upload your CSV</div>
+                    <div class="hp-step-desc">Drop in your product feed. Cartozo maps your columns automatically—no template needed.</div>
                 </div>
                 <div class="hp-step">
                     <div class="hp-step-num">2</div>
-                    <div class="hp-step-title">Intent layer runs</div>
-                    <div class="hp-step-desc">For each SKU we infer search intents, score them, pick the best, then assemble Merchant-ready title and description.</div>
+                    <div class="hp-step-title">AI optimizes every SKU</div>
+                    <div class="hp-step-desc">Titles are rebuilt around real search intents. Descriptions aligned. Errors flagged and fixed.</div>
                 </div>
                 <div class="hp-step">
                     <div class="hp-step-num">3</div>
-                    <div class="hp-step-title">Review & export</div>
-                    <div class="hp-step-desc">Review results, regenerate if needed, then download your optimized feed.</div>
+                    <div class="hp-step-title">Export &amp; push to Google</div>
+                    <div class="hp-step-desc">Download your clean, Merchant-ready feed and upload it directly. That's the whole workflow.</div>
                 </div>
             </div>
         </div>
@@ -1886,9 +1886,9 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             <div class="glow"></div>
         </div>
         <div class="hp-container">
-            <h2 class="hp-cta-title">Ready to optimize your product feed?</h2>
-            <p class="hp-cta-sub">Start with a free trial — no API key needed for demo mode.</p>
-            <a href="/login" class="hp-btn hp-btn-primary">Get Started Free</a>
+            <h2 class="hp-cta-title">Your competitors are already optimizing their feeds.</h2>
+            <p class="hp-cta-sub">Upload your CSV now. See what's broken, what can be fixed, and what you're leaving on the table.</p>
+            <a href="/login" class="hp-btn hp-btn-primary">Upload Your Feed</a>
         </div>
     </section>
 
@@ -1970,10 +1970,10 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         if (!chatWrap || !chatPanel || !chatInput || !chatSend || !chatMessages || !chatSpacer || !chatAnchor) return;
 
         var placeholders = [
-            'Ask about search-intent positioning',
-            'Upload or describe your feed',
-            'How is this different from a rewrite?',
-            'Get help with Merchant / Shopping',
+            'Ask how to fix disapprovals fast',
+            'Upload your feed CSV and see what breaks',
+            'Why are my products getting rejected?',
+            'How do I improve CTR on Google Shopping?',
             'Upload CSV or ask a question'
         ];
         var phIdx = 0;

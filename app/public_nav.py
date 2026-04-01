@@ -109,7 +109,7 @@ def public_site_nav_html(*, feed_structure_href: str = "/#feed-structure") -> st
         </div>
         <div class="hp-nav-right">
             <button type="button" class="hp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
-            <a href="/login" class="hp-nav-cta">Get Started</a>
+            <a href="/login" class="hp-nav-cta">Upload your feed</a>
         </div>
         </div>
     </nav>"""
