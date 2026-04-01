@@ -131,7 +131,7 @@ def public_site_footer_html(*, feed_structure_href: str = "/#feed-structure") ->
             </nav>
         </div>
         <div class="hp-footer-meta">
-            &copy; 2026 Cartozo.ai &middot; <a href="/faq">FAQ</a> &middot; <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a> &middot; <a href="/cookies">Cookie Policy</a> &middot; <a href="/refund-policy">Refund Policy</a> &middot; Powered by <a href="https://zanzarra.com/" target="_blank" rel="noopener noreferrer">Zanzarra</a>
+            &copy; 2026 Cartozo.ai &middot; <a href="/faq">FAQ</a> &middot; <a href="/about">About us</a> &middot; <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a> &middot; <a href="/cookies">Cookie Policy</a> &middot; <a href="/refund-policy">Refund Policy</a> &middot; Powered by <a href="https://zanzarra.com/" target="_blank" rel="noopener noreferrer">Zanzarra</a>
         </div>
     </footer>"""
 

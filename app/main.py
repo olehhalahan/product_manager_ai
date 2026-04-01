@@ -52,6 +52,7 @@ from .pricing_page import build_pricing_html
 from .faq_page import build_faq_html
 from .privacy_pages import build_cookie_policy_html, build_privacy_policy_html, build_refund_policy_html
 from .seo import canonical_url_for_request, head_canonical_og_url_type, site_base_url, website_json_ld
+from .about_us_page import build_about_us_html
 from .terms_page import build_terms_html
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
 
@@ -3245,6 +3246,29 @@ def _cookie_policy_html_response(request: Request) -> HTMLResponse:
     )
 
 
+def _about_us_html_response(request: Request) -> HTMLResponse:
+    title = "About us | Cartozo.ai"
+    desc = (
+        "Legal information for the sole proprietor (FOP) behind Cartozo.ai — registered name, tax ID, "
+        "address in Ukraine, and business contact details."
+    )
+    base = site_base_url()
+    s = _get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
+    return HTMLResponse(
+        content=build_about_us_html(
+            meta_title=title,
+            meta_description=desc,
+            og_title=title,
+            og_description=desc,
+            canonical_url=f"{base}/about",
+            og_image=og_image,
+            gtm_head=GTM_HEAD,
+            gtm_body=GTM_BODY,
+        )
+    )
+
+
 def _refund_policy_html_response(request: Request) -> HTMLResponse:
     title = "Refund Policy | Cartozo AI"
     desc = "How refunds may apply to Cartozo AI subscriptions and paid add-ons."
@@ -3283,6 +3307,16 @@ def _faq_html_response(request: Request) -> HTMLResponse:
             gtm_body=GTM_BODY,
         )
     )
+
+
+@app.get("/about", response_class=HTMLResponse)
+def about_us_page(request: Request):
+    return _about_us_html_response(request)
+
+
+@app.get("/about-us", response_class=HTMLResponse)
+def about_us_page_dash(request: Request):
+    return _about_us_html_response(request)
 
 
 @app.get("/refund-policy", response_class=HTMLResponse)
@@ -7332,6 +7366,7 @@ def _build_sitemap_xml_body(base: str, db) -> str:
         ("/privacy", "0.5", "yearly"),
         ("/cookies", "0.5", "yearly"),
         ("/refund-policy", "0.5", "yearly"),
+        ("/about", "0.5", "yearly"),
         ("/faq", "0.6", "monthly"),
         ("/blog", "0.9", "daily"),
     ]
