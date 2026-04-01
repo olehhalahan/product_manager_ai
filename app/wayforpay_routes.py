@@ -67,10 +67,17 @@ def register_wayforpay_routes(app) -> None:
             merchant = (s.get("wayforpay_merchant_account") or "").strip()
             secret = (s.get("wayforpay_secret_key") or "").strip()
             domain = (s.get("wayforpay_merchant_domain") or "").strip()
-            if not merchant or not secret or not domain:
+            missing = []
+            if not merchant:
+                missing.append("Merchant account")
+            if not secret:
+                missing.append("Secret key")
+            if not domain:
+                missing.append("Merchant domain")
+            if missing:
                 raise HTTPException(
                     status_code=503,
-                    detail="WayForPay is not configured yet. Ask an admin to fill Settings → WayForPay.",
+                    detail=f"WayForPay is not fully configured. Missing: {', '.join(missing)}. Ask an admin to fill Settings → WayForPay.",
                 )
 
             order_reference = f"cz-{uuid.uuid4().hex[:24]}"

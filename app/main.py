@@ -6201,10 +6201,10 @@ async def settings_page(request: Request):
                 <input type="text" id="wfp_domain" placeholder="example.com" value="{wfp_domain_esc}" autocomplete="off" />
             </div>
             <div class="group">
-                <div class="group-title">Secret key</div>
-                <p class="group-desc">Stored encrypted at rest only if your deployment secures the DB. Leave blank to keep the current key; enter a new value to replace.</p>
+                <div class="group-title">Secret key <span style="color:#f87171;">*</span></div>
+                <p class="group-desc">Required for payment processing. Stored encrypted at rest only if your deployment secures the DB. Leave blank to keep the current key; enter a new value to replace.</p>
                 <p class="key-status" id="wfp_key_wrap" style="display:{'block' if wfp_secret_masked else 'none'};">Saved key: <code id="wfp_key_display">{_html.escape(wfp_secret_masked)}</code></p>
-                <input type="password" id="wfp_secret" placeholder="New secret key (optional)" autocomplete="new-password" />
+                <input type="password" id="wfp_secret" placeholder="{'Enter secret key from WayForPay' if not wfp_secret_masked else 'New secret key (leave blank to keep current)'}" autocomplete="new-password" />
             </div>
             <div class="group">
                 <div class="group-title">Return URL (optional)</div>
