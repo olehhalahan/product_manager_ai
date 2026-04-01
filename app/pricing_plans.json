@@ -45,30 +45,36 @@
   },
   "plans": [
     {
-      "id": "free",
-      "name": "FREE",
+      "id": "basic",
+      "name": "BASIC",
       "tier_emoji": "🟢",
-      "price_display": "$0",
+      "price_display": "$5",
       "price_period": "/ month",
       "highlighted": false,
       "badge": null,
-      "tagline": "For testing and small catalogs",
-      "monthly_product_limit": 50,
+      "tagline": "Perfect for testing and small stores",
+      "monthly_product_limit": 100,
       "paddle_price_id": null,
       "paypro_plan_code": null,
       "features": [
-        "3-day free trial, 50 products / month",
-        "Search-intent positioning (titles)",
+        "100 products / month",
+        "Search-intent positioning (titles + descriptions)",
         "CSV upload + export",
+        "Feed quality check",
         "Preview before download"
       ],
       "limitations": [
-        "No bulk processing",
-        "No Merchant integration"
+        "No Merchant Center integration",
+        "No advanced analytics"
       ],
       "hook_line": null,
-      "cta_label": "Start free",
-      "cta_href": "/login?next=/upload"
+      "cta_label": "Get started for $5",
+      "cta_href": "/login?next=/upload&plan=basic",
+      "wayforpay": {
+        "amount": "199.00",
+        "currency": "UAH",
+        "product_name": "Cartozo Basic — subscription (monthly)"
+      }
     },
     {
       "id": "starter",
@@ -84,10 +90,11 @@
       "paypro_plan_code": null,
       "features": [
         "500 products / month",
-        "Titles + descriptions (intent pipeline)",
+        "Search-intent positioning (titles + descriptions)",
         "Bulk processing",
-        "Optimization history",
-        "Basic analytics"
+        "Feed issue detection",
+        "CSV + export",
+        "Batch history"
       ],
       "limitations": [],
       "hook_line": null,
@@ -113,11 +120,12 @@
       "paypro_plan_code": null,
       "features": [
         "2,000 products / month",
-        "Advanced intent positioning (SEO-focused assembly)",
-        "Regenerate specific products",
+        "Advanced intent positioning",
         "Feed issue detection (GMC-ready)",
-        "CSV + API export",
-        "Priority processing"
+        "Regenerate specific products",
+        "CSV export",
+        "Priority processing",
+        "Batch analytics"
       ],
       "limitations": [],
       "hook_line": "Reduce disapprovals and improve feed performance automatically",
@@ -143,11 +151,12 @@
       "paypro_plan_code": null,
       "features": [
         "6,000 products / month",
-        "Full feed + intent positioning pipeline",
-        "Merchant-ready formatting",
-        "Advanced analytics (before / after impact)",
-        "AI assistant (chat + bulk actions)",
-        "Priority support"
+        "Full intent positioning pipeline",
+        "Google Merchant Center integration",
+        "Advanced batch analytics",
+        "Regenerate anytime",
+        "Priority support",
+        "Custom prompts"
       ],
       "limitations": [],
       "hook_line": "Full automation for large catalogs",
@@ -176,19 +185,19 @@
   "comparison": {
     "title": "What you get at each level",
     "subtitle": "Clear limits and features — pick what matches your store.",
-    "column_plan_ids": ["free", "starter", "growth", "pro"],
+    "column_plan_ids": ["basic", "starter", "growth", "pro"],
     "rows": [
       {
         "label": "Products / month",
-        "cells": ["50", "500", "2,000", "6,000"]
+        "cells": ["100", "500", "2,000", "6,000"]
       },
       {
         "label": "Search intent positioning",
-        "cells": ["Basic", "Yes", "Advanced", "Full pipeline"]
+        "cells": ["Yes", "Yes", "Advanced", "Full pipeline"]
       },
       {
         "label": "Descriptions",
-        "cells": ["—", "✓", "✓", "✓"]
+        "cells": ["✓", "✓", "✓", "✓"]
       },
       {
         "label": "Bulk processing",

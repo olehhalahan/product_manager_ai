@@ -59,7 +59,7 @@ def _render_plan_card(plan: dict[str, Any]) -> str:
     cls = "pp-card"
     if highlighted:
         cls += " pp-card--highlight"
-    tier = pid if pid in ("free", "starter", "growth", "pro") else ""
+    tier = pid if pid in ("basic", "starter", "growth", "pro") else ""
     if tier:
         cls += f" pp-card--tier-{tier}"
 
@@ -437,7 +437,7 @@ a{{color:inherit;text-decoration:none}}
   transform:translateY(-3px);
   z-index:2;
 }}
-.pp-card--tier-free{{border-top:3px solid #22c55e}}
+.pp-card--tier-basic{{border-top:3px solid #22c55e}}
 .pp-card--tier-starter{{border-top:3px solid #3b82f6}}
 .pp-card--tier-growth{{border-top:3px solid #a855f7}}
 .pp-card--tier-pro{{border-top:3px solid #64748b}}

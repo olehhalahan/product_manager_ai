@@ -5939,6 +5939,7 @@ async def settings_page(request: Request):
             <button class="tab{' active' if tab_param == 'chats' else ''}" data-tab="tab-chats" onclick="switchTab('tab-chats','chats')">Chat Sessions</button>
             <button class="tab{' active' if tab_param == 'feedurl' else ''}" data-tab="tab-feedurl" onclick="switchTab('tab-feedurl','feedurl')">Feed from URL</button>
             <button class="tab{' active' if tab_param == 'wayforpay' else ''}" data-tab="tab-wayforpay" onclick="switchTab('tab-wayforpay','wayforpay')">WayForPay</button>
+            <button class="tab{' active' if tab_param == 'subscriptions' else ''}" data-tab="tab-subscriptions" onclick="switchTab('tab-subscriptions','subscriptions')">Subscriptions</button>
         </div>
 
         <div id="tab-prompts" class="tab-content{' active' if tab_param == 'prompts' else ''}">
@@ -6223,6 +6224,16 @@ async def settings_page(request: Request):
         </div>
     </div>
 
+    <div id="tab-subscriptions" class="tab-content{' active' if tab_param == 'subscriptions' else ''}">
+        <div class="group">
+            <div class="group-title">Active Subscriptions</div>
+            <p class="group-desc">Users who have paid for a subscription via WayForPay. You can issue refunds if needed.</p>
+            <div id="subscriptions-list" style="margin-top:18px;">
+                <p style="color:rgba(255,255,255,0.5);font-size:0.88rem;">Loading...</p>
+            </div>
+        </div>
+    </div>
+
     <script>
     function switchTab(tabId, tabName){{
         document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
@@ -6244,6 +6255,52 @@ async def settings_page(request: Request):
         document.querySelectorAll('.prompt-subpanel').forEach(p=>p.classList.toggle('active', p.id==='prompt-sub-'+name));
         history.replaceState(null,'','/settings?tab=prompts&sub='+name);
     }}
+    async function loadSubscriptions(){{
+        const list=document.getElementById('subscriptions-list');
+        if(!list)return;
+        try{{
+            const resp=await fetch('/api/admin/subscriptions',{{credentials:'same-origin'}});
+            const j=await resp.json();
+            if(!resp.ok){{list.innerHTML='<p style="color:#f87171;">'+((j&&j.detail)||'Failed')+'</p>';return;}}
+            const subs=j.subscriptions||[];
+            if(!subs.length){{list.innerHTML='<p style="color:rgba(255,255,255,0.4);">No subscriptions yet</p>';return;}}
+            let html='<div style="border:1px solid rgba(255,255,255,0.1);border-radius:10px;overflow:hidden;">';
+            html+='<table style="width:100%;border-collapse:collapse;font-size:0.84rem;"><thead><tr style="background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.1);"><th style="padding:10px 12px;text-align:left;font-weight:600;">Email</th><th style="padding:10px 12px;text-align:left;font-weight:600;">Plan</th><th style="padding:10px 12px;text-align:left;font-weight:600;">Amount</th><th style="padding:10px 12px;text-align:left;font-weight:600;">Status</th><th style="padding:10px 12px;text-align:left;font-weight:600;">Date</th><th style="padding:10px 12px;text-align:center;font-weight:600;">Actions</th></tr></thead><tbody>';
+            subs.forEach((s,i)=>{{
+                const bg=i%2===0?'rgba(255,255,255,0.02)':'transparent';
+                const canRefund=s.status==='approved';
+                html+='<tr style="background:'+bg+';border-bottom:1px solid rgba(255,255,255,0.05);">';
+                html+='<td style="padding:10px 12px;">'+s.user_email+'</td>';
+                html+='<td style="padding:10px 12px;"><span style="font-weight:600;text-transform:uppercase;color:#818cf8;">'+s.plan_id+'</span></td>';
+                html+='<td style="padding:10px 12px;">'+s.amount+' '+s.currency+'</td>';
+                html+='<td style="padding:10px 12px;"><span style="padding:3px 8px;border-radius:6px;font-size:0.72rem;font-weight:600;text-transform:uppercase;background:'+(s.status==='approved'?'rgba(34,197,94,0.15);color:#22c55e':'rgba(248,113,113,0.15);color:#f87171')+';">'+s.status+'</span></td>';
+                html+='<td style="padding:10px 12px;color:rgba(255,255,255,0.5);font-size:0.78rem;">'+s.created_at.substring(0,19).replace('T',' ')+'</td>';
+                html+='<td style="padding:10px 12px;text-align:center;">';
+                if(canRefund){{
+                    html+='<button type="button" class="btn-small" style="background:rgba(248,113,113,0.2);border:1px solid rgba(248,113,113,0.4);color:#fca5a5;cursor:pointer;padding:5px 12px;border-radius:6px;font-size:0.78rem;" onclick="refundSubscription('+s.id+',\\''+s.user_email.replace(/'/g,"\\\\'")+'\\')">Refund</button>';
+                }}else{{
+                    html+='<span style="color:rgba(255,255,255,0.3);font-size:0.78rem;">—</span>';
+                }}
+                html+='</td></tr>';
+            }});
+            html+='</tbody></table></div>';
+            list.innerHTML=html;
+        }}catch(e){{console.error(e);list.innerHTML='<p style="color:#f87171;">Error loading subscriptions</p>';}}
+    }}
+    async function refundSubscription(id,email){{
+        if(!confirm('Issue refund for '+email+'? This will mark the payment as refunded in the database. You must process the actual refund via WayForPay merchant cabinet.'))return;
+        try{{
+            const resp=await fetch('/api/admin/subscriptions/'+id+'/refund',{{method:'POST',credentials:'same-origin',headers:{{'Content-Type':'application/json'}},body:'{{}}'}});
+            const j=await resp.json();
+            if(!resp.ok){{alert((j&&j.detail)||'Refund failed');return;}}
+            alert('Refund marked in database. Process actual refund via WayForPay.');
+            loadSubscriptions();
+        }}catch(e){{console.error(e);alert('Refund request failed');}}
+    }}
+    document.addEventListener('DOMContentLoaded',function(){{
+        const urlParams=new URLSearchParams(window.location.search);
+        if(urlParams.get('tab')==='subscriptions')loadSubscriptions();
+    }});
     async function saveSeo(){{
         const data={{seo_meta_title:document.getElementById('seo_meta_title').value,seo_meta_description:document.getElementById('seo_meta_description').value,seo_og_title:document.getElementById('seo_og_title').value,seo_og_description:document.getElementById('seo_og_description').value,seo_og_image:document.getElementById('seo_og_image').value,seo_og_site_name:document.getElementById('seo_og_site_name').value}};
         const resp=await fetch('/api/admin/seo',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});
@@ -7420,6 +7477,53 @@ async def robots_txt(request: Request):
     base = site_base_url()
     text = _build_robots_txt_body(base)
     return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/api/admin/subscriptions")
+async def admin_list_subscriptions(request: Request):
+    """List all WayForPay payments (approved subscriptions)."""
+    require_admin_http(request)
+    from .db import get_db
+    from .db_models import WayforpayPayment
+    from sqlalchemy import select
+
+    with get_db() as db:
+        rows = db.execute(select(WayforpayPayment).order_by(WayforpayPayment.created_at.desc())).scalars().all()
+        subscriptions = []
+        for r in rows:
+            subscriptions.append({
+                "id": r.id,
+                "order_reference": r.order_reference,
+                "user_email": r.user_email,
+                "plan_id": r.plan_id,
+                "amount": r.amount,
+                "currency": r.currency,
+                "status": r.status,
+                "transaction_status": r.transaction_status or "",
+                "created_at": r.created_at.isoformat() if r.created_at else "",
+                "updated_at": r.updated_at.isoformat() if r.updated_at else "",
+            })
+    return JSONResponse({"subscriptions": subscriptions})
+
+
+@app.post("/api/admin/subscriptions/{subscription_id}/refund")
+async def admin_refund_subscription(request: Request, subscription_id: int):
+    """Mark subscription as refunded (admin must process actual refund via WayForPay)."""
+    require_admin_http(request)
+    from .db import get_db
+    from .db_models import WayforpayPayment
+    from sqlalchemy import select
+
+    with get_db() as db:
+        row = db.execute(select(WayforpayPayment).where(WayforpayPayment.id == subscription_id)).scalar_one_or_none()
+        if not row:
+            raise HTTPException(status_code=404, detail="Subscription not found")
+        if row.status != "approved":
+            raise HTTPException(status_code=400, detail="Only approved subscriptions can be refunded")
+        row.status = "refunded"
+        row.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    return JSONResponse({"ok": True, "message": "Subscription marked as refunded"})
 
 
 register_wayforpay_routes(app)
