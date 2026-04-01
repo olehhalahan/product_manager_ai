@@ -24,7 +24,7 @@ from .db import get_db
 from .services import db_repository as repo
 from .services.db_repository import get_settings
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
-from .public_nav import public_site_nav_html
+from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html
 from .seo import (
     blog_posting_json_ld,
     canonical_url_blog_article,
@@ -2792,8 +2792,11 @@ def _blog_index_page_html(
   {seo_block}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
   <style>
-  body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
-  [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
+  {HP_NAV_CSS}
+  {HP_FOOTER_CSS}
+  body.blog-idx-body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
+  [data-theme="light"] body.blog-idx-body {{ background:#f8fafc; color:#0f172a; }}
+  .blog-page-with-nav {{ flex:1 0 auto; width:100%; }}
   .visually-hidden {{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }}
   .blog-idx-wrap {{ max-width:800px; margin:0 auto; padding:88px 24px 80px; }}
   .blog-idx-hero h1 {{ font-size:2rem; font-weight:700; letter-spacing:-.03em; margin:0 0 8px; }}
@@ -2818,11 +2821,12 @@ def _blog_index_page_html(
   .blog-idx-card-kw {{ font-size:.78rem; color:#64748b; margin:0; }}
   .blog-idx-empty {{ padding:48px 24px; text-align:center; color:#94a3b8; border-radius:14px; border:1px dashed rgba(255,255,255,.12); }}
   .blog-idx-empty a {{ color:#818cf8; }}
+  body.blog-idx-body > footer.hp-footer {{ flex-shrink:0; width:100%; margin-top:auto; }}
   </style>
 </head>
-<body>
+<body class="blog-idx-body">
   {gtm_body}
-  {public_site_nav_html()}
+  {public_site_nav_html(feed_structure_href="/#feed-structure")}
   <div class="blog-page-with-nav">
   <main class="blog-idx-wrap">
     <header class="blog-idx-hero">
@@ -2837,6 +2841,7 @@ def _blog_index_page_html(
     <ul class="blog-idx-list">{cards_html}</ul>
   </main>
   </div>
+  {public_site_footer_html(feed_structure_href="/#feed-structure")}
   <script>
   {ADMIN_THEME_SCRIPT.strip()}
   </script>
@@ -3190,11 +3195,13 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
   {article_seo}{ld}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
   <style>
-  body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
-  [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
-  body.blog-article-body {{ color:#e2e8f0; }}
-  [data-theme="light"] body.blog-article-body {{ color:#0f172a; }}
-  .blog-layout {{ display:flex; min-height:100vh; width:100%; }}
+  {HP_NAV_CSS}
+  {HP_FOOTER_CSS}
+  body.blog-article-body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#e2e8f0; min-height:100vh; display:flex; flex-direction:column; }}
+  [data-theme="light"] body.blog-article-body {{ background:#f8fafc; color:#0f172a; }}
+  .blog-page-with-nav {{ flex:1 0 auto; width:100%; display:flex; flex-direction:column; }}
+  .blog-layout {{ display:flex; flex:1; min-height:0; width:100%; }}
+  body.blog-article-body > footer.hp-footer {{ flex-shrink:0; width:100%; margin-top:auto; }}
   .blog-side {{ width:260px; flex-shrink:0; border-right:1px solid rgba(255,255,255,.08); padding:12px 16px 24px; position:sticky; top:72px; align-self:flex-start; max-height:calc(100vh - 72px); overflow-y:auto; }}
   [data-theme="light"] .blog-side {{ border-color:rgba(15,23,42,.1); }}
   .blog-side h2 {{ font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin:0 0 12px; }}
@@ -3255,7 +3262,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
 </head>
 <body class="blog-article-body">
   {_bb}
-  {public_site_nav_html()}
+  {public_site_nav_html(feed_structure_href="/#feed-structure")}
   <div class="blog-page-with-nav">
   <div class="blog-layout">
     <aside class="blog-side">
@@ -3308,6 +3315,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
     {admin_aside}
   </div>
   </div>
+  {public_site_footer_html(feed_structure_href="/#feed-structure")}
   <script>
   {ADMIN_THEME_SCRIPT.strip()}
   (function(){{

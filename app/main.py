@@ -2344,8 +2344,9 @@ def _build_login_page(
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; padding: 100px 24px 48px; box-sizing: border-box; }}
+    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; padding: 72px 0 0; box-sizing: border-box; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
+    .login-main {{ flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; padding: 32px 24px 48px; box-sizing: border-box; }}
     @@LOGIN_HP_NAV_STYLES@@
     .login-box {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 48px 40px; max-width: 400px; width: 100%; text-align: center; }}
     [data-theme="light"] .login-box {{ background: #fff; border-color: rgba(15,23,42,0.1); box-shadow: 0 4px 24px rgba(0,0,0,0.06); }}
@@ -2364,17 +2365,20 @@ def _build_login_page(
     .oauth-alert code {{ font-size: 0.78rem; background: rgba(0,0,0,0.2); padding: 2px 6px; border-radius: 4px; }}
     [data-theme="light"] .oauth-alert {{ color: #991b1b; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); }}
     __LOGIN_HP_FOOTER_STYLES__
+    body > footer.hp-footer {{ flex-shrink: 0; width: 100%; margin-top: auto; }}
     </style>
 </head>
 <body>
 {_lg_b}
     @@LOGIN_PUBLIC_NAV@@
+    <main class="login-main">
     <div class="login-box">
         <h1>Sign in to continue</h1>
         <p>Use your Google or Apple account to access the uploader. No registration required.</p>
         {oauth_alert_html}
         {providers_html}
     </div>
+    </main>
     __LOGIN_PUBLIC_FOOTER__
     <script>__LOGIN_THEME__</script>
     <script src="/static/page-transition.js"></script>
