@@ -6299,12 +6299,20 @@ async def settings_page(request: Request):
             html+='<table style="width:100%;border-collapse:collapse;font-size:0.84rem;"><thead><tr style="background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.1);"><th style="padding:10px 12px;text-align:left;font-weight:600;">Email</th><th style="padding:10px 12px;text-align:left;font-weight:600;">Plan</th><th style="padding:10px 12px;text-align:left;font-weight:600;">Amount</th><th style="padding:10px 12px;text-align:left;font-weight:600;">Status</th><th style="padding:10px 12px;text-align:left;font-weight:600;">Date</th><th style="padding:10px 12px;text-align:center;font-weight:600;">Actions</th></tr></thead><tbody>';
             subs.forEach((s,i)=>{{
                 const bg=i%2===0?'rgba(255,255,255,0.02)':'transparent';
-                const canRefund=s.status==='approved';
+                const st=(s.status||'').toLowerCase();
+                const isSuccess=st==='completed'||st==='approved';
+                const isFailed=st==='failed'||st==='declined';
+                const isRefunded=st==='refunded';
+                let badgeBg='rgba(234,179,8,0.15)',badgeColor='#eab308';
+                if(isSuccess){{badgeBg='rgba(34,197,94,0.15)';badgeColor='#22c55e';}}
+                else if(isFailed){{badgeBg='rgba(248,113,113,0.15)';badgeColor='#f87171';}}
+                else if(isRefunded){{badgeBg='rgba(148,163,184,0.15)';badgeColor='#94a3b8';}}
+                const canRefund=isSuccess&&!isRefunded;
                 html+='<tr style="background:'+bg+';border-bottom:1px solid rgba(255,255,255,0.05);">';
                 html+='<td style="padding:10px 12px;">'+s.user_email+'</td>';
                 html+='<td style="padding:10px 12px;"><span style="font-weight:600;text-transform:uppercase;color:#818cf8;">'+s.plan_id+'</span></td>';
                 html+='<td style="padding:10px 12px;">'+s.amount+' '+s.currency+'</td>';
-                html+='<td style="padding:10px 12px;"><span style="padding:3px 8px;border-radius:6px;font-size:0.72rem;font-weight:600;text-transform:uppercase;background:'+(s.status==='approved'?'rgba(34,197,94,0.15);color:#22c55e':'rgba(248,113,113,0.15);color:#f87171')+';">'+s.status+'</span></td>';
+                html+='<td style="padding:10px 12px;"><span style="padding:3px 8px;border-radius:6px;font-size:0.72rem;font-weight:600;text-transform:uppercase;background:'+badgeBg+';color:'+badgeColor+';">'+s.status+'</span></td>';
                 html+='<td style="padding:10px 12px;color:rgba(255,255,255,0.5);font-size:0.78rem;">'+s.created_at.substring(0,19).replace('T',' ')+'</td>';
                 html+='<td style="padding:10px 12px;text-align:center;">';
                 if(canRefund){{
@@ -7549,8 +7557,8 @@ async def admin_refund_subscription(request: Request, subscription_id: int):
         row = db.execute(select(WayforpayPayment).where(WayforpayPayment.id == subscription_id)).scalar_one_or_none()
         if not row:
             raise HTTPException(status_code=404, detail="Subscription not found")
-        if row.status != "approved":
-            raise HTTPException(status_code=400, detail="Only approved subscriptions can be refunded")
+        if row.status not in ("approved", "completed"):
+            raise HTTPException(status_code=400, detail="Only completed payments can be refunded")
         row.status = "refunded"
         row.updated_at = datetime.now(timezone.utc)
         db.commit()
