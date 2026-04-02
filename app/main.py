@@ -16,7 +16,7 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.docs import get_swagger_ui_html
 from starlette.middleware.sessions import SessionMiddleware
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import io
 import csv
 import uuid
@@ -4397,10 +4397,13 @@ async def review_batch(request: Request, batch_id: str):
 
     pos_debug_admin = is_admin(request) and request.query_params.get("pos_debug") == "1"
 
-    def _feed_fix_cell_html(r) -> str:
-        specs = feed_data_fix_field_specs(merge_review_warnings(r), r.product)
+    def _feed_fix_stack_html(
+        r, product_type: str, warn_items: List[Tuple[str, str]]
+    ) -> str:
+        """Inline fix fields (shown under warnings so they are always visible)."""
+        specs = feed_data_fix_field_specs(warn_items, r.product, product_type)
         if not specs:
-            return '<td class="feed-fix-cell"><span class="feed-fix-empty">—</span></td>'
+            return ""
         blocks: List[str] = []
         pid = html_module.escape(r.product.id)
         for spec in specs:
@@ -4430,7 +4433,10 @@ async def review_batch(request: Request, batch_id: str):
                     f'<input type="text" class="feed-fix-input" data-field="{fesc}" '
                     f'data-product="{pid}" value="{val}" autocomplete="off" /></label>'
                 )
-        return f'<td class="feed-fix-cell"><div class="feed-fix-stack">{"".join(blocks)}</div></td>'
+        return (
+            '<div class="warnings-feed-fixes" role="group" aria-label="Fix missing feed fields">'
+            f'<div class="feed-fix-stack">{"".join(blocks)}</div></div>'
+        )
 
     def _positioning_user_block(r):
         if not r.positioning:
@@ -4565,7 +4571,7 @@ async def review_batch(request: Request, batch_id: str):
         if not inner_parts and not tech_block:
             return ""
         return (
-            '<details class="pos-dbg"><summary>Search positioning</summary>'
+            '<details class="pos-dbg"><summary class="pos-dbg-summary">Search positioning</summary>'
             f'<div class="pos-dbg-inner">{body}</div></details>'
         )
 
@@ -4674,36 +4680,38 @@ async def review_batch(request: Request, batch_id: str):
         gmc_status = 'error' if gmc_errs else 'warn' if gmc_warns else 'pass'
 
         # ── Title cells with inline GMC tags ─────────────────────────
-        old_title_cell = f'<td>{old_title}{gmc_suffix_old_title}</td>'
+        old_title_cell = f'<td class="review-title-cell">{old_title}{gmc_suffix_old_title}</td>'
         pos_block = _positioning_user_block(r)
         if gmc_suffix_new_title:
-            new_title_cell = f'<td><div class="cell-with-gmc"><span class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</span>{gmc_suffix_new_title}</div>{pos_block}</td>'
+            new_title_cell = f'<td class="review-title-cell"><div class="cell-with-gmc"><span class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</span>{gmc_suffix_new_title}</div>{pos_block}</td>'
         else:
-            new_title_cell = f'<td><span class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</span>{pos_block}</td>'
+            new_title_cell = f'<td class="review-title-cell"><span class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</span>{pos_block}</td>'
 
         warn_items = merge_review_warnings(r)
+        fix_block = _feed_fix_stack_html(r, batch.product_type, warn_items)
         if not warn_items:
-            warnings_cell = '<td class="warnings-cell"><span class="warnings-empty">—</span></td>'
+            if fix_block:
+                warnings_cell = f'<td class="warnings-cell">{fix_block}</td>'
+            else:
+                warnings_cell = '<td class="warnings-cell"><span class="warnings-empty">—</span></td>'
         else:
             _pills = []
             for _sev, _txt in warn_items:
                 _pcls = "warn-pill warn-pill--err" if _sev == "error" else "warn-pill warn-pill--warn"
                 _pills.append(f'<span class="{_pcls}">{html_module.escape(_txt)}</span>')
-            warnings_cell = f'<td class="warnings-cell"><div class="warnings-stack">{"".join(_pills)}</div></td>'
+            warnings_cell = f'<td class="warnings-cell"><div class="warnings-stack">{"".join(_pills)}</div>{fix_block}</td>'
 
-        feed_fix_cell = _feed_fix_cell_html(r)
         rows_html += f"""
         <tr data-id="{r.product.id}" data-status="{r.status.value}" data-gmc="{gmc_status}">
             <td><input type="checkbox" name="product_id" value="{r.product.id}" /></td>
             {warnings_cell}
-            {feed_fix_cell}
             <td class="img-cell">{image_cell}</td>
             <td class="link-cell">{link_cell}</td>
             {old_title_cell}
             {new_title_cell}
             {old_desc_cell}
             {new_desc_cell}
-            <td class="editable-cell" contenteditable="true" data-field="translated_title" data-product="{r.product.id}">{trans_title}</td>
+            <td class="review-title-cell"><span class="editable-cell" contenteditable="true" data-field="translated_title" data-product="{r.product.id}">{trans_title}</span></td>
             {trans_desc_cell}
             <td class="score-cell col-sticky col-score">{score_cell}</td>
             <td class="col-sticky col-action"><span class="badge {action_cls}">{action_display}</span></td>
@@ -4751,7 +4759,8 @@ async def review_batch(request: Request, batch_id: str):
     [data-theme="light"] .filter {{ border-color: rgba(15,23,42,0.15); background-color: rgba(255,255,255,0.9); color: #0f172a; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%230f172a' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }}
     [data-theme="light"] .filter option {{ background: #fff; color: #0f172a; }}
     [data-theme="light"] .table-container {{ background: #fff; border-color: rgba(15,23,42,0.12); }}
-    [data-theme="light"] th {{ color: rgba(15,23,42,0.5); background: rgba(15,23,42,0.04); border-bottom-color: rgba(15,23,42,0.1); }}
+    [data-theme="light"] thead {{ z-index: 30; }}
+    [data-theme="light"] th {{ color: rgba(15,23,42,0.5); background: rgba(241,245,249,0.98); border-bottom-color: rgba(15,23,42,0.1); z-index: 25; }}
     [data-theme="light"] th:hover {{ color: #0f172a; }}
     [data-theme="light"] td {{ border-bottom-color: rgba(15,23,42,0.06); color: #0f172a; }}
     [data-theme="light"] tr:nth-child(even) {{ background: rgba(15,23,42,0.02); }}
@@ -4873,37 +4882,37 @@ async def review_batch(request: Request, batch_id: str):
     .scroll-arrow-left::before {{ content: '←'; }}
     .scroll-arrow-right::before {{ content: '→'; }}
     
-    table {{ width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1960px; }}
+    table {{ width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1780px; }}
+    thead {{ position: relative; z-index: 30; }}
     /* thead must paint above tbody or long cells overlap headers (tbody follows thead in DOM). */
-    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 72px; z-index: 10; box-shadow: 0 1px 0 rgba(0,0,0,0.35); }}
+    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 72px; z-index: 25; box-shadow: 0 1px 0 rgba(0,0,0,0.35); }}
     th:hover {{ color: rgba(255,255,255,0.9); }}
     th.sorted-asc::after {{ content: ' ↑'; color: #fff; }}
     th.sorted-desc::after {{ content: ' ↓'; color: #fff; }}
     td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; position: relative; z-index: 1; }}
-    td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10), td:nth-child(11) {{ max-width: 220px; }}
-    td:nth-child(6), td:nth-child(7), td:nth-child(10) {{ overflow: hidden; text-overflow: ellipsis; }}
+    td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10) {{ max-width: 220px; }}
+    td:nth-child(5), td:nth-child(6), td:nth-child(9) {{ overflow: hidden; text-overflow: ellipsis; }}
     tr:last-child td {{ border-bottom: none; }}
     tr:nth-child(even) {{ background: rgba(255,255,255,0.015); }}
     tr:hover {{ background: rgba(255,255,255,0.04); }}
     .mono {{ font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: rgba(255,255,255,0.5); }}
     .note {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); max-width: 150px; }}
     th.th-warnings {{ text-align: center; }}
-    th.th-feed-fix {{ cursor: default; text-transform: none; letter-spacing: 0.02em; font-size: 0.68rem; max-width: 200px; }}
-    th.th-feed-fix:hover {{ color: rgba(255,255,255,0.5); }}
-    .feed-fix-cell {{ vertical-align: top; min-width: 168px; max-width: 220px; background: rgba(79,70,229,0.04); border-left: 1px solid rgba(79,70,229,0.12); border-right: 1px solid rgba(79,70,229,0.08); }}
+    .warnings-feed-fixes {{ margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); }}
+    [data-theme="light"] .warnings-feed-fixes {{ border-top-color: rgba(15,23,42,0.12); }}
     .feed-fix-stack {{ display: flex; flex-direction: column; gap: 8px; }}
     .feed-fix-label {{ display: flex; flex-direction: column; gap: 4px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(255,255,255,0.45); }}
     .feed-fix-input {{ width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.35); color: #e5e7eb; font-family: inherit; }}
     .feed-fix-input:focus {{ outline: none; border-color: rgba(99,102,241,0.55); box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }}
     .feed-fix-input.saving {{ opacity: 0.55; pointer-events: none; }}
     .feed-fix-input.modified {{ border-color: rgba(34,197,94,0.45); }}
-    .feed-fix-empty {{ color: rgba(255,255,255,0.22); font-size: 0.8rem; }}
-    [data-theme="light"] .feed-fix-cell {{ background: rgba(79,70,229,0.06); border-left-color: rgba(79,70,229,0.15); border-right-color: rgba(79,70,229,0.1); }}
     [data-theme="light"] .feed-fix-label {{ color: rgba(15,23,42,0.45); }}
     [data-theme="light"] .feed-fix-input {{ background: #fff; border-color: rgba(15,23,42,0.15); color: #0f172a; }}
-    [data-theme="light"] .feed-fix-empty {{ color: rgba(15,23,42,0.35); }}
-    [data-theme="light"] th.th-feed-fix:hover {{ color: rgba(15,23,42,0.5); }}
-    .warnings-cell {{ vertical-align: middle; min-width: 160px; max-width: 320px; }}
+    .warnings-cell {{ vertical-align: top; min-width: 200px; max-width: 360px; }}
+    .review-title-cell {{ vertical-align: top; overflow: hidden; max-width: 220px; min-width: 0; }}
+    .review-title-cell .editable-cell {{ display: block; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }}
+    .review-title-cell .cell-with-gmc {{ min-width: 0; }}
+    .review-title-cell .pos-dbg {{ max-width: 100%; box-sizing: border-box; }}
     .warnings-stack {{
         display: flex; flex-direction: column; justify-content: center; gap: 6px; align-items: flex-start;
     }}
@@ -4928,15 +4937,15 @@ async def review_batch(request: Request, batch_id: str):
     .score-cell {{ text-align: center; white-space: nowrap; }}
     .link-cell {{ text-align: center; }}
 
-    .col-sticky {{ position: sticky; z-index: 4; }}
+    .col-sticky {{ position: sticky; z-index: 5; }}
     .col-action {{ right: 0; min-width: 110px; }}
     .col-score {{ right: 110px; min-width: 180px; }}
-    th.col-sticky {{ z-index: 12; background: #161616; }}
-    td.col-sticky {{ z-index: 4; background: #111; }}
+    th.col-sticky {{ z-index: 35; background: #161616; }}
+    td.col-sticky {{ z-index: 5; background: #111; }}
     tr:nth-child(even) td.col-sticky {{ background: #131313; }}
     tr:hover td.col-sticky {{ background: #1a1a1a; }}
     td.col-sticky, th.col-score {{ border-left: 1px solid rgba(255,255,255,0.08); }}
-    [data-theme="light"] th.col-sticky {{ background: #f1f5f9; }}
+    [data-theme="light"] th.col-sticky {{ background: #f1f5f9; z-index: 35; }}
     [data-theme="light"] td.col-sticky {{ background: #fff; }}
     [data-theme="light"] tr:nth-child(even) td.col-sticky {{ background: #f8fafc; }}
     [data-theme="light"] tr:hover td.col-sticky {{ background: #f1f5f9; }}
@@ -5021,13 +5030,16 @@ async def review_batch(request: Request, batch_id: str):
     .gmc-tag-fixed {{ background: rgba(34,197,94,0.12); color: #22c55e; }}
     .cell-with-gmc {{ display: flex; flex-direction: column; overflow: hidden; max-width: 100%; min-width: 0; }}
     .pos-dbg {{ margin-top: 8px; font-size: 0.72rem; color: rgba(255,255,255,0.5); max-width: 280px; }}
-    .pos-dbg summary {{
-        cursor: pointer; font-weight: 600; color: #a5f3fc; list-style: none;
-        display: inline-block; padding: 5px 11px; border-radius: 7px;
-        background: rgba(34, 211, 238, 0.14); border: 1px solid rgba(34, 211, 238, 0.35);
+    .pos-dbg summary.pos-dbg-summary,
+    .pos-dbg > .pos-dbg-summary {{
+        cursor: pointer; font-weight: 600; color: #ecfeff !important; list-style: none;
+        display: inline-block; padding: 6px 12px; border-radius: 8px;
+        background: rgba(34, 211, 238, 0.22) !important; border: 1px solid rgba(34, 211, 238, 0.45) !important;
         font-size: 0.74rem; letter-spacing: 0.01em;
+        -webkit-appearance: none; appearance: none;
     }}
-    .pos-dbg summary:hover {{ background: rgba(34, 211, 238, 0.22); border-color: rgba(34, 211, 238, 0.5); }}
+    .pos-dbg summary.pos-dbg-summary:hover,
+    .pos-dbg > .pos-dbg-summary:hover {{ background: rgba(34, 211, 238, 0.32) !important; border-color: rgba(34, 211, 238, 0.6) !important; }}
     .pos-dbg summary::-webkit-details-marker {{ display: none; }}
     .pos-dbg-inner {{ margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); line-height: 1.45; }}
     .pos-line {{ margin: 0 0 6px; font-size: 0.78rem; line-height: 1.4; font-weight: 600; }}
@@ -5041,10 +5053,12 @@ async def review_batch(request: Request, batch_id: str):
     .pos-dbg-rationale {{ margin: 6px 0 0 1rem; padding: 0; font-size: 0.7rem; color: rgba(255,255,255,0.65); }}
     .pos-dbg-log {{ margin-top: 8px; font-size: 0.65rem; white-space: pre-wrap; max-height: 100px; overflow: auto; color: rgba(255,255,255,0.45); background: rgba(0,0,0,0.25); padding: 6px; border-radius: 4px; }}
     [data-theme="light"] .pos-dbg {{ color: rgba(15,23,42,0.55); }}
-    [data-theme="light"] .pos-dbg summary {{
-        color: #0e7490; background: rgba(6, 182, 212, 0.12); border-color: rgba(6, 182, 212, 0.35);
+    [data-theme="light"] .pos-dbg summary.pos-dbg-summary,
+    [data-theme="light"] .pos-dbg > .pos-dbg-summary {{
+        color: #0f766e !important; background: rgba(6, 182, 212, 0.2) !important; border-color: rgba(6, 182, 212, 0.45) !important;
     }}
-    [data-theme="light"] .pos-dbg summary:hover {{ background: rgba(6, 182, 212, 0.18); }}
+    [data-theme="light"] .pos-dbg summary.pos-dbg-summary:hover,
+    [data-theme="light"] .pos-dbg > .pos-dbg-summary:hover {{ background: rgba(6, 182, 212, 0.28) !important; }}
     [data-theme="light"] .pos-dbg-inner {{ background: #f1f5f9; border-color: rgba(15,23,42,0.1); }}
     [data-theme="light"] .pos-line--ok {{ color: #15803d; }}
     [data-theme="light"] .pos-line--warn {{ color: #b45309; }}
@@ -5237,17 +5251,16 @@ async def review_batch(request: Request, batch_id: str):
                             <tr>
                                 <th style="width:40px;"><input type="checkbox" onclick="toggleAll(this)" /></th>
                                 <th onclick="sortTable(1)" class="th-warnings">Warnings</th>
-                                <th class="th-feed-fix">Fix feed data</th>
                                 <th style="width:60px;" class="th-center">Image</th>
                                 <th style="width:50px;" class="th-center">Link</th>
-                                <th onclick="sortTable(5)">Old title</th>
-                                <th onclick="sortTable(6)">New title</th>
-                                <th onclick="sortTable(7)">Old description</th>
-                                <th onclick="sortTable(8)">New description</th>
-                                <th onclick="sortTable(9)">Translated title</th>
-                                <th onclick="sortTable(10)">Translated desc</th>
-                                <th onclick="sortTable(11)" class="th-center col-sticky col-score">Score</th>
-                                <th onclick="sortTable(12)" class="th-center col-sticky col-action">Action</th>
+                                <th onclick="sortTable(4)">Old title</th>
+                                <th onclick="sortTable(5)">New title</th>
+                                <th onclick="sortTable(6)">Old description</th>
+                                <th onclick="sortTable(7)">New description</th>
+                                <th onclick="sortTable(8)">Translated title</th>
+                                <th onclick="sortTable(9)">Translated desc</th>
+                                <th onclick="sortTable(10)" class="th-center col-sticky col-score">Score</th>
+                                <th onclick="sortTable(11)" class="th-center col-sticky col-action">Action</th>
                             </tr>
                         </thead>
                         <tbody>{rows_html}</tbody>
@@ -5296,7 +5309,7 @@ async def review_batch(request: Request, batch_id: str):
         }});
     }}
     let sortCol=-1, sortAsc=true;
-    const numericCols=new Set([11]);
+    const numericCols=new Set([10]);
     function sortTable(colIdx){{
         const tbody=document.querySelector("tbody");
         const rows=Array.from(tbody.querySelectorAll("tr"));

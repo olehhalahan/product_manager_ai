@@ -303,10 +303,11 @@ def refresh_product_gmc_validation(result: ProductResult, product_type: str) -> 
 def feed_data_fix_field_specs(
     merged_warnings: List[Tuple[str, str]],
     product: NormalizedProduct,
+    product_type: str = "standard",
 ) -> List[Dict[str, Any]]:
     """
     Which NormalizedProduct attributes should get inline fix inputs on the review table,
-    based on current warning/error messages. Ordered, de-duplicated by attribute.
+    based on warnings/errors and on product_type (e.g. GTIN+MPN when required and both empty).
     """
     seen: set = set()
     out: List[Dict[str, Any]] = []
@@ -325,6 +326,14 @@ def feed_data_fix_field_specs(
         if options is not None:
             entry["options"] = options
         out.append(entry)
+
+    # GMC expects GTIN or MPN for non–GTIN-exempt product types; show both fields when neither is set.
+    if product_type not in GTIN_EXEMPT_TYPES:
+        no_gtin = not (product.gtin or "").strip()
+        no_mpn = not (product.mpn or "").strip()
+        if no_gtin and no_mpn:
+            add("gtin", "GTIN")
+            add("mpn", "MPN")
 
     for _sev, text in merged_warnings:
         t = text
@@ -362,7 +371,11 @@ def feed_data_fix_field_specs(
                 ["new", "refurbished", "used"],
             )
 
-        if "Missing identifier: provide gtin or mpn" in t:
+        tl = t.lower()
+        if "missing identifier" in tl and "gtin" in tl and "mpn" in tl:
+            add("gtin", "GTIN")
+            add("mpn", "MPN")
+        elif "provide gtin or mpn" in tl:
             add("gtin", "GTIN")
             add("mpn", "MPN")
 
