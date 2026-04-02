@@ -4434,7 +4434,8 @@ async def review_batch(request: Request, batch_id: str):
                     f'data-product="{pid}" value="{val}" autocomplete="off" /></label>'
                 )
         return (
-            '<div class="warnings-feed-fixes" role="group" aria-label="Fix missing feed fields">'
+            '<div class="warnings-feed-fixes">'
+            '<div class="warnings-feed-fixes-label">&#9998; Fix missing fields</div>'
             f'<div class="feed-fix-stack">{"".join(blocks)}</div></div>'
         )
 
@@ -4571,8 +4572,12 @@ async def review_batch(request: Request, batch_id: str):
         if not inner_parts and not tech_block:
             return ""
         return (
-            '<details class="pos-dbg"><summary class="pos-dbg-summary">Search positioning</summary>'
-            f'<div class="pos-dbg-inner">{body}</div></details>'
+            '<div class="pos-dbg">'
+            '<button class="pos-dbg-btn" type="button" '
+            'onclick="var d=this.nextElementSibling;d.hidden=!d.hidden;this.classList.toggle(\'pos-dbg-btn--open\')">'
+            'Search positioning</button>'
+            f'<div class="pos-dbg-inner" hidden>{body}</div>'
+            '</div>'
         )
 
     rows_html = ""
@@ -4759,8 +4764,7 @@ async def review_batch(request: Request, batch_id: str):
     [data-theme="light"] .filter {{ border-color: rgba(15,23,42,0.15); background-color: rgba(255,255,255,0.9); color: #0f172a; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%230f172a' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }}
     [data-theme="light"] .filter option {{ background: #fff; color: #0f172a; }}
     [data-theme="light"] .table-container {{ background: #fff; border-color: rgba(15,23,42,0.12); }}
-    [data-theme="light"] thead {{ z-index: 30; }}
-    [data-theme="light"] th {{ color: rgba(15,23,42,0.5); background: rgba(241,245,249,0.98); border-bottom-color: rgba(15,23,42,0.1); z-index: 25; }}
+    [data-theme="light"] th {{ color: rgba(15,23,42,0.5); background: rgba(241,245,249,0.98); border-bottom-color: rgba(15,23,42,0.1); }}
     [data-theme="light"] th:hover {{ color: #0f172a; }}
     [data-theme="light"] td {{ border-bottom-color: rgba(15,23,42,0.06); color: #0f172a; }}
     [data-theme="light"] tr:nth-child(even) {{ background: rgba(15,23,42,0.02); }}
@@ -4883,13 +4887,13 @@ async def review_batch(request: Request, batch_id: str):
     .scroll-arrow-right::before {{ content: '→'; }}
     
     table {{ width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1780px; }}
-    thead {{ position: relative; z-index: 30; }}
-    /* thead must paint above tbody or long cells overlap headers (tbody follows thead in DOM). */
-    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 72px; z-index: 25; box-shadow: 0 1px 0 rgba(0,0,0,0.35); }}
+    /* Sticky headers work when td has NO position/z-index — giving td a stacking context
+       pushes it above the sticky th even with higher z-index on th. Keep it simple: th z-index:2, td default. */
+    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 72px; z-index: 2; }}
     th:hover {{ color: rgba(255,255,255,0.9); }}
     th.sorted-asc::after {{ content: ' ↑'; color: #fff; }}
     th.sorted-desc::after {{ content: ' ↓'; color: #fff; }}
-    td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; position: relative; z-index: 1; }}
+    td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; }}
     td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10) {{ max-width: 220px; }}
     td:nth-child(5), td:nth-child(6), td:nth-child(9) {{ overflow: hidden; text-overflow: ellipsis; }}
     tr:last-child td {{ border-bottom: none; }}
@@ -4898,16 +4902,24 @@ async def review_batch(request: Request, batch_id: str):
     .mono {{ font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: rgba(255,255,255,0.5); }}
     .note {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); max-width: 150px; }}
     th.th-warnings {{ text-align: center; }}
-    .warnings-feed-fixes {{ margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); }}
-    [data-theme="light"] .warnings-feed-fixes {{ border-top-color: rgba(15,23,42,0.12); }}
+    .warnings-feed-fixes {{
+        margin-top: 10px; padding: 10px; border-radius: 8px;
+        background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.25);
+    }}
+    .warnings-feed-fixes-label {{
+        font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+        color: rgba(165,180,252,0.8); margin-bottom: 8px;
+    }}
+    [data-theme="light"] .warnings-feed-fixes {{ background: rgba(99,102,241,0.06); border-color: rgba(99,102,241,0.2); }}
+    [data-theme="light"] .warnings-feed-fixes-label {{ color: rgba(79,70,229,0.7); }}
     .feed-fix-stack {{ display: flex; flex-direction: column; gap: 8px; }}
-    .feed-fix-label {{ display: flex; flex-direction: column; gap: 4px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(255,255,255,0.45); }}
-    .feed-fix-input {{ width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.35); color: #e5e7eb; font-family: inherit; }}
-    .feed-fix-input:focus {{ outline: none; border-color: rgba(99,102,241,0.55); box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }}
+    .feed-fix-label {{ display: flex; flex-direction: column; gap: 3px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(255,255,255,0.5); }}
+    .feed-fix-input {{ width: 100%; box-sizing: border-box; padding: 6px 9px; font-size: 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.4); color: #e5e7eb; font-family: inherit; }}
+    .feed-fix-input:focus {{ outline: none; border-color: rgba(99,102,241,0.7); box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }}
     .feed-fix-input.saving {{ opacity: 0.55; pointer-events: none; }}
-    .feed-fix-input.modified {{ border-color: rgba(34,197,94,0.45); }}
-    [data-theme="light"] .feed-fix-label {{ color: rgba(15,23,42,0.45); }}
-    [data-theme="light"] .feed-fix-input {{ background: #fff; border-color: rgba(15,23,42,0.15); color: #0f172a; }}
+    .feed-fix-input.modified {{ border-color: rgba(34,197,94,0.55); }}
+    [data-theme="light"] .feed-fix-label {{ color: rgba(15,23,42,0.5); }}
+    [data-theme="light"] .feed-fix-input {{ background: #fff; border-color: rgba(15,23,42,0.2); color: #0f172a; }}
     .warnings-cell {{ vertical-align: top; min-width: 200px; max-width: 360px; }}
     .review-title-cell {{ vertical-align: top; overflow: hidden; max-width: 220px; min-width: 0; }}
     .review-title-cell .editable-cell {{ display: block; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }}
@@ -4937,15 +4949,15 @@ async def review_batch(request: Request, batch_id: str):
     .score-cell {{ text-align: center; white-space: nowrap; }}
     .link-cell {{ text-align: center; }}
 
-    .col-sticky {{ position: sticky; z-index: 5; }}
+    .col-sticky {{ position: sticky; }}
     .col-action {{ right: 0; min-width: 110px; }}
     .col-score {{ right: 110px; min-width: 180px; }}
-    th.col-sticky {{ z-index: 35; background: #161616; }}
-    td.col-sticky {{ z-index: 5; background: #111; }}
+    th.col-sticky {{ z-index: 3; background: #161616; }}
+    td.col-sticky {{ z-index: 1; background: #111; }}
     tr:nth-child(even) td.col-sticky {{ background: #131313; }}
     tr:hover td.col-sticky {{ background: #1a1a1a; }}
     td.col-sticky, th.col-score {{ border-left: 1px solid rgba(255,255,255,0.08); }}
-    [data-theme="light"] th.col-sticky {{ background: #f1f5f9; z-index: 35; }}
+    [data-theme="light"] th.col-sticky {{ background: #f1f5f9; z-index: 3; }}
     [data-theme="light"] td.col-sticky {{ background: #fff; }}
     [data-theme="light"] tr:nth-child(even) td.col-sticky {{ background: #f8fafc; }}
     [data-theme="light"] tr:hover td.col-sticky {{ background: #f1f5f9; }}
@@ -5029,18 +5041,18 @@ async def review_batch(request: Request, batch_id: str):
     .gmc-tag-warn {{ background: rgba(245,158,11,0.12); color: #f59e0b; }}
     .gmc-tag-fixed {{ background: rgba(34,197,94,0.12); color: #22c55e; }}
     .cell-with-gmc {{ display: flex; flex-direction: column; overflow: hidden; max-width: 100%; min-width: 0; }}
-    .pos-dbg {{ margin-top: 8px; font-size: 0.72rem; color: rgba(255,255,255,0.5); max-width: 280px; }}
-    .pos-dbg summary.pos-dbg-summary,
-    .pos-dbg > .pos-dbg-summary {{
-        cursor: pointer; font-weight: 600; color: #ecfeff !important; list-style: none;
-        display: inline-block; padding: 6px 12px; border-radius: 8px;
-        background: rgba(34, 211, 238, 0.22) !important; border: 1px solid rgba(34, 211, 238, 0.45) !important;
-        font-size: 0.74rem; letter-spacing: 0.01em;
-        -webkit-appearance: none; appearance: none;
+    .pos-dbg {{ margin-top: 8px; font-size: 0.72rem; color: rgba(255,255,255,0.5); }}
+    .pos-dbg-btn {{
+        cursor: pointer; font-weight: 600; color: #ecfeff;
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 5px 11px; border-radius: 8px;
+        background: rgba(34,211,238,0.18); border: 1px solid rgba(34,211,238,0.4);
+        font-size: 0.74rem; letter-spacing: 0.01em; font-family: inherit;
+        transition: background 0.15s;
     }}
-    .pos-dbg summary.pos-dbg-summary:hover,
-    .pos-dbg > .pos-dbg-summary:hover {{ background: rgba(34, 211, 238, 0.32) !important; border-color: rgba(34, 211, 238, 0.6) !important; }}
-    .pos-dbg summary::-webkit-details-marker {{ display: none; }}
+    .pos-dbg-btn::after {{ content: '▾'; font-size: 0.65rem; opacity: 0.7; }}
+    .pos-dbg-btn--open::after {{ content: '▴'; }}
+    .pos-dbg-btn:hover {{ background: rgba(34,211,238,0.3); border-color: rgba(34,211,238,0.6); }}
     .pos-dbg-inner {{ margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); line-height: 1.45; }}
     .pos-line {{ margin: 0 0 6px; font-size: 0.78rem; line-height: 1.4; font-weight: 600; }}
     .pos-line--ok {{ color: #86efac; font-weight: 600; }}
@@ -5053,12 +5065,8 @@ async def review_batch(request: Request, batch_id: str):
     .pos-dbg-rationale {{ margin: 6px 0 0 1rem; padding: 0; font-size: 0.7rem; color: rgba(255,255,255,0.65); }}
     .pos-dbg-log {{ margin-top: 8px; font-size: 0.65rem; white-space: pre-wrap; max-height: 100px; overflow: auto; color: rgba(255,255,255,0.45); background: rgba(0,0,0,0.25); padding: 6px; border-radius: 4px; }}
     [data-theme="light"] .pos-dbg {{ color: rgba(15,23,42,0.55); }}
-    [data-theme="light"] .pos-dbg summary.pos-dbg-summary,
-    [data-theme="light"] .pos-dbg > .pos-dbg-summary {{
-        color: #0f766e !important; background: rgba(6, 182, 212, 0.2) !important; border-color: rgba(6, 182, 212, 0.45) !important;
-    }}
-    [data-theme="light"] .pos-dbg summary.pos-dbg-summary:hover,
-    [data-theme="light"] .pos-dbg > .pos-dbg-summary:hover {{ background: rgba(6, 182, 212, 0.28) !important; }}
+    [data-theme="light"] .pos-dbg-btn {{ color: #0f766e; background: rgba(6,182,212,0.18); border-color: rgba(6,182,212,0.45); }}
+    [data-theme="light"] .pos-dbg-btn:hover {{ background: rgba(6,182,212,0.28); }}
     [data-theme="light"] .pos-dbg-inner {{ background: #f1f5f9; border-color: rgba(15,23,42,0.1); }}
     [data-theme="light"] .pos-line--ok {{ color: #15803d; }}
     [data-theme="light"] .pos-line--warn {{ color: #b45309; }}
