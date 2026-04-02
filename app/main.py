@@ -27,6 +27,13 @@ from .services.csv_security import validate_csv_content
 from .services.normalizer import normalize_records, guess_mapping, INTERNAL_FIELDS
 from .services.rule_engine import decide_actions_for_products
 from .services.exporter import generate_positioning_debug_csv, generate_result_csv
+from .services.validator import (
+    validate_title,
+    validate_description,
+    merge_review_warnings,
+    feed_data_fix_field_specs,
+    refresh_product_gmc_validation,
+)
 from .services.postgres_storage import PostgresStorage
 from .auth import (
     get_session_secret,
@@ -4212,7 +4219,7 @@ async def regenerate_batch_items(request: Request, batch_id: str, product_ids: L
 @app.post("/batches/{batch_id}/update-product")
 async def update_product_field(request: Request, batch_id: str, data: dict):
     """
-    Update a single field of a product result.
+    Update a single field of a product result or underlying feed row (NormalizedProduct).
     Expects JSON body: { "product_id": "...", "field": "...", "value": "..." }
     """
     require_login_http(request)
@@ -4222,16 +4229,40 @@ async def update_product_field(request: Request, batch_id: str, data: dict):
     product_id = data.get("product_id")
     field = data.get("field")
     value = data.get("value", "")
+    if value is not None and not isinstance(value, str):
+        value = str(value)
+    if value is None:
+        value = ""
+    if not field:
+        raise HTTPException(status_code=400, detail="Missing field name.")
 
-    allowed_fields = {"optimized_title", "optimized_description", "translated_title", "translated_description"}
-    if field not in allowed_fields:
+    result_fields = {"optimized_title", "optimized_description", "translated_title", "translated_description"}
+    product_fields = {
+        "price",
+        "brand",
+        "gtin",
+        "mpn",
+        "condition",
+        "url",
+        "image_url",
+        "currency",
+        "sale_price",
+        "status_raw",
+    }
+    if field not in result_fields and field not in product_fields:
         raise HTTPException(status_code=400, detail=f"Field '{field}' is not editable.")
 
     for result in batch.products:
         if result.product.id == product_id:
-            setattr(result, field, value)
+            if field in result_fields:
+                setattr(result, field, value)
+            else:
+                setattr(result.product, field, value)
+            refresh_product_gmc_validation(result, batch.product_type)
             storage._save_batch(batch)
-            return {"status": "ok"}
+            pills = [{"sev": s, "text": t} for s, t in merge_review_warnings(result)]
+            gmc_status = "error" if result.gmc_errors else ("warn" if result.gmc_warnings else "pass")
+            return JSONResponse({"status": "ok", "warnings_pills": pills, "gmc_status": gmc_status})
 
     raise HTTPException(status_code=404, detail="Product not found.")
 
@@ -4362,38 +4393,44 @@ async def review_batch(request: Request, batch_id: str):
             issue_items += f'<li class="gmc-ti-item {sev_cls}"><span class="gmc-ti-icon">{icon}</span><span class="gmc-ti-text">{html_module.escape(issue_text)}</span><span class="gmc-ti-count">{count}</span></li>'
         top_issues_html = f'<div class="gmc-top-issues"><div class="gmc-ti-label">Most common issues found in your source CSV data</div><ul class="gmc-ti-list">{issue_items}</ul></div>'
 
-    from .services.validator import validate_title, validate_description
     import re
 
-    def _warning_items_for_row(r):
-        """Merge error, GMC issues, and notes into deduplicated (severity, text) rows."""
-        severity_by_text: dict = {}
-        order: List[str] = []
-
-        def bump(sev: str, text: object) -> None:
-            t = (str(text) if text is not None else "").strip()
-            if not t:
-                return
-            if t not in severity_by_text:
-                order.append(t)
-            prev = severity_by_text.get(t, "warn")
-            if sev == "error" or prev == "error":
-                severity_by_text[t] = "error"
-            else:
-                severity_by_text[t] = "warn"
-
-        if r.error:
-            bump("error", r.error)
-        for e in r.gmc_errors:
-            bump("error", e)
-        for w in r.gmc_warnings:
-            bump("warn", w)
-        if r.notes:
-            for part in re.split(r"[\n;|]+", r.notes):
-                bump("warn", part)
-        return [(severity_by_text[t], t) for t in order]
-
     pos_debug_admin = is_admin(request) and request.query_params.get("pos_debug") == "1"
+
+    def _feed_fix_cell_html(r) -> str:
+        specs = feed_data_fix_field_specs(merge_review_warnings(r), r.product)
+        if not specs:
+            return '<td class="feed-fix-cell"><span class="feed-fix-empty">—</span></td>'
+        blocks: List[str] = []
+        pid = html_module.escape(r.product.id)
+        for spec in specs:
+            attr = spec["attr"]
+            label = html_module.escape(str(spec["label"]))
+            fesc = html_module.escape(attr)
+            if spec.get("control") == "select":
+                opts_html = []
+                cur = (spec.get("value") or "").strip().lower()
+                options_list = spec.get("options") or []
+                for opt in options_list:
+                    ol = str(opt).lower()
+                    sel = " selected" if (cur == ol or (not cur and ol == "new")) else ""
+                    opts_html.append(
+                        f'<option value="{html_module.escape(str(opt))}"{sel}>'
+                        f"{html_module.escape(str(opt))}</option>"
+                    )
+                blocks.append(
+                    f'<label class="feed-fix-label">{label}'
+                    f'<select class="feed-fix-input" data-field="{fesc}" data-product="{pid}">'
+                    f'{"".join(opts_html)}</select></label>'
+                )
+            else:
+                val = html_module.escape(str(spec.get("value") or ""))
+                blocks.append(
+                    f'<label class="feed-fix-label">{label}'
+                    f'<input type="text" class="feed-fix-input" data-field="{fesc}" '
+                    f'data-product="{pid}" value="{val}" autocomplete="off" /></label>'
+                )
+        return f'<td class="feed-fix-cell"><div class="feed-fix-stack">{"".join(blocks)}</div></td>'
 
     def _positioning_user_block(r):
         if not r.positioning:
@@ -4644,7 +4681,7 @@ async def review_batch(request: Request, batch_id: str):
         else:
             new_title_cell = f'<td><span class="editable-cell" contenteditable="true" data-field="optimized_title" data-product="{r.product.id}">{new_title}</span>{pos_block}</td>'
 
-        warn_items = _warning_items_for_row(r)
+        warn_items = merge_review_warnings(r)
         if not warn_items:
             warnings_cell = '<td class="warnings-cell"><span class="warnings-empty">—</span></td>'
         else:
@@ -4654,10 +4691,12 @@ async def review_batch(request: Request, batch_id: str):
                 _pills.append(f'<span class="{_pcls}">{html_module.escape(_txt)}</span>')
             warnings_cell = f'<td class="warnings-cell"><div class="warnings-stack">{"".join(_pills)}</div></td>'
 
+        feed_fix_cell = _feed_fix_cell_html(r)
         rows_html += f"""
         <tr data-id="{r.product.id}" data-status="{r.status.value}" data-gmc="{gmc_status}">
             <td><input type="checkbox" name="product_id" value="{r.product.id}" /></td>
             {warnings_cell}
+            {feed_fix_cell}
             <td class="img-cell">{image_cell}</td>
             <td class="link-cell">{link_cell}</td>
             {old_title_cell}
@@ -4834,14 +4873,14 @@ async def review_batch(request: Request, batch_id: str):
     .scroll-arrow-left::before {{ content: '←'; }}
     .scroll-arrow-right::before {{ content: '→'; }}
     
-    table {{ width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1800px; }}
+    table {{ width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1960px; }}
     th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 72px; }}
     th:hover {{ color: rgba(255,255,255,0.9); }}
     th.sorted-asc::after {{ content: ' ↑'; color: #fff; }}
     th.sorted-desc::after {{ content: ' ↓'; color: #fff; }}
     td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; }}
-    td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10) {{ max-width: 220px; }}
-    td:nth-child(5), td:nth-child(6), td:nth-child(9) {{ overflow: hidden; text-overflow: ellipsis; }}
+    td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10), td:nth-child(11) {{ max-width: 220px; }}
+    td:nth-child(6), td:nth-child(7), td:nth-child(10) {{ overflow: hidden; text-overflow: ellipsis; }}
     .desc-cell {{ overflow: visible; }}
     tr:last-child td {{ border-bottom: none; }}
     tr:nth-child(even) {{ background: rgba(255,255,255,0.015); }}
@@ -4849,6 +4888,21 @@ async def review_batch(request: Request, batch_id: str):
     .mono {{ font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: rgba(255,255,255,0.5); }}
     .note {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); max-width: 150px; }}
     th.th-warnings {{ text-align: center; }}
+    th.th-feed-fix {{ cursor: default; text-transform: none; letter-spacing: 0.02em; font-size: 0.68rem; max-width: 200px; }}
+    th.th-feed-fix:hover {{ color: rgba(255,255,255,0.5); }}
+    .feed-fix-cell {{ vertical-align: top; min-width: 168px; max-width: 220px; background: rgba(79,70,229,0.04); border-left: 1px solid rgba(79,70,229,0.12); border-right: 1px solid rgba(79,70,229,0.08); }}
+    .feed-fix-stack {{ display: flex; flex-direction: column; gap: 8px; }}
+    .feed-fix-label {{ display: flex; flex-direction: column; gap: 4px; font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(255,255,255,0.45); }}
+    .feed-fix-input {{ width: 100%; box-sizing: border-box; padding: 6px 8px; font-size: 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.12); background: rgba(0,0,0,0.35); color: #e5e7eb; font-family: inherit; }}
+    .feed-fix-input:focus {{ outline: none; border-color: rgba(99,102,241,0.55); box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }}
+    .feed-fix-input.saving {{ opacity: 0.55; pointer-events: none; }}
+    .feed-fix-input.modified {{ border-color: rgba(34,197,94,0.45); }}
+    .feed-fix-empty {{ color: rgba(255,255,255,0.22); font-size: 0.8rem; }}
+    [data-theme="light"] .feed-fix-cell {{ background: rgba(79,70,229,0.06); border-left-color: rgba(79,70,229,0.15); border-right-color: rgba(79,70,229,0.1); }}
+    [data-theme="light"] .feed-fix-label {{ color: rgba(15,23,42,0.45); }}
+    [data-theme="light"] .feed-fix-input {{ background: #fff; border-color: rgba(15,23,42,0.15); color: #0f172a; }}
+    [data-theme="light"] .feed-fix-empty {{ color: rgba(15,23,42,0.35); }}
+    [data-theme="light"] th.th-feed-fix:hover {{ color: rgba(15,23,42,0.5); }}
     .warnings-cell {{ vertical-align: middle; min-width: 160px; max-width: 320px; }}
     .warnings-stack {{
         display: flex; flex-direction: column; justify-content: center; gap: 6px; align-items: flex-start;
@@ -4967,7 +5021,13 @@ async def review_batch(request: Request, batch_id: str):
     .gmc-tag-fixed {{ background: rgba(34,197,94,0.12); color: #22c55e; }}
     .cell-with-gmc {{ display: flex; flex-direction: column; }}
     .pos-dbg {{ margin-top: 8px; font-size: 0.72rem; color: rgba(255,255,255,0.5); max-width: 280px; }}
-    .pos-dbg summary {{ cursor: pointer; font-weight: 600; color: rgba(129,140,248,0.95); list-style: none; }}
+    .pos-dbg summary {{
+        cursor: pointer; font-weight: 600; color: #a5f3fc; list-style: none;
+        display: inline-block; padding: 5px 11px; border-radius: 7px;
+        background: rgba(34, 211, 238, 0.14); border: 1px solid rgba(34, 211, 238, 0.35);
+        font-size: 0.74rem; letter-spacing: 0.01em;
+    }}
+    .pos-dbg summary:hover {{ background: rgba(34, 211, 238, 0.22); border-color: rgba(34, 211, 238, 0.5); }}
     .pos-dbg summary::-webkit-details-marker {{ display: none; }}
     .pos-dbg-inner {{ margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); line-height: 1.45; }}
     .pos-line {{ margin: 0 0 6px; font-size: 0.78rem; line-height: 1.4; font-weight: 600; }}
@@ -4981,7 +5041,10 @@ async def review_batch(request: Request, batch_id: str):
     .pos-dbg-rationale {{ margin: 6px 0 0 1rem; padding: 0; font-size: 0.7rem; color: rgba(255,255,255,0.65); }}
     .pos-dbg-log {{ margin-top: 8px; font-size: 0.65rem; white-space: pre-wrap; max-height: 100px; overflow: auto; color: rgba(255,255,255,0.45); background: rgba(0,0,0,0.25); padding: 6px; border-radius: 4px; }}
     [data-theme="light"] .pos-dbg {{ color: rgba(15,23,42,0.55); }}
-    [data-theme="light"] .pos-dbg summary {{ color: #4f46e5; }}
+    [data-theme="light"] .pos-dbg summary {{
+        color: #0e7490; background: rgba(6, 182, 212, 0.12); border-color: rgba(6, 182, 212, 0.35);
+    }}
+    [data-theme="light"] .pos-dbg summary:hover {{ background: rgba(6, 182, 212, 0.18); }}
     [data-theme="light"] .pos-dbg-inner {{ background: #f1f5f9; border-color: rgba(15,23,42,0.1); }}
     [data-theme="light"] .pos-line--ok {{ color: #15803d; }}
     [data-theme="light"] .pos-line--warn {{ color: #b45309; }}
@@ -5174,16 +5237,17 @@ async def review_batch(request: Request, batch_id: str):
                             <tr>
                                 <th style="width:40px;"><input type="checkbox" onclick="toggleAll(this)" /></th>
                                 <th onclick="sortTable(1)" class="th-warnings">Warnings</th>
+                                <th class="th-feed-fix">Fix feed data</th>
                                 <th style="width:60px;" class="th-center">Image</th>
                                 <th style="width:50px;" class="th-center">Link</th>
-                                <th onclick="sortTable(4)">Old title</th>
-                                <th onclick="sortTable(5)">New title</th>
-                                <th onclick="sortTable(6)">Old description</th>
-                                <th onclick="sortTable(7)">New description</th>
-                                <th onclick="sortTable(8)">Translated title</th>
-                                <th onclick="sortTable(9)">Translated desc</th>
-                                <th onclick="sortTable(10)" class="th-center col-sticky col-score">Score</th>
-                                <th onclick="sortTable(11)" class="th-center col-sticky col-action">Action</th>
+                                <th onclick="sortTable(5)">Old title</th>
+                                <th onclick="sortTable(6)">New title</th>
+                                <th onclick="sortTable(7)">Old description</th>
+                                <th onclick="sortTable(8)">New description</th>
+                                <th onclick="sortTable(9)">Translated title</th>
+                                <th onclick="sortTable(10)">Translated desc</th>
+                                <th onclick="sortTable(11)" class="th-center col-sticky col-score">Score</th>
+                                <th onclick="sortTable(12)" class="th-center col-sticky col-action">Action</th>
                             </tr>
                         </thead>
                         <tbody>{rows_html}</tbody>
@@ -5232,7 +5296,7 @@ async def review_batch(request: Request, batch_id: str):
         }});
     }}
     let sortCol=-1, sortAsc=true;
-    const numericCols=new Set([10]);
+    const numericCols=new Set([11]);
     function sortTable(colIdx){{
         const tbody=document.querySelector("tbody");
         const rows=Array.from(tbody.querySelectorAll("tr"));
@@ -5291,6 +5355,30 @@ async def review_batch(request: Request, batch_id: str):
         }}
     }}
     
+    function applyRowWarningsFromApi(tr, pills, gmcStatus) {{
+        if (!tr) return;
+        if (gmcStatus) tr.dataset.gmc = gmcStatus;
+        const wc = tr.querySelector('.warnings-cell');
+        if (!wc || !pills) return;
+        wc.textContent = '';
+        if (!pills.length) {{
+            const sp = document.createElement('span');
+            sp.className = 'warnings-empty';
+            sp.textContent = '—';
+            wc.appendChild(sp);
+            return;
+        }}
+        const stack = document.createElement('div');
+        stack.className = 'warnings-stack';
+        pills.forEach(function(p) {{
+            const s = document.createElement('span');
+            s.className = (p.sev === 'error') ? 'warn-pill warn-pill--err' : 'warn-pill warn-pill--warn';
+            s.textContent = p.text || '';
+            stack.appendChild(s);
+        }});
+        wc.appendChild(stack);
+    }}
+
     // Editable cells functionality
     const editableCells = document.querySelectorAll('.editable-cell');
     const originalValues = new Map();
@@ -5310,6 +5398,7 @@ async def review_batch(request: Request, batch_id: str):
                 this.classList.add('saving');
                 const productId = this.dataset.product;
                 const field = this.dataset.field;
+                const tr = this.closest('tr');
                 
                 try {{
                     const resp = await fetch('/batches/{batch_id}/update-product', {{
@@ -5317,10 +5406,12 @@ async def review_batch(request: Request, batch_id: str):
                         headers: {{ 'Content-Type': 'application/json' }},
                         body: JSON.stringify({{ product_id: productId, field: field, value: newValue }})
                     }});
+                    const data = await resp.json().catch(function() {{ return {{}}; }});
                     
                     if (resp.ok) {{
                         this.classList.add('modified');
                         this.classList.remove('saving');
+                        if (Array.isArray(data.warnings_pills)) applyRowWarningsFromApi(tr, data.warnings_pills, data.gmc_status);
                     }} else {{
                         alert('Failed to save changes');
                         this.textContent = originalValue;
@@ -5345,6 +5436,48 @@ async def review_batch(request: Request, batch_id: str):
             }}
         }});
     }});
+
+    function wireFeedFixInput(el) {{
+        el.dataset.originalFix = el.value || '';
+        el.addEventListener('focus', function() {{ this.dataset.originalFix = el.value; }});
+        async function commit() {{
+            const newVal = (el.value || '').trim();
+            const oldVal = (el.dataset.originalFix || '').trim();
+            if (newVal === oldVal) return;
+            const productId = el.dataset.product;
+            const field = el.dataset.field;
+            const tr = el.closest('tr');
+            el.classList.add('saving');
+            try {{
+                const resp = await fetch('/batches/{batch_id}/update-product', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ product_id: productId, field: field, value: newVal }})
+                }});
+                const data = await resp.json().catch(function() {{ return {{}}; }});
+                if (resp.ok) {{
+                    el.classList.remove('saving');
+                    el.classList.add('modified');
+                    el.dataset.originalFix = newVal;
+                    window.location.reload();
+                }} else {{
+                    alert('Failed to save feed field');
+                    el.value = el.dataset.originalFix || '';
+                    el.classList.remove('saving');
+                }}
+            }} catch (e) {{
+                alert('Failed to save feed field');
+                el.value = el.dataset.originalFix || '';
+                el.classList.remove('saving');
+            }}
+        }}
+        if (el.tagName === 'SELECT') {{
+            el.addEventListener('change', function() {{ commit(); }});
+        }} else {{
+            el.addEventListener('blur', function() {{ commit(); }});
+        }}
+    }}
+    document.querySelectorAll('.feed-fix-input').forEach(wireFeedFixInput);
     
     function merchantPushCloseOverlay() {{
         var ov = document.getElementById("merchantPushOverlay");

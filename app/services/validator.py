@@ -3,9 +3,9 @@ Google Merchant Center product data specification validator.
 Checks required fields, length limits, formatting rules, and quality signals.
 """
 import re
-from typing import List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from ..models import ProductResult
+from ..models import NormalizedProduct, ProductResult
 
 VALID_AVAILABILITY = {"in_stock", "in stock", "out_of_stock", "out of stock", "preorder", "backorder"}
 VALID_CONDITION = {"new", "refurbished", "used"}
@@ -259,3 +259,114 @@ def validate_product_result(result: ProductResult) -> List[str]:
     """Legacy wrapper — returns combined error strings for backward compat."""
     errs, warns = validate_gmc(result)
     return errs + warns
+
+
+def merge_review_warnings(result: ProductResult) -> List[Tuple[str, str]]:
+    """
+    Merge row error, GMC errors/warnings, and notes into deduplicated (severity, text)
+    tuples — same logic as the batch review warnings column.
+    """
+    severity_by_text: dict = {}
+    order: List[str] = []
+
+    def bump(sev: str, text: object) -> None:
+        t = (str(text) if text is not None else "").strip()
+        if not t:
+            return
+        if t not in severity_by_text:
+            order.append(t)
+        prev = severity_by_text.get(t, "warn")
+        if sev == "error" or prev == "error":
+            severity_by_text[t] = "error"
+        else:
+            severity_by_text[t] = "warn"
+
+    if result.error:
+        bump("error", result.error)
+    for e in result.gmc_errors:
+        bump("error", e)
+    for w in result.gmc_warnings:
+        bump("warn", w)
+    if result.notes:
+        for part in re.split(r"[\n;|]+", result.notes):
+            bump("warn", part)
+    return [(severity_by_text[t], t) for t in order]
+
+
+def refresh_product_gmc_validation(result: ProductResult, product_type: str) -> None:
+    """Re-run GMC validation after inline edits and store on the result."""
+    errs, warns = validate_gmc(result, product_type)
+    result.gmc_errors = errs
+    result.gmc_warnings = warns
+
+
+def feed_data_fix_field_specs(
+    merged_warnings: List[Tuple[str, str]],
+    product: NormalizedProduct,
+) -> List[Dict[str, Any]]:
+    """
+    Which NormalizedProduct attributes should get inline fix inputs on the review table,
+    based on current warning/error messages. Ordered, de-duplicated by attribute.
+    """
+    seen: set = set()
+    out: List[Dict[str, Any]] = []
+
+    def add(attr: str, label: str, control: str = "text", options: Optional[List[str]] = None) -> None:
+        if attr in seen:
+            return
+        seen.add(attr)
+        raw_val = getattr(product, attr, None) or ""
+        entry: Dict[str, Any] = {
+            "attr": attr,
+            "label": label,
+            "control": control,
+            "value": str(raw_val),
+        }
+        if options is not None:
+            entry["options"] = options
+        out.append(entry)
+
+    for _sev, text in merged_warnings:
+        t = text
+
+        if "Missing required field: price" in t or "Price must be greater than 0" in t:
+            add("price", "Price")
+        if "Could not parse price value" in t:
+            add("price", "Price")
+
+        if "Missing required field: link (product URL)" in t or (
+            "Product URL must start with" in t and "image" not in t.lower()
+        ):
+            add("url", "Product URL")
+
+        if (
+            "Missing required field: image_link" in t
+            or "Image URL must start with" in t
+            or ("Image format" in t and "may not be accepted" in t)
+        ):
+            add("image_url", "Image URL")
+
+        if "Availability " in t and "not standard" in t:
+            add("status_raw", "Availability")
+
+        if "Missing recommended field: brand" in t:
+            add("brand", "Brand")
+
+        if "Missing recommended field: condition" in t or (
+            "not standard" in t and t.startswith("Condition ")
+        ):
+            add(
+                "condition",
+                "Condition",
+                "select",
+                ["new", "refurbished", "used"],
+            )
+
+        if "Missing identifier: provide gtin or mpn" in t:
+            add("gtin", "GTIN")
+            add("mpn", "MPN")
+
+        if "GTIN " in t and "length unusual" in t:
+            add("gtin", "GTIN")
+
+    return out
