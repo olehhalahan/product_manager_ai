@@ -4654,19 +4654,19 @@ async def review_batch(request: Request, batch_id: str):
         if len(old_desc_raw) > desc_preview_len:
             old_desc_cell = f'<td class="desc-cell"><div class="desc-wrapper"><span class="desc-text" data-full="{html_module.escape(old_desc_raw)}">{old_desc_short}</span><button type="button" class="expand-btn" onclick="toggleDesc(this)"><span class="expand-icon">&#9660;</span> show more</button></div>{gmc_suffix_old_desc}</td>'
         else:
-            old_desc_cell = f'<td>{old_desc_full or "—"}{gmc_suffix_old_desc}</td>'
+            old_desc_cell = f'<td class="desc-cell">{old_desc_full or "—"}{gmc_suffix_old_desc}</td>'
         
         if len(new_desc_full) > desc_preview_len:
             new_desc_cell = f'<td class="desc-cell editable-wrap"><div class="desc-wrapper"><span class="desc-text editable-cell desc-collapsed" contenteditable="true" data-field="optimized_description" data-product="{r.product.id}">{new_desc_full}</span><button type="button" class="expand-btn" onclick="toggleDescEditable(this)"><span class="expand-icon">&#9660;</span> show more</button></div>{gmc_suffix_new_desc}</td>'
         else:
-            new_desc_cell = f'<td class="editable-cell" contenteditable="true" data-field="optimized_description" data-product="{r.product.id}">{new_desc_full}</td>'
+            new_desc_cell = f'<td class="desc-cell"><span class="editable-cell" contenteditable="true" data-field="optimized_description" data-product="{r.product.id}">{new_desc_full}</span></td>'
             if gmc_suffix_new_desc:
-                new_desc_cell = f'<td><div class="cell-with-gmc"><span class="editable-cell" contenteditable="true" data-field="optimized_description" data-product="{r.product.id}">{new_desc_full}</span>{gmc_suffix_new_desc}</div></td>'
+                new_desc_cell = f'<td class="desc-cell"><div class="cell-with-gmc"><span class="editable-cell" contenteditable="true" data-field="optimized_description" data-product="{r.product.id}">{new_desc_full}</span>{gmc_suffix_new_desc}</div></td>'
         
         if len(trans_desc) > desc_preview_len:
             trans_desc_cell = f'<td class="desc-cell editable-wrap"><div class="desc-wrapper"><span class="desc-text editable-cell desc-collapsed" contenteditable="true" data-field="translated_description" data-product="{r.product.id}">{trans_desc}</span><button type="button" class="expand-btn" onclick="toggleDescEditable(this)"><span class="expand-icon">&#9660;</span> show more</button></div></td>'
         else:
-            trans_desc_cell = f'<td class="editable-cell" contenteditable="true" data-field="translated_description" data-product="{r.product.id}">{trans_desc}</td>'
+            trans_desc_cell = f'<td class="desc-cell"><span class="editable-cell" contenteditable="true" data-field="translated_description" data-product="{r.product.id}">{trans_desc}</span></td>'
 
         # ── GMC data attribute for row filter ────────────────────────
         gmc_errs = r.gmc_errors
@@ -4874,14 +4874,14 @@ async def review_batch(request: Request, batch_id: str):
     .scroll-arrow-right::before {{ content: '→'; }}
     
     table {{ width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1960px; }}
-    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 72px; }}
+    /* thead must paint above tbody or long cells overlap headers (tbody follows thead in DOM). */
+    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 72px; z-index: 10; box-shadow: 0 1px 0 rgba(0,0,0,0.35); }}
     th:hover {{ color: rgba(255,255,255,0.9); }}
     th.sorted-asc::after {{ content: ' ↑'; color: #fff; }}
     th.sorted-desc::after {{ content: ' ↓'; color: #fff; }}
-    td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; }}
+    td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; position: relative; z-index: 1; }}
     td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10), td:nth-child(11) {{ max-width: 220px; }}
     td:nth-child(6), td:nth-child(7), td:nth-child(10) {{ overflow: hidden; text-overflow: ellipsis; }}
-    .desc-cell {{ overflow: visible; }}
     tr:last-child td {{ border-bottom: none; }}
     tr:nth-child(even) {{ background: rgba(255,255,255,0.015); }}
     tr:hover {{ background: rgba(255,255,255,0.04); }}
@@ -4928,11 +4928,11 @@ async def review_batch(request: Request, batch_id: str):
     .score-cell {{ text-align: center; white-space: nowrap; }}
     .link-cell {{ text-align: center; }}
 
-    .col-sticky {{ position: sticky; z-index: 2; }}
+    .col-sticky {{ position: sticky; z-index: 4; }}
     .col-action {{ right: 0; min-width: 110px; }}
     .col-score {{ right: 110px; min-width: 180px; }}
-    th.col-sticky {{ z-index: 3; background: #161616; }}
-    td.col-sticky {{ background: #111; }}
+    th.col-sticky {{ z-index: 12; background: #161616; }}
+    td.col-sticky {{ z-index: 4; background: #111; }}
     tr:nth-child(even) td.col-sticky {{ background: #131313; }}
     tr:hover td.col-sticky {{ background: #1a1a1a; }}
     td.col-sticky, th.col-score {{ border-left: 1px solid rgba(255,255,255,0.08); }}
@@ -4973,9 +4973,9 @@ async def review_batch(request: Request, batch_id: str):
     .editable-cell.modified {{ background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.3); }}
     .editable-cell.saving {{ opacity: 0.6; pointer-events: none; }}
     
-    .desc-cell {{ max-width: 220px; vertical-align: top; }}
-    .desc-wrapper {{ position: relative; padding: 0; }}
-    .desc-wrapper .desc-text {{ display: block; font-size: 0.85rem; line-height: 1.5; word-break: break-word; padding: 8px 12px !important; }}
+    .desc-cell {{ max-width: 220px; min-width: 0; vertical-align: top; overflow: hidden; }}
+    .desc-wrapper {{ position: relative; padding: 0; overflow: hidden; max-width: 100%; }}
+    .desc-wrapper .desc-text {{ display: block; font-size: 0.85rem; line-height: 1.5; word-break: break-word; overflow-wrap: anywhere; padding: 8px 12px !important; max-width: 100%; box-sizing: border-box; }}
     .desc-wrapper .desc-text.desc-collapsed {{ display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }}
     .expand-btn {{ margin: 6px 0 0 12px; padding: 4px 10px; font-size: 0.7rem; font-weight: 600; color: rgba(255,255,255,0.9); background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 4px; }}
     .expand-btn:hover {{ background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); color: #fff; }}
@@ -5019,7 +5019,7 @@ async def review_batch(request: Request, batch_id: str):
     .gmc-tag-err {{ background: rgba(239,68,68,0.12); color: #ef4444; }}
     .gmc-tag-warn {{ background: rgba(245,158,11,0.12); color: #f59e0b; }}
     .gmc-tag-fixed {{ background: rgba(34,197,94,0.12); color: #22c55e; }}
-    .cell-with-gmc {{ display: flex; flex-direction: column; }}
+    .cell-with-gmc {{ display: flex; flex-direction: column; overflow: hidden; max-width: 100%; min-width: 0; }}
     .pos-dbg {{ margin-top: 8px; font-size: 0.72rem; color: rgba(255,255,255,0.5); max-width: 280px; }}
     .pos-dbg summary {{
         cursor: pointer; font-weight: 600; color: #a5f3fc; list-style: none;
