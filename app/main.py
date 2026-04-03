@@ -4790,9 +4790,9 @@ async def review_batch(request: Request, batch_id: str):
     [data-theme="light"] .scroll-hint {{ color: rgba(15,23,42,0.5); background: rgba(15,23,42,0.03); border-top-color: rgba(15,23,42,0.06); }}
     [data-theme="light"] .scroll-arrow {{ background: rgba(255,255,255,0.9); color: #0f172a; border-color: rgba(15,23,42,0.2); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}
     [data-theme="light"] .scroll-arrow:hover {{ background: #fff; }}
-    [data-theme="light"] .table-wrap::-webkit-scrollbar-track {{ background: rgba(15,23,42,0.08); }}
-    [data-theme="light"] .table-wrap::-webkit-scrollbar-thumb {{ background: rgba(15,23,42,0.25); }}
-    [data-theme="light"] .table-wrap::-webkit-scrollbar-thumb:hover {{ background: rgba(15,23,42,0.4); }}
+    [data-theme="light"] .table-container::-webkit-scrollbar-track {{ background: rgba(15,23,42,0.08); }}
+    [data-theme="light"] .table-container::-webkit-scrollbar-thumb {{ background: rgba(15,23,42,0.25); }}
+    [data-theme="light"] .table-container::-webkit-scrollbar-thumb:hover {{ background: rgba(15,23,42,0.4); }}
     [data-theme="light"] th.sorted-asc::after, [data-theme="light"] th.sorted-desc::after {{ color: #0f172a; }}
     [data-theme="light"] .feedback-overlay {{ background: rgba(255,255,255,0.5); }}
     [data-theme="light"] .feedback-stars span {{ color: rgba(15,23,42,0.2); }}
@@ -4850,13 +4850,13 @@ async def review_batch(request: Request, batch_id: str):
     .filter {{ padding: 10px 14px; font-size: 0.85rem; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; background: rgba(255,255,255,0.05); color: #fff; cursor: pointer; -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='white' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }}
     .filter option {{ background: #111; color: #fff; }}
 
-    .table-container {{ background: #111; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden; position: relative; }}
-    .table-wrap {{ overflow-x: scroll; scroll-behavior: smooth; cursor: grab; }}
-    .table-wrap.dragging {{ cursor: grabbing; scroll-behavior: auto; user-select: none; }}
-    .table-wrap::-webkit-scrollbar {{ height: 10px; }}
-    .table-wrap::-webkit-scrollbar-track {{ background: rgba(255,255,255,0.08); border-radius: 5px; }}
-    .table-wrap::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.25); border-radius: 5px; }}
-    .table-wrap::-webkit-scrollbar-thumb:hover {{ background: rgba(255,255,255,0.4); }}
+    .table-container {{ background: #111; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; position: relative; max-height: min(70vh, 720px); overflow: auto; -webkit-overflow-scrolling: touch; }}
+    .table-wrap {{ scroll-behavior: smooth; cursor: grab; min-width: 0; }}
+    .table-container.dragging {{ cursor: grabbing; scroll-behavior: auto; user-select: none; }}
+    .table-container::-webkit-scrollbar {{ height: 10px; width: 10px; }}
+    .table-container::-webkit-scrollbar-track {{ background: rgba(255,255,255,0.08); border-radius: 5px; }}
+    .table-container::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.25); border-radius: 5px; }}
+    .table-container::-webkit-scrollbar-thumb:hover {{ background: rgba(255,255,255,0.4); }}
     .scroll-hint {{ text-align: center; padding: 8px; font-size: 0.75rem; color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.02); border-top: 1px solid rgba(255,255,255,0.05); }}
     .scroll-hint.hidden {{ display: none; }}
     
@@ -4887,13 +4887,13 @@ async def review_batch(request: Request, batch_id: str):
     .scroll-arrow-right::before {{ content: '→'; }}
     
     table {{ width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1780px; }}
-    /* Sticky headers work when td has NO position/z-index — giving td a stacking context
-       pushes it above the sticky th even with higher z-index on th. Keep it simple: th z-index:2, td default. */
-    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 2px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 72px; z-index: 2; }}
+    thead {{ background: #161616; box-shadow: 0 2px 8px rgba(0,0,0,0.22); }}
+    th {{ text-align: left; padding: 14px 16px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(255,255,255,0.5); background: #161616; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer; white-space: nowrap; user-select: none; position: sticky; top: 0; z-index: 20; min-height: 48px; vertical-align: middle; box-sizing: border-box; }}
     th:hover {{ color: rgba(255,255,255,0.9); }}
     th.sorted-asc::after {{ content: ' ↑'; color: #fff; }}
     th.sorted-desc::after {{ content: ' ↓'; color: #fff; }}
-    td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; }}
+    tbody tr:first-child td {{ border-top: none; }}
+    td {{ padding: 14px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: middle; line-height: 1.5; z-index: 1; }}
     td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8), td:nth-child(9), td:nth-child(10) {{ max-width: 220px; }}
     td:nth-child(5), td:nth-child(6), td:nth-child(9) {{ overflow: hidden; text-overflow: ellipsis; }}
     tr:last-child td {{ border-bottom: none; }}
@@ -4952,12 +4952,13 @@ async def review_batch(request: Request, batch_id: str):
     .col-sticky {{ position: sticky; }}
     .col-action {{ right: 0; min-width: 110px; }}
     .col-score {{ right: 110px; min-width: 180px; }}
-    th.col-sticky {{ z-index: 3; background: #161616; }}
-    td.col-sticky {{ z-index: 1; background: #111; }}
+    th.col-sticky {{ z-index: 25; background: #161616; }}
+    td.col-sticky {{ z-index: 10; background: #111; }}
     tr:nth-child(even) td.col-sticky {{ background: #131313; }}
     tr:hover td.col-sticky {{ background: #1a1a1a; }}
     td.col-sticky, th.col-score {{ border-left: 1px solid rgba(255,255,255,0.08); }}
-    [data-theme="light"] th.col-sticky {{ background: #f1f5f9; z-index: 3; }}
+    [data-theme="light"] thead {{ background: rgba(241,245,249,0.98); box-shadow: 0 2px 8px rgba(15,23,42,0.08); }}
+    [data-theme="light"] th.col-sticky {{ background: rgba(241,245,249,0.98); z-index: 25; }}
     [data-theme="light"] td.col-sticky {{ background: #fff; }}
     [data-theme="light"] tr:nth-child(even) td.col-sticky {{ background: #f8fafc; }}
     [data-theme="light"] tr:hover td.col-sticky {{ background: #f1f5f9; }}
@@ -5153,7 +5154,7 @@ async def review_batch(request: Request, batch_id: str):
     [data-theme="light"] .review-tab {{ color: rgba(15,23,42,0.45); }}
     [data-theme="light"] .review-tab.is-active {{ color: #0f172a; border-bottom-color: #22D3EE; }}
 
-    @media (max-width: 768px) {{ th {{ top: 88px; }} .container {{ padding: 24px; }} .gmc-panel {{ flex-direction: column; align-items: stretch; }} .gmc-legend {{ flex-wrap: wrap; gap: 8px; }} .review-tab-aux {{ margin-left: 0; width: 100%; padding: 4px 14px 10px; }} }}
+    @media (max-width: 768px) {{ .table-container {{ max-height: min(65vh, 560px); }} .container {{ padding: 24px; }} .gmc-panel {{ flex-direction: column; align-items: stretch; }} .gmc-legend {{ flex-wrap: wrap; gap: 8px; }} .review-tab-aux {{ margin-left: 0; width: 100%; padding: 4px 14px 10px; }} }}
     </style>
 </head>
 <body>
@@ -5670,15 +5671,16 @@ async def review_batch(request: Request, batch_id: str):
         }}
     }}
     
-    // Scroll arrows functionality
-    const tableWrap = document.getElementById('tableWrap');
+    // Scroll arrows + drag: scroll the table container (single scrollport for x + y; sticky thead uses top: 0)
+    const tableScrollEl = document.getElementById('tableContainer');
     const scrollLeftBtn = document.getElementById('scrollLeft');
     const scrollRightBtn = document.getElementById('scrollRight');
     const scrollHint = document.getElementById('scrollHint');
     const scrollAmount = 400;
     
     function updateScrollArrows() {{
-        const {{ scrollLeft, scrollWidth, clientWidth }} = tableWrap;
+        if (!tableScrollEl) return;
+        const {{ scrollLeft, scrollWidth, clientWidth }} = tableScrollEl;
         const canScroll = scrollWidth > clientWidth;
         const canScrollLeft = scrollLeft > 5;
         const canScrollRight = scrollLeft < scrollWidth - clientWidth - 5;
@@ -5689,14 +5691,14 @@ async def review_batch(request: Request, batch_id: str):
     }}
     
     function scrollTableLeft() {{
-        tableWrap.scrollBy({{ left: -scrollAmount, behavior: 'smooth' }});
+        if (tableScrollEl) tableScrollEl.scrollBy({{ left: -scrollAmount, behavior: 'smooth' }});
     }}
     
     function scrollTableRight() {{
-        tableWrap.scrollBy({{ left: scrollAmount, behavior: 'smooth' }});
+        if (tableScrollEl) tableScrollEl.scrollBy({{ left: scrollAmount, behavior: 'smooth' }});
     }}
     
-    tableWrap.addEventListener('scroll', updateScrollArrows);
+    if (tableScrollEl) tableScrollEl.addEventListener('scroll', updateScrollArrows);
     window.addEventListener('resize', updateScrollArrows);
     setTimeout(updateScrollArrows, 100);
     
@@ -5709,24 +5711,24 @@ async def review_batch(request: Request, batch_id: str):
     
     function stopDrag() {{
         isDragging = false;
-        tableWrap.classList.remove('dragging');
+        if (tableScrollEl) tableScrollEl.classList.remove('dragging');
         document.removeEventListener('mousemove', onDragMove);
         document.removeEventListener('mouseup', stopDrag);
     }}
     
     function onDragMove(e) {{
-        if (!isDragging) return;
+        if (!isDragging || !tableScrollEl) return;
         e.preventDefault();
         const walk = (e.pageX - startX) * 1.2;
-        tableWrap.scrollLeft = startScrollLeft - walk;
+        tableScrollEl.scrollLeft = startScrollLeft - walk;
     }}
     
-    tableWrap.addEventListener('mousedown', function(e) {{
+    if (tableScrollEl) tableScrollEl.addEventListener('mousedown', function(e) {{
         if (!canStartDrag(e.target)) return;
         isDragging = true;
         startX = e.pageX;
-        startScrollLeft = tableWrap.scrollLeft;
-        tableWrap.classList.add('dragging');
+        startScrollLeft = tableScrollEl.scrollLeft;
+        tableScrollEl.classList.add('dragging');
         document.addEventListener('mousemove', onDragMove);
         document.addEventListener('mouseup', stopDrag);
     }});
