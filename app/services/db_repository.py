@@ -22,6 +22,7 @@ from ..db_models import (
     BlogArticleViewEvent,
     BlogArticleVersion,
     ContentCluster,
+    SiteVisitEvent,
     WritterFutureArticle,
     WritterAutoRun,
     WayforpayPayment,
@@ -1200,14 +1201,195 @@ def update_blog_article(
     row.updated_at = now
 
 
-def increment_blog_views(db: Session, slug: str) -> None:
+def increment_blog_views(
+    db: Session,
+    slug: str,
+    *,
+    visitor_class: str = "",
+    bot_name: str = "",
+    referrer: str = "",
+) -> None:
     row = get_blog_article_by_slug(db, slug)
     if not row or row.status != "published":
         return
     row.views = (row.views or 0) + 1
     row.updated_at = datetime.now(timezone.utc)
     now = datetime.now(timezone.utc)
-    db.add(BlogArticleViewEvent(article_id=int(row.id), viewed_at=now))
+    db.add(
+        BlogArticleViewEvent(
+            article_id=int(row.id),
+            viewed_at=now,
+            visitor_class=visitor_class or None,
+            bot_name=bot_name or None,
+            referrer=(referrer or "")[:512] or None,
+        )
+    )
+
+
+def record_site_visit(
+    db: Session,
+    *,
+    path: str,
+    visitor_class: str,
+    bot_name: str = "",
+    user_agent: str = "",
+    referrer: str = "",
+    referrer_domain: str = "",
+    ip_hash: str = "",
+) -> None:
+    db.add(
+        SiteVisitEvent(
+            path=(path or "/")[:512],
+            visitor_class=visitor_class,
+            bot_name=(bot_name or "")[:64] or None,
+            user_agent=(user_agent or "")[:512] or None,
+            referrer=(referrer or "")[:512] or None,
+            referrer_domain=(referrer_domain or "")[:128] or None,
+            ip_hash=(ip_hash or "")[:64] or None,
+            viewed_at=datetime.now(timezone.utc),
+        )
+    )
+
+
+def _traffic_since(days: int) -> datetime:
+    return datetime.now(timezone.utc) - timedelta(days=days)
+
+
+def get_traffic_analytics_summary(db: Session, *, days: int = 7) -> dict[str, Any]:
+    since = _traffic_since(days)
+    rows = db.execute(
+        select(
+            SiteVisitEvent.visitor_class,
+            func.count().label("cnt"),
+        )
+        .where(SiteVisitEvent.viewed_at >= since)
+        .group_by(SiteVisitEvent.visitor_class)
+    ).all()
+    by_class = {str(r[0]): int(r[1]) for r in rows}
+    total = sum(by_class.values())
+    humans = by_class.get("human", 0)
+    bots = total - humans
+
+    top_paths = db.execute(
+        select(SiteVisitEvent.path, func.count().label("cnt"))
+        .where(SiteVisitEvent.viewed_at >= since, SiteVisitEvent.visitor_class == "human")
+        .group_by(SiteVisitEvent.path)
+        .order_by(func.count().desc())
+        .limit(15)
+    ).all()
+
+    top_bots = db.execute(
+        select(SiteVisitEvent.bot_name, func.count().label("cnt"))
+        .where(
+            SiteVisitEvent.viewed_at >= since,
+            SiteVisitEvent.visitor_class != "human",
+            SiteVisitEvent.bot_name.isnot(None),
+        )
+        .group_by(SiteVisitEvent.bot_name)
+        .order_by(func.count().desc())
+        .limit(15)
+    ).all()
+
+    top_referrers = db.execute(
+        select(SiteVisitEvent.referrer_domain, func.count().label("cnt"))
+        .where(
+            SiteVisitEvent.viewed_at >= since,
+            SiteVisitEvent.visitor_class == "human",
+            SiteVisitEvent.referrer_domain.isnot(None),
+            SiteVisitEvent.referrer_domain != "",
+            SiteVisitEvent.referrer_domain != "internal",
+        )
+        .group_by(SiteVisitEvent.referrer_domain)
+        .order_by(func.count().desc())
+        .limit(15)
+    ).all()
+
+    ai_refs = db.execute(
+        select(SiteVisitEvent.referrer_domain, func.count().label("cnt"))
+        .where(
+            SiteVisitEvent.viewed_at >= since,
+            SiteVisitEvent.visitor_class == "human",
+            or_(
+                SiteVisitEvent.referrer_domain.like("%chatgpt%"),
+                SiteVisitEvent.referrer_domain.like("%perplexity%"),
+                SiteVisitEvent.referrer_domain.like("%claude%"),
+                SiteVisitEvent.referrer_domain.like("%copilot%"),
+            ),
+        )
+        .group_by(SiteVisitEvent.referrer_domain)
+        .order_by(func.count().desc())
+    ).all()
+
+    blog_human = db.execute(
+        select(func.count())
+        .select_from(BlogArticleViewEvent)
+        .where(
+            BlogArticleViewEvent.viewed_at >= since,
+            BlogArticleViewEvent.visitor_class == "human",
+        )
+    ).scalar_one()
+    blog_bot = db.execute(
+        select(func.count())
+        .select_from(BlogArticleViewEvent)
+        .where(
+            BlogArticleViewEvent.viewed_at >= since,
+            BlogArticleViewEvent.visitor_class != "human",
+            BlogArticleViewEvent.visitor_class.isnot(None),
+        )
+    ).scalar_one()
+
+    unique_humans = db.execute(
+        select(func.count(func.distinct(SiteVisitEvent.ip_hash)))
+        .where(
+            SiteVisitEvent.viewed_at >= since,
+            SiteVisitEvent.visitor_class == "human",
+            SiteVisitEvent.ip_hash.isnot(None),
+        )
+    ).scalar_one()
+
+    return {
+        "days": days,
+        "total": total,
+        "humans": humans,
+        "bots": bots,
+        "human_pct": round(100 * humans / total, 1) if total else 0,
+        "unique_humans": int(unique_humans or 0),
+        "by_class": by_class,
+        "top_paths": [{"path": p, "count": int(c)} for p, c in top_paths],
+        "top_bots": [{"name": n or "Unknown", "count": int(c)} for n, c in top_bots],
+        "top_referrers": [{"domain": d, "count": int(c)} for d, c in top_referrers],
+        "ai_referrers": [{"domain": d, "count": int(c)} for d, c in ai_refs],
+        "blog_human_views": int(blog_human or 0),
+        "blog_bot_views": int(blog_bot or 0),
+    }
+
+
+def list_recent_site_visits(
+    db: Session,
+    *,
+    days: int = 7,
+    visitor_class: str = "all",
+    limit: int = 100,
+) -> List[dict[str, Any]]:
+    since = _traffic_since(days)
+    q = select(SiteVisitEvent).where(SiteVisitEvent.viewed_at >= since)
+    if visitor_class and visitor_class != "all":
+        q = q.where(SiteVisitEvent.visitor_class == visitor_class)
+    q = q.order_by(SiteVisitEvent.viewed_at.desc()).limit(limit)
+    rows = db.execute(q).scalars().all()
+    out: List[dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "path": r.path,
+                "visitor_class": r.visitor_class,
+                "bot_name": r.bot_name or "",
+                "referrer_domain": r.referrer_domain or "",
+                "user_agent": (r.user_agent or "")[:120],
+                "viewed_at": r.viewed_at.isoformat() if r.viewed_at else "",
+            }
+        )
+    return out
 
 
 def sum_blog_article_total_views(db: Session) -> int:

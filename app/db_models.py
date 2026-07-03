@@ -190,6 +190,25 @@ class BlogArticleViewEvent(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     article_id = Column(Integer, ForeignKey("blog_articles.id", ondelete="CASCADE"), nullable=False, index=True)
     viewed_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    visitor_class = Column(String(32), nullable=True, index=True)
+    bot_name = Column(String(64), nullable=True)
+    referrer = Column(String(512), nullable=True)
+
+
+class SiteVisitEvent(Base):
+    """Public site page views with bot/human classification (server-side analytics)."""
+
+    __tablename__ = "site_visit_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    path = Column(String(512), nullable=False, index=True)
+    visitor_class = Column(String(32), nullable=False, index=True)
+    bot_name = Column(String(64), nullable=True)
+    user_agent = Column(String(512), nullable=True)
+    referrer = Column(String(512), nullable=True)
+    referrer_domain = Column(String(128), nullable=True, index=True)
+    ip_hash = Column(String(64), nullable=True, index=True)
+    viewed_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
 
 
 class WritterFutureArticle(Base):

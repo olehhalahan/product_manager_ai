@@ -244,5 +244,22 @@ def init_db():
         from .db_models import BlogArticleViewEvent
 
         BlogArticleViewEvent.__table__.create(bind=engine, checkfirst=True)
+    else:
+        from sqlalchemy import text
+
+        bve_cols = {c["name"] for c in inspector.get_columns("blog_article_view_events")}
+        with engine.begin() as conn:
+            if "visitor_class" not in bve_cols:
+                conn.execute(text("ALTER TABLE blog_article_view_events ADD COLUMN visitor_class VARCHAR(32)"))
+            if "bot_name" not in bve_cols:
+                conn.execute(text("ALTER TABLE blog_article_view_events ADD COLUMN bot_name VARCHAR(64)"))
+            if "referrer" not in bve_cols:
+                conn.execute(text("ALTER TABLE blog_article_view_events ADD COLUMN referrer VARCHAR(512)"))
+
+    inspector = inspect(engine)
+    if "site_visit_events" not in inspector.get_table_names():
+        from .db_models import SiteVisitEvent
+
+        SiteVisitEvent.__table__.create(bind=engine, checkfirst=True)
 
     Base.metadata.create_all(bind=engine)
