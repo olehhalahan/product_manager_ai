@@ -14,6 +14,7 @@ def admin_top_nav_html(active: str = "writter", *, show_admin_links: bool = True
     if show_admin_links:
         admin_block = f"""
     <a href="/admin/onboarding-analytics" class="{_cls('dashboard')}">Dashboard</a>
+    <a href="/admin/traffic-analytics" class="{_cls('traffic-analytics')}">Traffic</a>
     <a href="/admin/writter" class="{_cls('writter')}">Writter</a>
     <a href="/settings" class="{_cls('settings')}">Settings</a>"""
 

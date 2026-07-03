@@ -58,6 +58,7 @@ from .security import (
     session_middleware_kwargs,
     validate_startup_security,
 )
+from .traffic_middleware import TrafficAnalyticsMiddleware
 import json
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -101,6 +102,7 @@ from .gtm import GTM_BODY, GTM_HEAD, gtm_body_for_path, gtm_head_for_path
 validate_startup_security()
 app.add_middleware(CsrfMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(TrafficAnalyticsMiddleware)
 app.add_middleware(SessionMiddleware, **session_middleware_kwargs())
 
 
@@ -1245,6 +1247,7 @@ def _admin_nav_links(active: str = "", user_role: str = "customer") -> str:
         return ""
     links = [
         f'<a href="/admin/onboarding-analytics" class="nav-link{" active" if active == "onboarding-analytics" else ""}">Dashboard</a>',
+        f'<a href="/admin/traffic-analytics" class="nav-link{" active" if active == "traffic-analytics" else ""}">Traffic</a>',
         f'<a href="/admin/writter" class="nav-link{" active" if active == "writter" else ""}">Writter</a>',
         f'<a href="/settings" class="nav-link{" active" if active == "settings" else ""}">Settings</a>',
     ]
@@ -7762,6 +7765,27 @@ async def admin_onboarding_analytics_page(
 </body>
 </html>"""
     return HTMLResponse(content=html)
+
+
+@app.get("/admin/traffic-analytics", response_class=HTMLResponse)
+async def admin_traffic_analytics_page(
+    request: Request,
+    days: int = 7,
+    class_: str = Query("all", alias="class"),
+):
+    from .traffic_analytics_page import build_traffic_analytics_page
+
+    return build_traffic_analytics_page(request, days=days, visitor_class=class_)
+
+
+@app.get("/api/admin/traffic-analytics")
+async def api_admin_traffic_analytics(request: Request, days: int = 7):
+    require_admin_http(request)
+    from .db import get_db
+    from .services.db_repository import get_traffic_analytics_summary
+
+    with get_db() as db:
+        return JSONResponse(get_traffic_analytics_summary(db, days=max(1, min(days, 90))))
 
 
 def _sitemap_url_block(loc: str, *, priority: str, changefreq: str, lastmod: Optional[str] = None) -> str:

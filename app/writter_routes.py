@@ -535,7 +535,7 @@ async def writter_list_page(request: Request):
     <span class="wt-view-stat-val">{_fmt_view_n(agg_views_all_time)}</span>
     <span class="wt-view-stat-lbl">За весь час</span>
   </div>
-  <p class="wt-view-stats-hint">«Сьогодні» і «7 днів» рахуються з журналу переглядів після оновлення; «За весь час» — сума полів Views у всіх статтях (історія до журналу врахована).</p>
+  <p class="wt-view-stats-hint">«Сьогодні» і «7 днів» — усі запити (люди + боти). Детальний розподіл: <a href="/admin/traffic-analytics">Traffic analytics</a>. «Human sessions» у статтях — лише JS-beacon (ближче до реальних людей).</p>
 </div>"""
 
     html = f"""<!DOCTYPE html>
@@ -3112,7 +3112,18 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
         if not row or row.status != "published":
             raise HTTPException(404, detail="Article not found")
         sidebar_rows = repo.list_blog_articles_published(db, limit=80)
-        repo.increment_blog_views(db, slug)
+        from .traffic import classify_user_agent
+
+        _ua = request.headers.get("user-agent") or ""
+        _ref = request.headers.get("referer") or request.headers.get("referrer") or ""
+        _cls = classify_user_agent(_ua)
+        repo.increment_blog_views(
+            db,
+            slug,
+            visitor_class=_cls.visitor_class,
+            bot_name=_cls.bot_name,
+            referrer=_ref,
+        )
         article_id = int(row.id)
         schedule_og = blog_article_needs_og_banner(row)
         og_status = (getattr(row, "image_generation_status", None) or "").strip()
