@@ -198,15 +198,82 @@ def register_guide_routes(app) -> None:
 
     @app.get("/guides", response_class=HTMLResponse, include_in_schema=False)
     def guides_index(request: Request):
-        from .seo import site_base_url
+        from .gtm import GTM_BODY, GTM_HEAD
+        from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
+        from .seo import breadcrumb_json_ld, head_canonical_social, organization_json_ld_graph, site_base_url, web_page_json_ld
 
         base = site_base_url().rstrip("/")
-        links = "".join(
-            f'<li><a href="{spec.path}">{spec.h1}</a><p>{spec.meta_description}</p></li>'
+        canonical = f"{base}/guides"
+        meta_title = "Guides — Cartozo.ai"
+        meta_desc = "Guides for Google Merchant Center feed optimization, product titles, GTIN issues, and feed quality audits."
+        guide_items = "".join(
+            f'<li class="gi-item"><a href="{spec.path}"><strong>{spec.h1}</strong></a>'
+            f"<p>{spec.meta_description}</p></li>"
             for spec in GUIDE_PAGES.values()
         )
-        html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><title>Guides — Cartozo.ai</title>
-<link rel="canonical" href="{base}/guides"/><meta name="description" content="Guides for Google Merchant Center feed optimization, titles, GTIN, and feed quality audits."/>
-</head><body><main style="max-width:720px;margin:40px auto;padding:0 20px;font-family:Inter,sans-serif">
-<h1>Guides</h1><ul>{links}</ul><p><a href="/">Home</a></p></main></body></html>"""
+        use_case_items = (
+            '<li><a href="/use-cases/fix-google-merchant-center-disapprovals">Fix Merchant Center disapprovals</a></li>'
+            '<li><a href="/use-cases/optimize-google-shopping-product-titles">Optimize Shopping titles</a></li>'
+            '<li><a href="/use-cases/product-feed-optimization-for-agencies">Feed optimization for agencies</a></li>'
+            '<li><a href="/use-cases/large-catalog-feed-optimization">Large catalog optimization</a></li>'
+            '<li><a href="/use-cases/product-feed-quality-audit">Product feed quality audit</a></li>'
+        )
+        seo = head_canonical_social(
+            canonical_url=canonical,
+            og_title=meta_title,
+            og_description=meta_desc,
+            og_site_name="Cartozo.ai",
+        )
+        json_ld = (
+            organization_json_ld_graph()
+            + breadcrumb_json_ld(items=[("Home", f"{base}/"), ("Guides", canonical)])
+            + web_page_json_ld(url=canonical, name=meta_title, description=meta_desc)
+        )
+        html = f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+{GTM_HEAD}
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{meta_title}</title>
+<meta name="description" content="{meta_desc}"/>
+<meta name="robots" content="index,follow"/>
+{seo}{json_ld}
+<script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:Inter,system-ui,sans-serif;background:#060711;color:#e5e7eb;line-height:1.65}}
+[data-theme=light] body{{background:#fafbfc;color:#0f172a}}
+a{{color:#818cf8;text-decoration:none}}
+.gi-wrap{{max-width:760px;margin:0 auto;padding:96px 24px 48px}}
+.gi-h1{{font-size:clamp(1.6rem,3.5vw,2rem);font-weight:700;margin-bottom:12px}}
+.gi-lead{{color:rgba(229,231,235,.75);margin-bottom:28px;font-size:1rem}}
+.gi-list{{list-style:none;padding:0;display:flex;flex-direction:column;gap:16px}}
+.gi-item{{padding:18px 20px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.03)}}
+[data-theme=light] .gi-item{{background:#fff;border-color:rgba(15,23,42,.1)}}
+.gi-item p{{margin-top:8px;font-size:.9rem;color:rgba(229,231,235,.65)}}
+[data-theme=light] .gi-item p{{color:rgba(15,23,42,.65)}}
+.gi-related{{margin-top:36px;padding-top:24px;border-top:1px solid rgba(255,255,255,.08)}}
+.gi-related ul{{margin:12px 0 0 1.1rem;font-size:.92rem}}
+{HP_NAV_CSS}
+{HP_FOOTER_CSS}
+</style>
+</head>
+<body>
+{GTM_BODY}
+{public_site_nav_html(feed_structure_href="/feed-structure")}
+<main class="gi-wrap">
+  <h1 class="gi-h1">Guides</h1>
+  <p class="gi-lead">Evergreen guides for Google Merchant Center feed optimization, titles, identifiers, and feed quality.</p>
+  <ul class="gi-list">{guide_items}</ul>
+  <section class="gi-related" aria-labelledby="gi-uc-h">
+    <h2 id="gi-uc-h">Related use cases</h2>
+    <ul>{use_case_items}</ul>
+  </section>
+</main>
+{public_site_footer_html(feed_structure_href="/feed-structure")}
+<script>{public_site_theme_toggle_script().strip()}</script>
+</body>
+</html>"""
         return HTMLResponse(content=html)

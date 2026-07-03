@@ -78,6 +78,7 @@ from .seo import (
     build_robots_txt_body,
     build_llms_txt_body,
     PUBLIC_SITEMAP_STATIC,
+    seo_cached_snapshot_is_stale,
 )
 from .use_case_pages import register_use_case_routes
 from .guide_pages import register_guide_routes
@@ -7854,7 +7855,7 @@ async def sitemap_xml(request: Request):
     """
     s = _get_settings()
     cached = (s.get("cached_sitemap_xml") or "").strip()
-    if cached:
+    if cached and not seo_cached_snapshot_is_stale(cached):
         return Response(content=cached, media_type="application/xml; charset=utf-8")
 
     from .db import get_db
@@ -7873,7 +7874,7 @@ async def robots_txt(request: Request):
     """
     s = _get_settings()
     cached = (s.get("cached_robots_txt") or "").strip()
-    if cached:
+    if cached and not seo_cached_snapshot_is_stale(cached):
         return PlainTextResponse(cached, media_type="text/plain; charset=utf-8")
 
     base = site_base_url()

@@ -301,6 +301,19 @@ def web_page_json_ld(
     return json_ld_script(obj)
 
 
+def seo_cached_snapshot_is_stale(cached: str) -> bool:
+    """True when admin-cached robots/sitemap was built for a different origin (e.g. localhost)."""
+    c = (cached or "").strip()
+    if not c:
+        return False
+    base = site_base_url().rstrip("/")
+    if not base:
+        return False
+    if base.startswith("https://") and ("localhost" in c or "127.0.0.1" in c):
+        return True
+    return base not in c
+
+
 def build_robots_txt_body(base: str) -> str:
     """Public robots.txt with AI crawler rules."""
     b = base.rstrip("/")

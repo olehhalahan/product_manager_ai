@@ -127,6 +127,8 @@ def public_site_footer_html(*, feed_structure_href: str = "/feed-structure") -> 
                 <a href="/presentation" class="hp-footer-link">Features</a>
                 <a href="/guides" class="hp-footer-link">Guides</a>
                 <a href="/use-cases/fix-google-merchant-center-disapprovals" class="hp-footer-link">Fix disapprovals</a>
+                <a href="/use-cases/optimize-google-shopping-product-titles" class="hp-footer-link">Title optimization</a>
+                <a href="/use-cases/product-feed-optimization-for-agencies" class="hp-footer-link">For agencies</a>
                 <a href="/blog" class="hp-footer-link">Blog</a>
                 <a href="{href}" class="hp-footer-link">Feed Structure</a>
                 <a href="/how-it-works" class="hp-footer-link">How it works</a>
