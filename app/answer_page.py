@@ -14,6 +14,7 @@ from .seo import (
     faq_page_json_ld,
     head_canonical_social,
     organization_json_ld_graph,
+    rss_feed_link_tag,
     site_base_url,
     web_page_json_ld,
 )
@@ -120,7 +121,7 @@ def build_answer_page_html(spec: AnswerPageSpec, *, og_image: str = "") -> str:
 <title>{_esc(spec.meta_title)}</title>
 <meta name="description" content="{_esc(spec.meta_description)}"/>
 <meta name="robots" content="index,follow"/>
-{seo}{json_ld}
+{seo}{rss_feed_link_tag()}{json_ld}
 <script src="/static/csrf.js"></script>
 <script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>

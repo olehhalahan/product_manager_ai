@@ -52,6 +52,13 @@ SMOKE_URLS: list[tuple[str, int | str]] = [
     ("/guides/product-feed-optimization-checklist", 200),
     ("/guides/product-feed-optimization-for-large-catalogs", 200),
     ("/feed-structure", 200),
+    ("/examples", 200),
+    ("/examples/google-shopping-feed-before-after", 200),
+    ("/examples/product-title-optimization-examples", 200),
+    ("/examples/product-feed-quality-audit-example", 200),
+    ("/templates/google-merchant-center-feed-template.csv", 200),
+    ("/templates/sample-product-feed-before.csv", 200),
+    ("/templates/sample-product-feed-after.csv", 200),
     ("/blog", 200),
     ("/blog/topics/google-merchant-center-issues", 200),
     ("/blog/topics/product-title-and-description-optimization", 200),
@@ -64,6 +71,7 @@ SMOKE_URLS: list[tuple[str, int | str]] = [
     ("/robots.txt", 200),
     ("/sitemap.xml", 200),
     ("/llms.txt", 200),
+    ("/feed.xml", 200),
 ]
 
 SCHEMA_PAGES: list[tuple[str, list[str]]] = [
@@ -72,6 +80,7 @@ SCHEMA_PAGES: list[tuple[str, list[str]]] = [
     ("/faq", ["FAQPage", "BreadcrumbList"]),
     ("/about", ["Organization", "BreadcrumbList"]),
     ("/feed-structure", ["BreadcrumbList"]),
+    ("/examples", ["BreadcrumbList", "Dataset"]),
     ("/blog", ["BreadcrumbList"]),
     ("/blog/topics/google-merchant-center-issues", ["BreadcrumbList"]),
 ]
@@ -256,6 +265,7 @@ def run_qa(report: Report) -> bool:
         ("PerplexityBot", "Allow"),
         ("Googlebot", "Allow"),
         ("bingbot", "Allow"),
+        ("CCBot", "Allow"),
     ]:
         if f"User-agent: {ua}" not in robots:
             rb_ok = False
@@ -295,6 +305,54 @@ def run_qa(report: Report) -> bool:
         Row(["/llms.txt", "200", ", ".join(llms_broken) or "none", "none", "none", "PASS" if llms_ok else "FAIL"], ok=llms_ok)
     )
 
+    # RSS feed
+    feed_r = client.get("/feed.xml")
+    feed_ok = feed_r.status_code == 200 and "<rss" in feed_r.text.lower()
+    feed_notes: list[str] = []
+    if PRODUCTION_BASE not in feed_r.text:
+        feed_ok = False
+        feed_notes.append("missing production URLs")
+        report.p0.append("feed.xml missing production base URL")
+    for bad in PRIVATE_FRAGMENTS + BAD_HOST_FRAGMENTS:
+        if bad in feed_r.text and "Disallow" not in feed_r.text:
+            feed_ok = False
+            feed_notes.append(f"contains {bad!r}")
+    rss_link = client.get("/").text
+    if 'rel="alternate" type="application/rss+xml"' not in rss_link and "/feed.xml" not in rss_link:
+        report.p1.append("Homepage missing RSS discovery link in head")
+    report.file_rows.append(
+        Row(["/feed.xml", str(feed_r.status_code), ", ".join(feed_notes) or "none", "none", "none", "PASS" if feed_ok else "FAIL"], ok=feed_ok)
+    )
+
+    # IndexNow key file
+    idx_key = os.getenv("INDEXNOW_KEY", "").strip()
+    if idx_key:
+        key_r = client.get(f"/{idx_key}.txt")
+        key_ok = key_r.status_code == 200 and key_r.text.strip() == idx_key
+        if not key_ok:
+            report.p0.append(f"IndexNow key file /{idx_key}.txt invalid")
+        report.file_rows.append(
+            Row([f"/{idx_key}.txt", str(key_r.status_code), "none", "none", "none", "PASS" if key_ok else "FAIL"], ok=key_ok)
+        )
+    else:
+        report.p2.append("INDEXNOW_KEY not set — key file not tested")
+
+    # File indexing / X-Robots-Tag
+    csv_r = client.get("/templates/sample-product-feed-before.csv")
+    csv_ok = csv_r.status_code == 200 and "text/csv" in (csv_r.headers.get("content-type") or "")
+    csv_robots = csv_r.headers.get("x-robots-tag", "")
+    if "noindex" not in csv_robots.lower():
+        report.p1.append("Public template CSV should include X-Robots-Tag: noindex")
+    upload_r = client.get("/upload", follow_redirects=False)
+    upload_robots = upload_r.headers.get("x-robots-tag", "")
+    if "noindex" not in upload_robots.lower() and upload_r.status_code in (200, 302, 307):
+        report.p1.append("/upload missing X-Robots-Tag: noindex on response")
+
+    # Pagination audit (documented behavior)
+    blog_html = client.get("/blog").text
+    if "page=2" in blog_html and 'rel="canonical"' in blog_html and "/blog?page=2" not in blog_html:
+        report.p1.append("Blog pagination may canonicalize incorrectly if page=2 links appear")
+
     if not seo_cached_snapshot_is_stale('<?xml version="1.0"?><urlset><url><loc>http://localhost:8000/</loc></url></urlset>'):
         report.p0.append("Stale localhost sitemap cache would be served in production")
 
@@ -302,7 +360,9 @@ def run_qa(report: Report) -> bool:
     meta_paths = [p for p, exp in SMOKE_URLS if exp == 200]
     titles_seen: dict[str, str] = {}
     for path in meta_paths:
-        if path in ("/robots.txt", "/sitemap.xml", "/llms.txt"):
+        if path in ("/robots.txt", "/sitemap.xml", "/llms.txt", "/feed.xml"):
+            continue
+        if path.endswith(".csv"):
             continue
         m = page_meta(client, path)
         html = m["html"]
@@ -464,7 +524,8 @@ def render_report(report: Report, safe_to_merge: bool) -> str:
             "2. Regenerate sitemap/robots in Admin → Settings → SEO",
             "3. Assign blog posts to content clusters in Writter admin",
             "4. Submit sitemap in Google Search Console and Bing Webmaster Tools",
-            "5. Remove `noindex` from topic hubs once posts are assigned (automatic when posts exist)",
+            "5. Run `python3 scripts/submit_indexnow.py submit-indexnow-all-public` after major content updates",
+            "6. Remove `noindex` from topic hubs once posts are assigned (automatic when posts exist)",
             "",
         ]
     )

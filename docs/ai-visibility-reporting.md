@@ -53,6 +53,21 @@ When Cartozo is described, confirm:
 | What is Cartozo | `/` + `/faq` |
 | Pricing | `/pricing` |
 | Missing GTIN | `/guides/fix-missing-gtin-google-merchant-center` |
+| Feed examples / templates | `/examples` |
+
+## RSS feed
+
+Public content updates are also available at **`https://cartozo.ai/feed.xml`** (RSS 2.0). It includes blog posts, guides, and selected evergreen pages. HTML pages include:
+
+```html
+<link rel="alternate" type="application/rss+xml" title="Cartozo.ai Feed" href="https://cartozo.ai/feed.xml">
+```
+
+RSS complements — does not replace — `/sitemap.xml`.
+
+## IndexNow
+
+After publishing blog posts or regenerating sitemap, optionally notify Bing via IndexNow (`docs/indexnow.md`).
 
 ## Follow-up actions
 

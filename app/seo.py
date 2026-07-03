@@ -48,6 +48,10 @@ PUBLIC_SITEMAP_STATIC: List[Tuple[str, str, str]] = [
     ("/guides/product-feed-quality-audit", "0.85", "monthly"),
     ("/guides/product-feed-optimization-checklist", "0.85", "monthly"),
     ("/guides/product-feed-optimization-for-large-catalogs", "0.85", "monthly"),
+    ("/examples", "0.85", "monthly"),
+    ("/examples/google-shopping-feed-before-after", "0.85", "monthly"),
+    ("/examples/product-title-optimization-examples", "0.85", "monthly"),
+    ("/examples/product-feed-quality-audit-example", "0.85", "monthly"),
     ("/terms", "0.4", "yearly"),
     ("/privacy", "0.4", "yearly"),
     ("/cookies", "0.4", "yearly"),
@@ -300,6 +304,162 @@ def web_page_json_ld(
     return json_ld_script(obj)
 
 
+def rss_feed_link_tag() -> str:
+    """HTML discovery link for /feed.xml."""
+    base = site_base_url().rstrip("/")
+    href = esc_attr(f"{base}/feed.xml")
+    return f'    <link rel="alternate" type="application/rss+xml" title="Cartozo.ai Feed" href="{href}"/>\n'
+
+
+def dataset_json_ld(
+    *,
+    name: str,
+    description: str,
+    url: str,
+    downloads: list[dict[str, str]],
+    date_published: str = "",
+    date_modified: str = "",
+) -> str:
+    """Schema.org Dataset with DataDownload distribution entries."""
+    base = site_base_url().rstrip("/")
+    distribution = []
+    for item in downloads:
+        distribution.append(
+            {
+                "@type": "DataDownload",
+                "name": item.get("name", ""),
+                "contentUrl": item.get("contentUrl", ""),
+                "encodingFormat": item.get("encodingFormat", "text/csv"),
+            }
+        )
+    obj: dict[str, Any] = {
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        "name": name,
+        "description": (description or "")[:500],
+        "url": url,
+        "creator": {"@type": "Organization", "@id": f"{base}/#organization", "name": BRAND_NAME},
+        "isAccessibleForFree": True,
+        "license": f"{base}/terms",
+        "distribution": distribution,
+    }
+    if date_published and len(date_published) >= 10:
+        obj["datePublished"] = date_published[:10]
+    if date_modified and len(date_modified) >= 10:
+        obj["dateModified"] = date_modified[:10]
+    return json_ld_script(obj)
+
+
+def build_rss_feed_xml(*, items: list[dict[str, str]]) -> str:
+    """RSS 2.0 feed body from item dicts (title, link, description, pubDate, guid, category)."""
+    base = site_base_url().rstrip("/")
+    channel_title = f"{BRAND_NAME} — Product Feed Optimization"
+    channel_link = f"{base}/"
+    channel_desc = BRAND_DESCRIPTION
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
+        "  <channel>",
+        f"    <title>{html.escape(channel_title)}</title>",
+        f"    <link>{html.escape(channel_link)}</link>",
+        f"    <description>{html.escape(channel_desc)}</description>",
+        f"    <language>en-us</language>",
+        f'    <atom:link href="{html.escape(base + "/feed.xml")}" rel="self" type="application/rss+xml"/>',
+        f"    <lastBuildDate>{date.today().isoformat()}</lastBuildDate>",
+    ]
+    for item in items:
+        title = html.escape(item.get("title") or "")
+        link = html.escape(item.get("link") or "")
+        desc = html.escape(item.get("description") or "")
+        pub = html.escape(item.get("pubDate") or "")
+        guid = html.escape(item.get("guid") or link)
+        category = html.escape(item.get("category") or "")
+        lines.extend(
+            [
+                "    <item>",
+                f"      <title>{title}</title>",
+                f"      <link>{link}</link>",
+                f"      <guid isPermaLink=\"true\">{guid}</guid>",
+                f"      <description>{desc}</description>",
+            ]
+        )
+        if pub:
+            lines.append(f"      <pubDate>{pub}</pubDate>")
+        if category:
+            lines.append(f"      <category>{category}</category>")
+        lines.append("    </item>")
+    lines.extend(["  </channel>", "</rss>"])
+    return "\n".join(lines) + "\n"
+
+
+def collect_rss_items(db: Any) -> list[dict[str, str]]:
+    """Build RSS items from guides, examples, and published blog posts."""
+    from email.utils import format_datetime
+    from datetime import datetime, timezone
+
+    from .guide_pages import GUIDE_PAGES
+    from .services import db_repository as repo
+
+    base = site_base_url().rstrip("/")
+    items: list[dict[str, str]] = []
+
+    evergreen = [
+        ("/", "Cartozo.ai — AI product feed optimization", "Overview of Google Shopping feed optimization workflow."),
+        ("/guides", "Guides — Google Merchant feed optimization", "Evergreen guides for Merchant Center and Shopping feeds."),
+        ("/examples", "Product feed examples and CSV templates", "Fictional before/after feed examples and downloadable templates."),
+        ("/feed-structure", "Google Merchant product feed structure", "Field reference for common Merchant Center attributes."),
+        ("/faq", "FAQ — Cartozo.ai", "Product, pricing, Merchant Center, and workflow questions."),
+    ]
+    for path, title, desc in evergreen:
+        items.append(
+            {
+                "title": title,
+                "link": f"{base}{path}",
+                "description": desc,
+                "pubDate": format_datetime(datetime(2026, 7, 3, tzinfo=timezone.utc)),
+                "guid": f"{base}{path}",
+                "category": "Evergreen",
+            }
+        )
+
+    for spec in GUIDE_PAGES.values():
+        items.append(
+            {
+                "title": spec.meta_title,
+                "link": f"{base}{spec.path}",
+                "description": spec.meta_description,
+                "pubDate": format_datetime(datetime.fromisoformat(spec.date_published).replace(tzinfo=timezone.utc)),
+                "guid": f"{base}{spec.path}",
+                "category": "Guide",
+            }
+        )
+
+    articles = repo.list_blog_articles_published(db, limit=100)
+    for article in articles:
+        slug = (article.get("slug") or "").strip()
+        if not slug:
+            continue
+        link = canonical_url_blog_article(slug)
+        ts = article.get("published_at") or article.get("created_at") or ""
+        pub_dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        if isinstance(ts, str) and len(ts) >= 10:
+            try:
+                pub_dt = datetime.fromisoformat(ts[:19]).replace(tzinfo=timezone.utc)
+            except ValueError:
+                pass
+        items.append(
+            {
+                "title": (article.get("title") or slug).strip(),
+                "link": link,
+                "description": (article.get("meta_description") or article.get("excerpt") or "")[:300],
+                "pubDate": format_datetime(pub_dt),
+                "guid": link,
+                "category": (article.get("topic_cluster") or "Blog").replace("-", " ").title(),
+            }
+        )
+    return items
+
+
 def seo_cached_snapshot_is_stale(cached: str) -> bool:
     """True when admin-cached robots/sitemap was built for a different origin (e.g. localhost)."""
     c = (cached or "").strip()
@@ -357,6 +517,10 @@ Allow: /
 User-agent: bingbot
 Allow: /
 
+# Common Crawl — public marketing content only; private paths blocked below
+User-agent: CCBot
+Allow: /
+
 # App areas — block for all bots
 User-agent: *
 Disallow: /admin
@@ -408,6 +572,15 @@ def build_llms_txt_body(base: str) -> str:
         f"- {b}/guides/google-shopping-title-optimization",
         f"- {b}/guides/product-feed-optimization-checklist",
         f"- {b}/guides/product-feed-optimization-for-large-catalogs",
+        "",
+        "## Examples and templates",
+        f"- {b}/examples — Fictional feed before/after examples and CSV templates",
+        f"- {b}/examples/google-shopping-feed-before-after",
+        f"- {b}/examples/product-title-optimization-examples",
+        f"- {b}/examples/product-feed-quality-audit-example",
+        "",
+        "## Discovery feeds",
+        f"- {b}/feed.xml — RSS feed for blog posts and guides",
         "",
         "## Blog",
         f"- {b}/blog — Articles on feed quality, Merchant Center, and optimization",

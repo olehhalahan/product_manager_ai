@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 
 from .public_nav import public_site_footer_html, public_site_nav_html, public_site_styles_block, public_site_theme_toggle_script
+from .seo import rss_feed_link_tag
 
 
 def _legal_seo_extra(canonical_url: str, ot: str, od: str, og_image: str) -> str:
@@ -64,6 +65,7 @@ def build_legal_document_html(
 <meta property="og:description" content="{od}"/>
 <meta name="robots" content="index,follow"/>
 {seo_extra}{xh}
+{rss_feed_link_tag()}
 <script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>

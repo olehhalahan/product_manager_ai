@@ -77,11 +77,16 @@ from .seo import (
     organization_json_ld_graph,
     build_robots_txt_body,
     build_llms_txt_body,
+    build_rss_feed_xml,
+    collect_rss_items,
     PUBLIC_SITEMAP_STATIC,
+    rss_feed_link_tag,
     seo_cached_snapshot_is_stale,
 )
 from .use_case_pages import register_use_case_routes
 from .guide_pages import register_guide_routes
+from .example_pages import register_example_routes
+from .indexnow import indexnow_key, submit_all_public_urls
 from .feed_structure_page import build_feed_structure_html
 from .about_us_page import build_about_us_html
 from .terms_page import build_terms_html
@@ -3304,6 +3309,7 @@ def _build_homepage_html(request: Request) -> str:
         )
     seo_link_extra = (
         head_canonical_og_url_type(canonical_url=canonical, og_type="website")
+        + rss_feed_link_tag()
         + tw_img
         + organization_json_ld_graph(logo_url=(og_image or f"{base.rstrip('/')}/assets/logo-dark.png"))
     )
@@ -4310,6 +4316,7 @@ async def export_batch(request: Request, batch_id: str):
         media_type="text/csv",
         headers={
             "Content-Disposition": f'attachment; filename="merchant_feed_{batch_id}.csv"',
+            "X-Robots-Tag": "noindex, nofollow",
         },
     )
 
@@ -4338,6 +4345,7 @@ async def export_batch_positioning_debug(request: Request, batch_id: str):
         media_type="text/csv",
         headers={
             "Content-Disposition": f'attachment; filename="positioning_debug_{batch_id[:8]}.csv"',
+            "X-Robots-Tag": "noindex, nofollow",
         },
     )
 
@@ -4453,6 +4461,7 @@ async def export_selected_products(request: Request, batch_id: str, product_ids:
         media_type="text/csv",
         headers={
             "Content-Disposition": f'attachment; filename="merchant_feed_selected_{batch_id[:8]}.csv"',
+            "X-Robots-Tag": "noindex, nofollow",
         },
     )
 
@@ -7230,7 +7239,18 @@ async def api_admin_regenerate_sitemap_robots(request: Request):
         set_setting(db, "cached_sitemap_xml", sm)
         set_setting(db, "cached_robots_txt", rb)
         set_setting(db, "sitemap_robots_generated_at", ts)
-    return JSONResponse({"ok": True, "generated_at": ts})
+    indexnow_result = None
+    if _os.getenv("INDEXNOW_ENABLED", "").strip().lower() in ("1", "true", "yes"):
+        with get_db() as db:
+            indexnow_result = submit_all_public_urls(db)
+    payload = {"ok": True, "generated_at": ts}
+    if indexnow_result is not None:
+        payload["indexnow"] = {
+            "submitted": indexnow_result.get("submitted", 0),
+            "failed_count": indexnow_result.get("failed_count", 0),
+            "skipped": indexnow_result.get("skipped", False),
+        }
+    return JSONResponse(payload)
 
 
 @app.get("/admin/seo", response_class=HTMLResponse)
@@ -7772,6 +7792,17 @@ async def llms_txt():
     return PlainTextResponse(build_llms_txt_body(base), media_type="text/plain; charset=utf-8")
 
 
+@app.get("/feed.xml", include_in_schema=False)
+async def rss_feed():
+    """RSS 2.0 feed for blog posts, guides, and evergreen pages."""
+    from .db import get_db
+
+    with get_db() as db:
+        items = collect_rss_items(db)
+    body = build_rss_feed_xml(items=items)
+    return Response(content=body, media_type="application/rss+xml; charset=utf-8")
+
+
 @app.get("/feed-structure", response_class=HTMLResponse)
 def feed_structure_page(request: Request):
     title = "Google Merchant product feed structure — Cartozo.ai"
@@ -7859,6 +7890,26 @@ async def robots_txt(request: Request):
     return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
 
 
+def _register_indexnow_key_route() -> None:
+    """Register /{INDEXNOW_KEY}.txt only when configured (avoids shadowing /robots.txt)."""
+    key = indexnow_key()
+    if not key:
+        return
+
+    async def indexnow_verification_file():
+        return PlainTextResponse(key, media_type="text/plain; charset=utf-8")
+
+    app.add_api_route(
+        f"/{key}.txt",
+        indexnow_verification_file,
+        methods=["GET"],
+        include_in_schema=False,
+    )
+
+
+_register_indexnow_key_route()
+
+
 @app.get("/api/admin/subscriptions")
 async def admin_list_subscriptions(request: Request):
     """List all WayForPay payments (approved subscriptions)."""
@@ -7910,6 +7961,7 @@ register_wayforpay_routes(app)
 register_writter_routes(app)
 register_use_case_routes(app)
 register_guide_routes(app)
+register_example_routes(app)
 
 # Registered after all other routers so /terms is never shadowed by a catch-all elsewhere.
 app.add_api_route(

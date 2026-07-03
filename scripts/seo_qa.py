@@ -29,6 +29,11 @@ from app.seo import PUBLIC_SITEMAP_STATIC, seo_cached_snapshot_is_stale, site_ba
 PRODUCTION_BASE = "https://cartozo.ai"
 NEW_URLS = [
     "/feed-structure",
+    "/examples",
+    "/examples/google-shopping-feed-before-after",
+    "/examples/product-title-optimization-examples",
+    "/examples/product-feed-quality-audit-example",
+    "/templates/sample-product-feed-before.csv",
     "/guides",
     "/use-cases/fix-google-merchant-center-disapprovals",
     "/use-cases/optimize-google-shopping-product-titles",
@@ -59,6 +64,7 @@ CORE_URLS = [
     "/robots.txt",
     "/sitemap.xml",
     "/llms.txt",
+    "/feed.xml",
 ]
 BLOCKED_SITEMAP_FRAGMENTS = (
     "localhost",

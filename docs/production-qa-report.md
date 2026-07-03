@@ -25,6 +25,13 @@
 | /guides/product-feed-optimization-checklist | 200 | 200 | PASS |  |
 | /guides/product-feed-optimization-for-large-catalogs | 200 | 200 | PASS |  |
 | /feed-structure | 200 | 200 | PASS |  |
+| /examples | 200 | 200 | PASS |  |
+| /examples/google-shopping-feed-before-after | 200 | 200 | PASS |  |
+| /examples/product-title-optimization-examples | 200 | 200 | PASS |  |
+| /examples/product-feed-quality-audit-example | 200 | 200 | PASS |  |
+| /templates/google-merchant-center-feed-template.csv | 200 | 200 | PASS |  |
+| /templates/sample-product-feed-before.csv | 200 | 200 | PASS |  |
+| /templates/sample-product-feed-after.csv | 200 | 200 | PASS |  |
 | /blog | 200 | 200 | PASS |  |
 | /blog/topics/google-merchant-center-issues | 200 | 200 | PASS | noindex (empty topic hub — intentional until posts assigned) |
 | /blog/topics/product-title-and-description-optimization | 200 | 200 | PASS | noindex (empty topic hub — intentional until posts assigned) |
@@ -37,6 +44,7 @@
 | /robots.txt | 200 | 200 | PASS |  |
 | /sitemap.xml | 200 | 200 | PASS |  |
 | /llms.txt | 200 | 200 | PASS |  |
+| /feed.xml | 200 | 200 | PASS |  |
 
 ## SEO metadata
 
@@ -57,6 +65,10 @@
 | /guides/product-feed-optimization-checklist | yes | yes | yes | 1 | yes | PASS |
 | /guides/product-feed-optimization-for-large-catalogs | yes | yes | yes | 1 | yes | PASS |
 | /feed-structure | yes | yes | yes | 1 | yes | PASS |
+| /examples | yes | yes | yes | 1 | yes | PASS |
+| /examples/google-shopping-feed-before-after | yes | yes | yes | 1 | yes | PASS |
+| /examples/product-title-optimization-examples | yes | yes | yes | 1 | yes | PASS |
+| /examples/product-feed-quality-audit-example | yes | yes | yes | 1 | yes | PASS |
 | /blog | yes | yes | yes | 1 | yes | PASS |
 | /blog/topics/google-merchant-center-issues | yes | yes | yes | 1 | noindex | PASS |
 | /blog/topics/product-title-and-description-optimization | yes | yes | yes | 1 | noindex | PASS |
@@ -76,6 +88,7 @@
 | /faq | Answer, BreadcrumbList, FAQPage, ListItem, Offer, Organization, Question, SoftwareApplication, UnitPriceSpecification, WebPage, WebSite | none |  | PASS |
 | /about | BreadcrumbList, ListItem, Offer, Organization, SoftwareApplication, UnitPriceSpecification, WebPage, WebSite | none |  | PASS |
 | /feed-structure | BreadcrumbList, ListItem, Offer, Organization, SoftwareApplication, UnitPriceSpecification, WebPage, WebSite | none |  | PASS |
+| /examples | BreadcrumbList, DataDownload, Dataset, ListItem, Offer, Organization, SoftwareApplication, UnitPriceSpecification, WebPage, WebSite | none |  | PASS |
 | /blog | BreadcrumbList, ListItem, Offer, Organization, SoftwareApplication, UnitPriceSpecification, WebPage, WebSite | none |  | PASS |
 | /blog/topics/google-merchant-center-issues | BreadcrumbList, ListItem, Offer, Organization, SoftwareApplication, UnitPriceSpecification, WebPage, WebSite | none |  | PASS |
 | /use-cases/fix-google-merchant-center-disapprovals | Answer, BreadcrumbList, FAQPage, ListItem, Offer, Organization, Question, SoftwareApplication, UnitPriceSpecification, WebPage, WebSite | none |  | PASS |
@@ -97,6 +110,8 @@
 | /sitemap.xml | 200 | none | none | none | PASS |
 | /robots.txt | 200 | none | none | none | PASS |
 | /llms.txt | 200 | none | none | none | PASS |
+| /feed.xml | 200 | none | none | none | PASS |
+| /qa-test-indexnow-key.txt | 200 | none | none | none | PASS |
 
 ## Post-deploy checklist
 
@@ -104,4 +119,5 @@
 2. Regenerate sitemap/robots in Admin → Settings → SEO
 3. Assign blog posts to content clusters in Writter admin
 4. Submit sitemap in Google Search Console and Bing Webmaster Tools
-5. Remove `noindex` from topic hubs once posts are assigned (automatic when posts exist)
+5. Run `python3 scripts/submit_indexnow.py submit-indexnow-all-public` after major content updates
+6. Remove `noindex` from topic hubs once posts are assigned (automatic when posts exist)

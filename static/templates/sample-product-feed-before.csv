@@ -1,0 +1,6 @@
+id,title,description,link,image_link,availability,price,brand,gtin,condition,google_product_category,product_type
+SKU-2001,Shoe,Good shoe for running.,https://example.com/p/shoe,https://example.com/img/shoe.jpg,in stock,79.99 USD,GenericBrand,,new,Apparel & Accessories > Shoes,Shoes
+SKU-2002,Chair,Nice chair for home.,https://example.com/p/chair,https://example.com/img/chair.jpg,in stock,129.99 USD,HomeCo,,new,Furniture > Chairs,Dining chair
+SKU-2003,Phone case,Protective case.,https://example.com/p/case,https://example.com/img/case.jpg,in stock,19.99 USD,,012345678936,new,Electronics > Communications > Telephony,Phone accessory
+SKU-2004,Serum,Skincare product.,https://example.com/p/serum,https://example.com/img/serum.jpg,in stock,34.99 USD,GlowLab,,new,Health & Beauty > Personal Care,Beauty
+SKU-2005,Bedding set,Soft bedding.,https://example.com/p/bedding,https://example.com/img/bedding.jpg,out of stock,59.99 USD,NestLine,,new,Home & Garden > Linens,Bedding

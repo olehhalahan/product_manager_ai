@@ -285,11 +285,48 @@ class _RateLimiterProxy:
 rate_limiter = _RateLimiterProxy()
 
 
+_NOINDEX_PATH_PREFIXES: tuple[str, ...] = (
+    "/admin",
+    "/api/",
+    "/articles/",
+    "/auth/",
+    "/batches/",
+    "/dashboard",
+    "/app/",
+    "/login",
+    "/logout",
+    "/upload",
+    "/settings",
+    "/merchant/",
+    "/docs",
+)
+
+_NOINDEX_EXACT: frozenset[str] = frozenset({"/login", "/upload", "/settings"})
+
+
+def _x_robots_tag_for_path(path: str) -> str | None:
+    """Return noindex directive for private/app/generated routes."""
+    if not path:
+        return None
+    if path in _NOINDEX_EXACT:
+        return "noindex, nofollow"
+    if path.startswith("/templates/") and path.endswith(".csv"):
+        return "noindex, nofollow"
+    for prefix in _NOINDEX_PATH_PREFIXES:
+        if path == prefix.rstrip("/") or path.startswith(prefix):
+            return "noindex, nofollow"
+    return None
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add standard security headers to every response."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         response = await call_next(request)
+        path = request.url.path or ""
+        robots = _x_robots_tag_for_path(path)
+        if robots:
+            response.headers.setdefault("X-Robots-Tag", robots)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
