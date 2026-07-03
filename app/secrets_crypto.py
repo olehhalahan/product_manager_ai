@@ -69,11 +69,14 @@ def decrypt_setting_value(value: str) -> str:
         return raw
     f = _fernet()
     if not f:
-        raise RuntimeError(
-            "Encrypted setting found in database but SECRETS_ENCRYPTION_KEY is not configured."
-        )
+        logger.error("Encrypted setting found but SECRETS_ENCRYPTION_KEY is not configured")
+        return ""
     token = raw[len(ENC_PREFIX) :]
-    return f.decrypt(token.encode("ascii")).decode("utf-8")
+    try:
+        return f.decrypt(token.encode("ascii")).decode("utf-8")
+    except Exception:
+        logger.exception("Failed to decrypt setting value")
+        return ""
 
 
 def decrypt_settings_dict(settings: dict) -> dict:

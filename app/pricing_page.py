@@ -303,7 +303,7 @@ def build_pricing_html(
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>{mt}</title>
 <meta name="description" content="{md}"/>
-{seo_block}<script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
+{seo_block}<script src="/static/csrf.js"></script><script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
@@ -691,11 +691,23 @@ a{{color:inherit;text-decoration:none}}
     }};
   }}
 
+  function csrfHeaders() {{
+    var token = (window.getCsrfToken && window.getCsrfToken()) || '';
+    if (!token) {{
+      var m = document.cookie.match(/(?:^|;\\s*)XSRF-TOKEN=([^;]+)/);
+      token = m ? decodeURIComponent(m[1]) : '';
+    }}
+    return token ? {{ 'X-CSRF-Token': token }} : {{}};
+  }}
+
   function postWayforpayCheckout(a, payload) {{
     fetch('/api/payments/wayforpay/session', {{
       method: 'POST',
       credentials: 'same-origin',
-      headers: {{ 'Content-Type': 'application/json', 'Accept': 'application/json' }},
+      headers: Object.assign(
+        {{ 'Content-Type': 'application/json', 'Accept': 'application/json' }},
+        csrfHeaders()
+      ),
       body: JSON.stringify({{ plan_id: payload.planId }})
     }}).then(function (r) {{
       if (r.status === 401) {{
@@ -707,6 +719,10 @@ a{{color:inherit;text-decoration:none}}
       if (!x) return;
       if (!x.ok) {{
         var d = (x.j && x.j.detail) ? x.j.detail : ('Error ' + (x.status || ''));
+        if (x.status === 403 && String(d).toLowerCase().indexOf('csrf') >= 0) {{
+          alert('Session expired. Please refresh the page and try again.');
+          return;
+        }}
         alert(d);
         return;
       }}
@@ -763,7 +779,6 @@ a{{color:inherit;text-decoration:none}}
   attachPlanHooks();
 }})();
 </script>
-<script src="/static/csrf.js"></script>
 </body>
 </html>
 """

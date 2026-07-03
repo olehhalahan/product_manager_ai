@@ -489,12 +489,13 @@ def csrf_script_tag() -> str:
 
 
 def validate_csrf(request: Request, *, form_token: Optional[str] = None) -> None:
-    """Validate double-submit CSRF token for cookie-authenticated mutating requests."""
+    """Validate double-submit CSRF token (header/form must match cookie or session)."""
     from fastapi import HTTPException
 
     if request.method in _SAFE_METHODS or csrf_exempt(request):
         return
 
+    cookie_token = (request.cookies.get(CSRF_COOKIE) or "").strip()
     session_token = get_or_create_csrf_token(request)
     submitted = (
         request.headers.get(CSRF_HEADER)
@@ -502,8 +503,13 @@ def validate_csrf(request: Request, *, form_token: Optional[str] = None) -> None
         or form_token
         or ""
     ).strip()
-    if not submitted or not secrets.compare_digest(session_token, submitted):
+    if not submitted:
         raise HTTPException(status_code=403, detail="CSRF validation failed")
+    if cookie_token and secrets.compare_digest(submitted, cookie_token):
+        return
+    if session_token and secrets.compare_digest(submitted, session_token):
+        return
+    raise HTTPException(status_code=403, detail="CSRF validation failed")
 
 
 class CsrfMiddleware(BaseHTTPMiddleware):
