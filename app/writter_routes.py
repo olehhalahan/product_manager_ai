@@ -36,6 +36,7 @@ from .blog_banner import prompt_visual_label_for_theme, resolve_theme_key
 from .blog_banner.screenshot import banner_dimensions
 from .writter_new_article_page import render_writter_new_article_html
 from .gtm import gtm_body_for_path, gtm_head_for_path
+from .security import rate_limiter, sanitize_blog_html, validate_image_content
 
 _log = logging.getLogger("uvicorn.error")
 
@@ -1567,6 +1568,10 @@ async def api_upload_writter_screenshots(request: Request, files: List[UploadFil
         raw = await up.read()
         if len(raw) > _WRITTER_SCREENSHOT_MAX_BYTES:
             raise HTTPException(400, detail="Each image must be 5 MB or smaller.")
+        try:
+            validate_image_content(raw, ct)
+        except ValueError as exc:
+            raise HTTPException(400, detail=str(exc)) from exc
         ext = _WRITTER_SCREENSHOT_TYPES[ct]
         fname = f"{uuid.uuid4().hex}{ext}"
         out_path = _WRITTER_SCREENSHOT_DIR / fname
@@ -2425,12 +2430,8 @@ async def api_writter_auto_daily_runs(request: Request, limit: int = 25):
 
 @router.post("/api/cron/writter-auto-daily")
 async def api_cron_writter_auto_daily(request: Request):
-    """External cron (e.g. 0 13 * * *). Header ``X-Writter-Cron-Secret`` or query ``secret``."""
-    secret_in = (
-        request.headers.get("x-writter-cron-secret")
-        or request.query_params.get("secret")
-        or ""
-    ).strip()
+    """External cron (e.g. 0 13 * * *). Header ``X-Writter-Cron-Secret`` only."""
+    secret_in = (request.headers.get("x-writter-cron-secret") or "").strip()
     with get_db() as db:
         settings = repo.get_settings(db)
     expected = (
@@ -2484,7 +2485,9 @@ async def api_update_article(
             db,
             row,
             title=body.title,
-            content_html=strip_legacy_writter_inline_diagrams(body.content_html or ""),
+            content_html=sanitize_blog_html(
+                strip_legacy_writter_inline_diagrams(body.content_html or "")
+            ),
             meta_description=body.meta_description,
             status=body.status,
         )
@@ -3150,7 +3153,9 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
     if len(_bc) > 72:
         _bc = _bc[:69] + "…"
     breadcrumb_title_esc = html_module.escape(_bc)
-    blog_body = display_content if isinstance(display_content, str) else str(display_content or "")
+    blog_body = sanitize_blog_html(
+        display_content if isinstance(display_content, str) else str(display_content or "")
+    )
     article_url = canonical_url_blog_article(slug)
     og_desc_for_social = ((meta_plain or "").strip()[:500]) or ((title_plain or "").strip()[:160])
     article_seo = head_canonical_social(
@@ -3396,6 +3401,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
 @router.post("/api/blog/{slug}/analytics")
 async def blog_analytics(request: Request, slug: str, body: AnalyticsBody):
     """Beacon-friendly: no auth required; validates slug exists."""
+    rate_limiter.check_request(request, "blog_analytics", limit=120, window_seconds=60)
     with get_db() as db:
         row = repo.get_blog_article_by_slug(db, slug)
         if not row or row.status != "published":

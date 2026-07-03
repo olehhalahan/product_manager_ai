@@ -62,7 +62,12 @@ def validate_public_http_url(url: str) -> str:
         raise FeedScrapeError("Only http and https URLs are allowed")
     if not parsed.netloc:
         raise FeedScrapeError("Invalid URL")
-    return u
+    from ..security import validate_ssrf_target
+
+    try:
+        return validate_ssrf_target(u)
+    except ValueError as exc:
+        raise FeedScrapeError(str(exc)) from exc
 
 
 def _fetch(url: str, timeout: float = 30.0) -> str:
@@ -70,6 +75,12 @@ def _fetch(url: str, timeout: float = 30.0) -> str:
     with httpx.Client(follow_redirects=True, timeout=timeout, headers=headers) as client:
         r = client.get(url)
         r.raise_for_status()
+        from ..security import validate_ssrf_target
+
+        try:
+            validate_ssrf_target(str(r.url))
+        except ValueError as exc:
+            raise FeedScrapeError(str(exc)) from exc
         return r.text
 
 

@@ -36,7 +36,6 @@ from .services.validator import (
 )
 from .services.postgres_storage import PostgresStorage
 from .auth import (
-    get_session_secret,
     get_oauth,
     get_current_user,
     get_user_role,
@@ -45,6 +44,15 @@ from .auth import (
     require_login_http,
     require_admin_redirect,
     require_admin_http,
+)
+from .security import (
+    SecurityHeadersMiddleware,
+    dev_auth_allowed,
+    protect_admin_docs,
+    rate_limiter,
+    require_not_production_debug,
+    session_middleware_kwargs,
+    validate_startup_security,
 )
 import json
 from datetime import datetime, timezone
@@ -63,13 +71,15 @@ from .about_us_page import build_about_us_html
 from .terms_page import build_terms_html
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
 
-app = FastAPI(title="Product Content Optimizer", docs_url=None)
+app = FastAPI(title="Product Content Optimizer", docs_url=None, openapi_url=None)
 
 import os as _os
 
 from .gtm import GTM_BODY, GTM_HEAD, gtm_body_for_path, gtm_head_for_path
 
-app.add_middleware(SessionMiddleware, secret_key=get_session_secret())
+validate_startup_security()
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(SessionMiddleware, **session_middleware_kwargs())
 
 
 def _maybe_start_writter_auto_scheduler():
@@ -206,7 +216,7 @@ def _batch_history_label(status: str, merchant_pushed_at: Optional[str], closed_
 
 
 def _ensure_batch_owner_from_batch(request: Request, batch) -> None:
-    """403 if the batch belongs to another user. Batches with no owner (legacy) stay accessible."""
+    """403 if the batch belongs to another user. Legacy batches without owner are claimed on first access."""
     user = get_current_user(request)
     email = (user.get("email") or "").strip().lower()
     if not email:
@@ -216,6 +226,18 @@ def _ensure_batch_owner_from_batch(request: Request, batch) -> None:
     owner = (getattr(batch, "user_email", None) or "").strip().lower()
     if owner and owner != email:
         raise HTTPException(status_code=403, detail="Access denied.")
+    if not owner:
+        batch_id = getattr(batch, "id", None) or getattr(batch, "batch_id", None)
+        if not batch_id:
+            raise HTTPException(status_code=403, detail="Access denied.")
+        from .db import get_db
+        from .services.db_repository import claim_batch_owner_if_unowned
+
+        with get_db() as db:
+            if not claim_batch_owner_if_unowned(db, batch_id, email):
+                raise HTTPException(status_code=403, detail="Access denied.")
+        if hasattr(batch, "user_email"):
+            batch.user_email = email
 
 
 _PROJECT_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
@@ -692,13 +714,20 @@ def favicon_redirect():
 
 
 @app.get("/docs", include_in_schema=False)
-def custom_swagger_ui():
+def custom_swagger_ui(request: Request):
+    protect_admin_docs(request)
     return get_swagger_ui_html(
         openapi_url="/openapi.json",
         title="Product Content Optimizer – API",
         swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
         swagger_css_url="/static/swagger-overrides.css",
     )
+
+
+@app.get("/openapi.json", include_in_schema=False)
+def openapi_json(request: Request):
+    protect_admin_docs(request)
+    return JSONResponse(app.openapi())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -818,21 +847,21 @@ async def auth_apple_callback(request: Request):
 
 @app.get("/auth/dev")
 async def auth_dev(request: Request):
-    """Dev bypass: create fake session when OAuth not configured (for local testing)."""
-    if not (_os.getenv("GOOGLE_CLIENT_ID") or _os.getenv("APPLE_CLIENT_ID")):
-        next_url = request.query_params.get("next", "/upload")
-        email = "oleh.halahan@zanzarra.com"
-        user = {
-            "id": "dev-user",
-            "email": email,
-            "name": "Dev Admin",
-            "provider": "dev",
-            "role": get_user_role(email),
-        }
-        request.session["user"] = user
-        _track_user(user)
-        return RedirectResponse(url=next_url, status_code=302)
-    raise HTTPException(status_code=404, detail="Dev auth not available when OAuth is configured")
+    """Dev bypass: create fake session when OAuth not configured (local testing only)."""
+    if not dev_auth_allowed():
+        raise HTTPException(status_code=404, detail="Not found")
+    next_url = request.query_params.get("next", "/upload")
+    email = "oleh.halahan@zanzarra.com"
+    user = {
+        "id": "dev-user",
+        "email": email,
+        "name": "Dev Admin",
+        "provider": "dev",
+        "role": get_user_role(email),
+    }
+    request.session["user"] = user
+    _track_user(user)
+    return RedirectResponse(url=next_url, status_code=302)
 
 
 @app.get("/logout")
@@ -887,13 +916,15 @@ def _oauth_debug_json(request: Request) -> JSONResponse:
 
 @app.get("/api/auth/oauth-debug")
 def oauth_debug(request: Request):
-    """Debug: env client id + effective redirect URI (see also GET /oauth-debug)."""
+    """Debug: env client id + effective redirect URI (local/dev only)."""
+    require_not_production_debug(request)
     return _oauth_debug_json(request)
 
 
 @app.get("/oauth-debug")
 def oauth_debug_short(request: Request):
-    """Same JSON as /api/auth/oauth-debug (shorter URL for quick checks)."""
+    """Same JSON as /api/auth/oauth-debug (local/dev only)."""
+    require_not_production_debug(request)
     return _oauth_debug_json(request)
 
 
@@ -2104,14 +2135,25 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             syncConversationUI();
         }
 
-        function addMsgWithButton(role, content, buttonText, buttonHref) {
+        function escHtml(s) {{
+            const d = document.createElement('div');
+            d.textContent = s == null ? '' : String(s);
+            return d.innerHTML;
+        }}
+
+        function addMsgWithButton(role, content, buttonText, buttonHref) {{
+            const href = (buttonHref || '').trim();
+            if (!href.startsWith('/') || href.startsWith('//')) {{
+                addMsg(role, content);
+                return;
+            }}
             const div = document.createElement('div');
             div.className = 'hp-chat-msg ' + role;
-            div.innerHTML = content + ' <a href="' + buttonHref + '" class="hp-chat-upload-btn">' + buttonText + '</a>';
+            div.innerHTML = escHtml(content) + ' <a href="' + escHtml(href) + '" class="hp-chat-upload-btn">' + escHtml(buttonText) + '</a>';
             chatMessages.appendChild(div);
             chatMessages.scrollTop = chatMessages.scrollHeight;
             syncConversationUI();
-        }
+        }}
 
         function addStatusIndicator() {
             const div = document.createElement('div');
@@ -2319,11 +2361,7 @@ def _build_login_page(
         providers.append((f'<a href="/auth/apple{next_param}" class="auth-btn auth-apple">Continue with Apple</a>', True))
     # Dev bypass when OAuth not configured (for local testing only)
     if not providers:
-        # In production (DEPLOY_URL set or cartozo.ai host), never show dev mode
-        deploy_url = _os.getenv("DEPLOY_URL", "")
-        is_production = bool(deploy_url) or (request_host and "cartozo.ai" in request_host.lower())
-        dev_bypass = not is_production and _os.getenv("AUTH_DEV_BYPASS", "1").lower() in ("1", "true", "yes")
-        if dev_bypass:
+        if dev_auth_allowed():
             providers.append((f'<a href="/auth/dev{next_param}" class="auth-btn auth-google">Continue (dev mode)</a>', True))
         else:
             providers.append(('<p class="auth-no-providers">OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env, or AUTH_DEV_BYPASS=1 for local testing.</p>', False))
@@ -3414,6 +3452,7 @@ def how_it_works_page(request: Request):
 @app.post("/api/contact")
 async def api_contact(request: Request):
     """Save contact form submission."""
+    rate_limiter.check_request(request, "api_contact", limit=10, window_seconds=60)
     import re
     data = await request.json()
     name = (data.get("name") or "").strip()[:255]
@@ -5878,11 +5917,8 @@ def _request_is_loopback(request: Request) -> bool:
 
 @app.get("/health")
 def health(request: Request):
-    """Loopback clients get main_py path — use to verify which code instance serves :8000."""
-    out: dict = {"status": "ok", "upload_ui": UPLOAD_UI_REVISION}
-    if _request_is_loopback(request):
-        out["main_py"] = __file__
-    return out
+    """Health check for load balancers."""
+    return {"status": "ok", "upload_ui": UPLOAD_UI_REVISION}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -6629,14 +6665,40 @@ async def settings_page(request: Request):
 # Chat API (AI agent for homepage)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _ensure_chat_session_access(request: Request, session_id: str, sess: Optional[dict]) -> None:
+    """Prevent chat session hijacking via guessed UUIDs."""
+    if not sess:
+        owned = request.session.setdefault("owned_chat_sessions", [])
+        if session_id not in owned:
+            owned.append(session_id)
+            if len(owned) > 20:
+                del owned[0]
+        return
+
+    user = get_current_user(request)
+    user_email = (user.get("email") or "").strip().lower() if user else ""
+    owner = (sess.get("user_email") or "").strip().lower()
+    if owner:
+        if not user_email or user_email != owner:
+            raise HTTPException(status_code=403, detail="Access denied.")
+        return
+
+    owned = request.session.setdefault("owned_chat_sessions", [])
+    if session_id not in owned:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+
 @app.post("/api/chat")
 async def api_chat(request: Request):
     """Chat with AI agent about Cartozo.ai. Uses same OpenAI API as titles/descriptions."""
+    rate_limiter.check_request(request, "api_chat", limit=30, window_seconds=60)
     data = await request.json()
     session_id = data.get("session_id") or str(uuid.uuid4())
     user_message = (data.get("message") or "").strip()
     if not user_message:
         raise HTTPException(status_code=400, detail="message is required")
+    if len(user_message) > 4000:
+        raise HTTPException(status_code=400, detail="message too long")
 
     _sync_ai_from_settings()
 
@@ -6652,6 +6714,7 @@ async def api_chat(request: Request):
 
     with get_db() as db:
         sess = get_chat_session(db, session_id)
+        _ensure_chat_session_access(request, session_id, sess)
         if not sess:
             create_chat_session(db, session_id, user_email)
             messages = []
@@ -6669,8 +6732,9 @@ async def api_chat(request: Request):
 
 
 @app.post("/api/chat/upload-csv")
-async def api_chat_upload_csv(file: UploadFile = File(...)):
-    """Accept CSV from hero chat, parse, validate, save to pending_uploads. No login required."""
+async def api_chat_upload_csv(request: Request, file: UploadFile = File(...)):
+    """Accept CSV from hero chat, parse, validate, save to pending_uploads."""
+    rate_limiter.check_request(request, "api_chat_upload_csv", limit=10, window_seconds=60)
     if file.content_type not in {"text/csv", "application/vnd.ms-excel"}:
         raise HTTPException(status_code=400, detail="Only CSV upload is supported.")
 
@@ -7092,6 +7156,7 @@ def _format_total_seconds_summary(total_sec: int) -> tuple:
 @app.post("/api/onboarding/start")
 async def api_onboarding_start(request: Request):
     """Start a new onboarding session (call from your onboarding wizard)."""
+    rate_limiter.check_request(request, "api_onboarding_start", limit=20, window_seconds=60)
     try:
         data = await request.json()
     except Exception:
@@ -7112,6 +7177,7 @@ async def api_onboarding_start(request: Request):
 @app.post("/api/onboarding/step")
 async def api_onboarding_step(request: Request):
     """Report progress: step 1–7, optional source (how they found us)."""
+    rate_limiter.check_request(request, "api_onboarding_step", limit=60, window_seconds=60)
     data = await request.json()
     sid = data.get("session_id")
     if not sid:
@@ -7135,6 +7201,7 @@ async def api_onboarding_step(request: Request):
 @app.post("/api/onboarding/complete")
 async def api_onboarding_complete(request: Request):
     """Mark onboarding as completed (sets duration)."""
+    rate_limiter.check_request(request, "api_onboarding_complete", limit=30, window_seconds=60)
     data = await request.json()
     sid = data.get("session_id")
     if not sid:

@@ -509,6 +509,23 @@ def get_batch(db: Session, batch_id: str) -> Optional[dict]:
     }
 
 
+def claim_batch_owner_if_unowned(db: Session, batch_id: str, user_email: str) -> bool:
+    """Assign owner to a legacy batch with no user_email. Returns True if caller may access."""
+    from ..db_models import Batch as BatchModel
+
+    row = db.execute(select(BatchModel).where(BatchModel.batch_id == batch_id)).scalars().one_or_none()
+    if not row:
+        return False
+    owner = (row.user_email or "").strip().lower()
+    email = (user_email or "").strip().lower()
+    if owner:
+        return owner == email
+    if not email:
+        return False
+    row.user_email = email
+    return True
+
+
 def update_batch(db: Session, batch_id: str, status: str, products_json: list, completed_at=None) -> None:
     """Update batch status and products."""
     from ..db_models import Batch as BatchModel
