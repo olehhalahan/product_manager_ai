@@ -16,7 +16,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .auth import get_current_user, is_admin, require_admin_http, require_admin_redirect
@@ -25,7 +25,7 @@ from .services import db_repository as repo
 from .services.db_repository import get_settings
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html
-from .blog_topics import PUBLIC_BLOG_TOPICS, related_links_for_cluster_slug, topic_by_slug
+from .blog_topics import PUBLIC_BLOG_TOPICS, related_links_for_cluster_slug, resolve_topic_slug
 from .seo import (
     blog_posting_json_ld,
     breadcrumb_json_ld,
@@ -2802,7 +2802,16 @@ def _blog_topic_page_html(
   <div class="blog-idx-card-body"><h2 class="blog-idx-card-title">{title}</h2>{date_line}{meta_line}</div>
 </a></li>"""
         )
-    cards_html = "\n".join(cards) if cards else '<li class="blog-idx-empty">No published articles in this topic yet. <a href="/blog">Browse all articles</a></li>'
+    cards_html = "\n".join(cards) if cards else (
+        '<li class="blog-idx-empty">'
+        "No published articles are assigned to this topic yet. "
+        "Browse the full <a href=\"/blog\">blog</a> or explore the related Cartozo pages below. "
+        "Articles appear here once assigned to this topic in Writter admin (Content clusters)."
+        "</li>"
+    )
+    robots_meta = ""
+    if not rows:
+        robots_meta = '  <meta name="robots" content="noindex,follow" />\n'
     related = topic.get("related") or []
     related_html = ""
     if related:
@@ -2840,7 +2849,7 @@ def _blog_topic_page_html(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title_esc}</title>
   <meta name="description" content="{meta_desc_esc}" />
-  {seo_block}{json_ld}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+{robots_meta}  {seo_block}{json_ld}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
   <style>
   {HP_NAV_CSS}
@@ -3059,14 +3068,17 @@ async def blog_index_page(request: Request, q: str = Query("", max_length=500)):
 @router.get("/blog/topics/{topic_slug}", response_class=HTMLResponse)
 async def blog_topic_page(request: Request, topic_slug: str):
     """Public blog hub filtered by topical cluster."""
-    topic = topic_by_slug(topic_slug)
+    base = site_base_url().rstrip("/")
+    topic, redirect_slug = resolve_topic_slug(topic_slug)
+    if redirect_slug:
+        return RedirectResponse(url=f"{base}/blog/topics/{redirect_slug}", status_code=301)
     if not topic:
         raise HTTPException(404, detail="Topic not found")
-    base = site_base_url().rstrip("/")
-    canonical_url = f"{base}/blog/topics/{topic_slug}"
+    canonical_slug = topic["slug"]
+    canonical_url = f"{base}/blog/topics/{canonical_slug}"
     with get_db() as db:
         repo.ensure_default_content_clusters(db)
-        cluster = repo.get_content_cluster_by_slug(db, topic_slug)
+        cluster = repo.get_content_cluster_by_slug(db, canonical_slug)
         if not cluster:
             raise HTTPException(404, detail="Topic not found")
         rows = repo.list_published_articles_in_cluster(db, cluster.id)
@@ -3674,7 +3686,7 @@ th,td{{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:lef
 {admin_top_nav_html("writter")}
 <div class="wt-main">
 <h1 style="margin:0 0 8px;">Content clusters</h1>
-<p style="color:#94a3b8;margin:0 0 20px;">Group pillar + supporting articles for topical authority.</p>
+<p style="color:#94a3b8;margin:0 0 12px;">Group pillar + supporting articles for topical authority. Public topic hubs live at <code>/blog/topics/&lt;slug&gt;</code> (e.g. <code>/blog/topics/google-merchant-center-issues</code>). Assign each published article to a cluster so it appears on the matching topic page. Empty topic pages are <code>noindex</code> until at least one published article is assigned.</p>
 <form id="cf">
 <label>Name</label><input name="name" id="cname" required placeholder="e.g. Product feed optimization" />
 <label>Slug (optional)</label><input name="slug" id="cslug" placeholder="auto from name if empty" />

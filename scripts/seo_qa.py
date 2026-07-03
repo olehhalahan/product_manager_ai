@@ -42,10 +42,10 @@ NEW_URLS = [
     "/guides/product-feed-optimization-checklist",
     "/guides/product-feed-optimization-for-large-catalogs",
     "/blog/topics/google-merchant-center-issues",
-    "/blog/topics/title-description-optimization",
-    "/blog/topics/feed-quality-governance",
-    "/blog/topics/large-catalogs-agencies",
-    "/blog/topics/multichannel-marketplace-feeds",
+    "/blog/topics/product-title-and-description-optimization",
+    "/blog/topics/feed-quality-and-data-governance",
+    "/blog/topics/large-catalogs-and-agencies",
+    "/blog/topics/multichannel-and-marketplace-feeds",
 ]
 CORE_URLS = [
     "/",

@@ -16,7 +16,7 @@ PUBLIC_BLOG_TOPICS: List[Dict[str, Any]] = [
         ],
     },
     {
-        "slug": "title-description-optimization",
+        "slug": "product-title-and-description-optimization",
         "name": "Product title and description optimization",
         "description": "Title structure, search intent, attributes, CTR impact, and before/after examples.",
         "related": [
@@ -25,7 +25,7 @@ PUBLIC_BLOG_TOPICS: List[Dict[str, Any]] = [
         ],
     },
     {
-        "slug": "feed-quality-governance",
+        "slug": "feed-quality-and-data-governance",
         "name": "Feed quality and data governance",
         "description": "Feed audits, quality scores, data accuracy, version control, and update workflows.",
         "related": [
@@ -35,7 +35,7 @@ PUBLIC_BLOG_TOPICS: List[Dict[str, Any]] = [
         ],
     },
     {
-        "slug": "large-catalogs-agencies",
+        "slug": "large-catalogs-and-agencies",
         "name": "Large catalogs and agencies",
         "description": "Bulk processing, agency workflows, multi-client feeds, and large SKU catalogs.",
         "related": [
@@ -45,7 +45,7 @@ PUBLIC_BLOG_TOPICS: List[Dict[str, Any]] = [
         ],
     },
     {
-        "slug": "multichannel-marketplace-feeds",
+        "slug": "multichannel-and-marketplace-feeds",
         "name": "Multichannel and marketplace feeds",
         "description": "Google Shopping, marketplaces, feed localization, and international catalogs.",
         "related": [
@@ -54,6 +54,14 @@ PUBLIC_BLOG_TOPICS: List[Dict[str, Any]] = [
         ],
     },
 ]
+
+# Legacy short slugs from early PR — 301 to canonical slugs above.
+TOPIC_SLUG_REDIRECTS: Dict[str, str] = {
+    "title-description-optimization": "product-title-and-description-optimization",
+    "feed-quality-governance": "feed-quality-and-data-governance",
+    "large-catalogs-agencies": "large-catalogs-and-agencies",
+    "multichannel-marketplace-feeds": "multichannel-and-marketplace-feeds",
+}
 
 DEFAULT_CONTENT_CLUSTERS: List[Tuple[str, str, str]] = [
     (t["slug"], t["name"], t["description"]) for t in PUBLIC_BLOG_TOPICS
@@ -66,6 +74,15 @@ def topic_by_slug(slug: str) -> Dict[str, Any] | None:
         if t["slug"] == s:
             return t
     return None
+
+
+def resolve_topic_slug(slug: str) -> tuple[Dict[str, Any] | None, str | None]:
+    """Return (topic, legacy_redirect_slug). redirect set when slug is an old alias."""
+    s = (slug or "").strip().lower()
+    if s in TOPIC_SLUG_REDIRECTS:
+        return None, TOPIC_SLUG_REDIRECTS[s]
+    t = topic_by_slug(s)
+    return t, None
 
 
 def related_links_for_cluster_slug(cluster_slug: str) -> List[Tuple[str, str]]:
