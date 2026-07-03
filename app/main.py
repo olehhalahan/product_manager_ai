@@ -46,8 +46,12 @@ from .auth import (
     require_admin_http,
 )
 from .security import (
+    CsrfMiddleware,
     SecurityHeadersMiddleware,
+    csrf_hidden_input,
+    csrf_script_tag,
     dev_auth_allowed,
+    get_or_create_csrf_token,
     protect_admin_docs,
     rate_limiter,
     require_not_production_debug,
@@ -78,8 +82,25 @@ import os as _os
 from .gtm import GTM_BODY, GTM_HEAD, gtm_body_for_path, gtm_head_for_path
 
 validate_startup_security()
+app.add_middleware(CsrfMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SessionMiddleware, **session_middleware_kwargs())
+
+
+def _migrate_encrypted_secrets_on_startup():
+    from .secrets_crypto import encryption_configured, migrate_plaintext_secrets
+
+    if not encryption_configured():
+        return
+    from .db import get_db
+
+    try:
+        with get_db() as db:
+            migrate_plaintext_secrets(db)
+    except Exception:
+        import logging
+
+        logging.getLogger("uvicorn.error").exception("Could not migrate plaintext secrets")
 
 
 def _maybe_start_writter_auto_scheduler():
@@ -195,6 +216,7 @@ def startup():
     from .google_cloud import log_google_cloud_startup
 
     log_google_cloud_startup()
+    _migrate_encrypted_secrets_on_startup()
     _sync_ai_from_settings()
     _maybe_start_writter_auto_scheduler()
     _maybe_start_blog_og_backfill()
@@ -522,6 +544,7 @@ def _wrap_batches_history_shell(*, page_title: str, body_inner: str, user_role: 
         }});
     }});
     </script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
@@ -2337,6 +2360,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         syncConversationUI();
     })();
     </script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
@@ -2426,6 +2450,7 @@ def _build_login_page(
     </main>
     __LOGIN_PUBLIC_FOOTER__
     <script>__LOGIN_THEME__</script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>""".replace("@@LOGIN_HP_NAV_STYLES@@", HP_NAV_CSS).replace("__LOGIN_HP_FOOTER_STYLES__", HP_FOOTER_CSS).replace(
@@ -2566,6 +2591,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
         <p class="subtitle">Upload a CSV. For each product we detect search intents, score and select the strongest, then assemble titles and descriptions—plus optional translation. You review and export.</p>
 
         <form action="/batches/preview" method="post" enctype="multipart/form-data">
+            {CSRF_FIELD}
             <div class="form-actions-top">
                 <button type="submit" class="btn btn-primary">Start processing &rarr;</button>
             </div>
@@ -2761,21 +2787,28 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     <script>
 {ADMIN_MERCHANT_SCRIPT}
     </script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
 
 
-def _build_upload_page(user_role: str = "customer", subscription_alert_html: str = "") -> str:
+def _build_upload_page(
+    user_role: str = "customer",
+    subscription_alert_html: str = "",
+    csrf_token: str = "",
+) -> str:
     nav = admin_top_nav_html(
         active="upload",
         show_admin_links=(user_role == "admin"),
     )
+    csrf_field = csrf_hidden_input(csrf_token) if csrf_token else ""
     return (
         _UPLOAD_TEMPLATE.replace("{GTM_HEAD}", gtm_head_for_path("/upload"))
         .replace("{GTM_BODY}", gtm_body_for_path("/upload"))
         .replace("{ADMIN_TOP_NAV}", nav)
         .replace("{SUBSCRIPTION_ALERT}", subscription_alert_html)
+        .replace("{CSRF_FIELD}", csrf_field)
         .replace("{ADMIN_THEME_SCRIPT}", ADMIN_THEME_SCRIPT.strip())
         .replace("{ADMIN_MERCHANT_SCRIPT}", ADMIN_MERCHANT_SCRIPT.strip())
     )
@@ -2971,6 +3004,7 @@ __CONTACT_META_SEO__
         if(t){const k='hp-theme';function g(){return localStorage.getItem(k)||'dark';}function s(v){document.documentElement.setAttribute('data-theme',v);localStorage.setItem(k,v);t.textContent=v==='dark'?'\u2600':'\u263E';}t.onclick=()=>s(g()==='dark'?'light':'dark');s(g());}
     })();
     </script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
@@ -3181,6 +3215,7 @@ __PRESENTATION_META_SEO__
     })();
     </script>
     __THEME_INLINE__
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
@@ -3525,7 +3560,13 @@ async def upload_page(request: Request):
             alert_html = (
                 f'<div class="sub-banner sub-banner--info" role="note">{_html_mod.escape(acc.message_uk)}</div>'
             )
-    r = HTMLResponse(content=_build_upload_page(user_role=role, subscription_alert_html=alert_html))
+    r = HTMLResponse(
+        content=_build_upload_page(
+            user_role=role,
+            subscription_alert_html=alert_html,
+            csrf_token=get_or_create_csrf_token(request),
+        )
+    )
     r.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     r.headers["Pragma"] = "no-cache"
     r.headers["X-Cartozo-Upload-UI"] = UPLOAD_UI_REVISION
@@ -3566,6 +3607,7 @@ async def upload_continue(request: Request, upload_id: str = Query(...)):
         target_language=target_language,
         total_rows=len(records),
         product_type=product_type,
+        csrf_token=get_or_create_csrf_token(request),
     ))
     _onboarding_track(request, r, 2)
     return r
@@ -3627,6 +3669,7 @@ async def preview_csv(
         target_language=target_language or "",
         total_rows=len(records),
         product_type=product_type,
+        csrf_token=get_or_create_csrf_token(request),
     ))
     _onboarding_track(request, r, 2)
     return r
@@ -3920,6 +3963,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
     startProcessing();
     {public_site_theme_toggle_script().strip()}
     </script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>""".replace(
@@ -3938,7 +3982,9 @@ def _build_mapping_page(
     target_language: str,
     total_rows: int = 0,
     product_type: str = "standard",
+    csrf_token: str = "",
 ) -> str:
+    csrf_field = csrf_hidden_input(csrf_token) if csrf_token else ""
     internal_options = ["-- skip --"] + INTERNAL_FIELDS
     field_labels = {"image_url": "image_link"}
     select_rows = ""
@@ -4059,6 +4105,7 @@ def _build_mapping_page(
         </div>
 
         <form id="confirm-form" method="post" action="/batches/confirm">
+            {csrf_field}
             <input type="hidden" name="upload_id" value="{upload_id}" />
             <input type="hidden" name="mode" value="{mode}" />
             <input type="hidden" name="target_language" value="{target_language}" />
@@ -4094,6 +4141,7 @@ def _build_mapping_page(
     }}
     {public_site_theme_toggle_script().strip()}
     </script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>""".replace(
@@ -5876,6 +5924,7 @@ async def review_batch(request: Request, batch_id: str):
         }});
     }})();
     </script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
@@ -6655,6 +6704,7 @@ async def settings_page(request: Request):
     {ADMIN_THEME_SCRIPT}
     {ADMIN_MERCHANT_SCRIPT}
     </script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
@@ -7040,6 +7090,7 @@ async def admin_contact_results_page(request: Request):
     <script>
     (function(){{const t=document.getElementById('themeToggle');if(t){{const k='hp-theme';function g(){{return localStorage.getItem(k)||'dark';}}function s(v){{document.documentElement.setAttribute('data-theme',v);localStorage.setItem(k,v);t.textContent=v==='dark'?'\u2600':'\u263E';}}t.onclick=()=>s(g()==='dark'?'light':'dark');s(g());}}}})();
     </script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""
@@ -7631,6 +7682,7 @@ async def admin_onboarding_analytics_page(
     {ADMIN_MERCHANT_SCRIPT}
     (function(){{var b=document.getElementById('oaClearAll');if(!b)return;b.onclick=function(){{if(!confirm('Delete all onboarding rows in this database? Cannot be undone.'))return;b.disabled=true;fetch('/api/admin/onboarding-analytics/clear',{{method:'POST',credentials:'same-origin'}}).then(function(r){{if(r.ok)location.reload();else r.text().then(function(t){{alert('Failed: '+t);b.disabled=false;}});}}).catch(function(e){{alert(e);b.disabled=false;}});}};}})();
     </script>
+    <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
 </html>"""

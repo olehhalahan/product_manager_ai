@@ -763,6 +763,7 @@ a{{color:inherit;text-decoration:none}}
   attachPlanHooks();
 }})();
 </script>
+<script src="/static/csrf.js"></script>
 </body>
 </html>
 """

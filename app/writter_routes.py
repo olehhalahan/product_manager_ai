@@ -272,6 +272,7 @@ def _writter_article_missing_html(article_id: int) -> HTMLResponse:
   <title>Article not found — Writter</title>
   <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
+  <script src="/static/csrf.js"></script>
   <style>
   body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
   .wt-box {{ max-width:560px; margin:48px auto; padding:0 24px 80px; }}
@@ -323,6 +324,7 @@ def _writter_review_error_html(
   <title>Review error — Writter</title>
   <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
+  <script src="/static/csrf.js"></script>
   <style>
   body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
   .wt-box {{ max-width:640px; margin:48px auto; padding:0 24px 80px; }}
@@ -504,6 +506,7 @@ async def writter_list_page(request: Request):
   <title>Writter — Cartozo.ai</title>
   <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
+  <script src="/static/csrf.js"></script>
   <style>
   body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
   [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
@@ -1133,6 +1136,7 @@ async def writter_article_review(request: Request, article_id: int):
       <title>Review — {title_esc} — Writter</title>
       <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
       <link rel="stylesheet" href="/static/styles.css" />
+  <script src="/static/csrf.js"></script>
       <style>
       body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
       [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
@@ -2794,6 +2798,7 @@ def _blog_index_page_html(
   <meta name="description" content="{meta_desc_esc}" />
   {seo_block}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
+  <script src="/static/csrf.js"></script>
   <style>
   {HP_NAV_CSS}
   {HP_FOOTER_CSS}
@@ -3199,6 +3204,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
   <meta name="description" content="{meta_esc}" />
   {article_seo}{ld}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
+  <script src="/static/csrf.js"></script>
   <style>
   {HP_NAV_CSS}
   {HP_FOOTER_CSS}

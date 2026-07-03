@@ -8,6 +8,7 @@ import ipaddress
 import logging
 import os
 import re
+import secrets
 import socket
 import time
 from collections import defaultdict, deque
@@ -19,6 +20,18 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 logger = logging.getLogger("uvicorn.error")
+
+CSRF_SESSION_KEY = "csrf_token"
+CSRF_HEADER = "X-CSRF-Token"
+CSRF_COOKIE = "XSRF-TOKEN"
+CSRF_FORM_FIELD = "csrf_token"
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+_CSRF_EXEMPT_PATHS = frozenset(
+    {
+        "/api/payments/wayforpay/service",
+        "/api/cron/writter-auto-daily",
+    }
+)
 
 _DEFAULT_SESSION_SECRET = "change-me-in-production"
 _WEAK_SESSION_SECRETS = frozenset(
@@ -136,6 +149,12 @@ def validate_startup_security() -> None:
             raise RuntimeError("AUTH_DEV_BYPASS must not be enabled in production.")
         if os.getenv("AUTH_LOCAL_ADMIN", "").lower() in ("1", "true", "yes"):
             raise RuntimeError("AUTH_LOCAL_ADMIN must not be enabled in production.")
+        from .secrets_crypto import encryption_configured
+
+        if not encryption_configured():
+            raise RuntimeError(
+                "Production requires SECRETS_ENCRYPTION_KEY (Fernet key) for encrypting API secrets at rest."
+            )
     elif secret in _WEAK_SESSION_SECRETS:
         logger.warning(
             "Using default SESSION_SECRET — set a strong random value before deploying."
@@ -194,7 +213,76 @@ class RateLimiter:
             raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
 
 
-rate_limiter = RateLimiter()
+class RedisRateLimiter:
+    """Shared sliding-window rate limiter backed by Redis (multi-instance safe)."""
+
+    def __init__(self, redis_url: str) -> None:
+        import redis
+
+        self._client = redis.from_url(redis_url, decode_responses=True)
+
+    def allow(self, key: str, *, limit: int, window_seconds: int) -> bool:
+        now = time.time()
+        redis_key = f"rl:{key}"
+        member = f"{now}:{secrets.token_hex(4)}"
+        pipe = self._client.pipeline()
+        pipe.zremrangebyscore(redis_key, 0, now - window_seconds)
+        pipe.zadd(redis_key, {member: now})
+        pipe.zcard(redis_key)
+        pipe.expire(redis_key, window_seconds + 1)
+        _, _, count, _ = pipe.execute()
+        return int(count) <= limit
+
+    def check_request(
+        self,
+        request: Request,
+        route_key: str,
+        *,
+        limit: int,
+        window_seconds: int = 60,
+    ) -> None:
+        from fastapi import HTTPException
+
+        ip = _client_ip(request)
+        key = f"{route_key}:{ip}"
+        try:
+            allowed = self.allow(key, limit=limit, window_seconds=window_seconds)
+        except Exception:
+            logger.exception("Redis rate limiter unavailable; falling back to in-memory limiter")
+            _fallback_rate_limiter.check_request(
+                request, route_key, limit=limit, window_seconds=window_seconds
+            )
+            return
+        if not allowed:
+            raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+
+
+_fallback_rate_limiter = RateLimiter()
+_rate_limiter: Optional[object] = None
+
+
+def get_rate_limiter():
+    global _rate_limiter
+    if _rate_limiter is not None:
+        return _rate_limiter
+    redis_url = (os.getenv("REDIS_URL") or os.getenv("RATE_LIMIT_REDIS_URL") or "").strip()
+    if redis_url:
+        try:
+            _rate_limiter = RedisRateLimiter(redis_url)
+            logger.info("Rate limiting uses Redis backend")
+            return _rate_limiter
+        except Exception:
+            logger.exception("Could not initialize Redis rate limiter; using in-memory fallback")
+    _rate_limiter = _fallback_rate_limiter
+    return _rate_limiter
+
+
+class _RateLimiterProxy:
+    def check_request(self, *args, **kwargs):
+        return get_rate_limiter().check_request(*args, **kwargs)
+
+
+rate_limiter = _RateLimiterProxy()
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -370,3 +458,81 @@ def dev_auth_allowed() -> bool:
     if os.getenv("GOOGLE_CLIENT_ID") or os.getenv("APPLE_CLIENT_ID"):
         return False
     return True
+
+
+def csrf_exempt(request: Request) -> bool:
+    path = request.url.path or ""
+    if path in _CSRF_EXEMPT_PATHS:
+        return True
+    # WayForPay POST return to /upload has no CSRF token.
+    if request.method == "POST" and path == "/upload":
+        return True
+    return False
+
+
+def get_or_create_csrf_token(request: Request) -> str:
+    token = request.session.get(CSRF_SESSION_KEY)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session[CSRF_SESSION_KEY] = token
+    return token
+
+
+def csrf_hidden_input(token: str) -> str:
+    import html
+
+    return f'<input type="hidden" name="{CSRF_FORM_FIELD}" value="{html.escape(token)}" />'
+
+
+def csrf_script_tag() -> str:
+    return '<script src="/static/csrf.js"></script>'
+
+
+def validate_csrf(request: Request, *, form_token: Optional[str] = None) -> None:
+    """Validate double-submit CSRF token for cookie-authenticated mutating requests."""
+    from fastapi import HTTPException
+
+    if request.method in _SAFE_METHODS or csrf_exempt(request):
+        return
+
+    session_token = get_or_create_csrf_token(request)
+    submitted = (
+        request.headers.get(CSRF_HEADER)
+        or request.headers.get("X-XSRF-TOKEN")
+        or form_token
+        or ""
+    ).strip()
+    if not submitted or not secrets.compare_digest(session_token, submitted):
+        raise HTTPException(status_code=403, detail="CSRF validation failed")
+
+
+class CsrfMiddleware(BaseHTTPMiddleware):
+    """Issue CSRF cookie and validate mutating requests."""
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        if request.method not in _SAFE_METHODS and not csrf_exempt(request):
+            form_token: Optional[str] = None
+            content_type = (request.headers.get("content-type") or "").lower()
+            if "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
+                try:
+                    form = await request.form()
+                    form_token = form.get(CSRF_FORM_FIELD)
+                    if isinstance(form_token, list):
+                        form_token = form_token[0] if form_token else None
+                except Exception:
+                    form_token = None
+            validate_csrf(request, form_token=form_token)
+
+        response = await call_next(request)
+
+        token = get_or_create_csrf_token(request)
+        response.set_cookie(
+            CSRF_COOKIE,
+            token,
+            secure=is_production(),
+            httponly=False,
+            samesite="lax",
+            max_age=60 * 60 * 24 * 14,
+            path="/",
+        )
+        return response

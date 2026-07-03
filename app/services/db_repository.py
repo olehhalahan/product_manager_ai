@@ -126,7 +126,9 @@ def _settings_dict_from_db(db: Session) -> Dict[str, str]:
         settings["wayforpay_return_url"] = ""
     if "wayforpay_subscribe_options_json" not in settings:
         settings["wayforpay_subscribe_options_json"] = ""
-    return settings
+    from ..secrets_crypto import decrypt_settings_dict
+
+    return decrypt_settings_dict(settings)
 
 
 def get_settings(db: Optional[Session] = None) -> Dict[str, str]:
@@ -146,12 +148,15 @@ def get_settings(db: Optional[Session] = None) -> Dict[str, str]:
 
 def set_setting(db: Session, key: str, value: str) -> None:
     """Set a single setting."""
+    from ..secrets_crypto import encrypt_setting_value
+
+    stored = encrypt_setting_value(key, value or "")
     row = db.execute(select(Setting).where(Setting.key == key)).scalar_one_or_none()
     if row:
-        row.value = value
+        row.value = stored
         row.updated_at = datetime.now(timezone.utc)
     else:
-        db.add(Setting(key=key, value=value))
+        db.add(Setting(key=key, value=stored))
 
 
 def set_settings(db: Session, data: Dict[str, str]) -> None:
