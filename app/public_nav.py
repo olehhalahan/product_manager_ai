@@ -93,19 +93,21 @@ HP_NAV_CSS = """
 """
 
 
-def public_site_nav_html(*, feed_structure_href: str = "/#feed-structure") -> str:
-    """Full fixed header bar; `feed_structure_href` is `#feed-structure` on `/` and `/#feed-structure` elsewhere."""
+def public_site_nav_html(*, feed_structure_href: str = "/feed-structure") -> str:
+    """Full fixed header bar."""
     href = html_module.escape(feed_structure_href, quote=True)
     return f"""<nav class="hp-nav" aria-label="Main">
         <div class="hp-nav-inner">
         <a href="/" class="hp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
         <div class="hp-nav-links">
             <a href="/presentation" class="hp-nav-link">Features</a>
+            <a href="/guides" class="hp-nav-link">Guides</a>
             <a href="/blog" class="hp-nav-link">Blog</a>
             <a href="{href}" class="hp-nav-link">Feed Structure</a>
             <a href="/how-it-works" class="hp-nav-link">How it works</a>
             <a href="/pricing" class="hp-nav-link">Pricing</a>
-            <a href="/contact" class="hp-nav-link">Contact us</a>
+            <a href="/faq" class="hp-nav-link">FAQ</a>
+            <a href="/contact" class="hp-nav-link">Contact</a>
         </div>
         <div class="hp-nav-right">
             <button type="button" class="hp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
@@ -115,23 +117,25 @@ def public_site_nav_html(*, feed_structure_href: str = "/#feed-structure") -> st
     </nav>"""
 
 
-def public_site_footer_html(*, feed_structure_href: str = "/#feed-structure") -> str:
-    """Site footer: logo + same key links as the header; `feed_structure_href` is `#feed-structure` on `/` and `/#feed-structure` elsewhere."""
+def public_site_footer_html(*, feed_structure_href: str = "/feed-structure") -> str:
+    """Site footer: logo + key links."""
     href = html_module.escape(feed_structure_href, quote=True)
     return f"""<footer class="hp-footer" aria-label="Site">
         <div class="hp-footer-main">
             <a href="/" class="hp-footer-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
             <nav class="hp-footer-nav" aria-label="Footer">
                 <a href="/presentation" class="hp-footer-link">Features</a>
+                <a href="/guides" class="hp-footer-link">Guides</a>
+                <a href="/use-cases/fix-google-merchant-center-disapprovals" class="hp-footer-link">Fix disapprovals</a>
                 <a href="/blog" class="hp-footer-link">Blog</a>
                 <a href="{href}" class="hp-footer-link">Feed Structure</a>
                 <a href="/how-it-works" class="hp-footer-link">How it works</a>
                 <a href="/pricing" class="hp-footer-link">Pricing</a>
-                <a href="/contact" class="hp-footer-link">Contact us</a>
+                <a href="/contact" class="hp-footer-link">Contact</a>
             </nav>
         </div>
         <div class="hp-footer-meta">
-            &copy; 2026 Cartozo.ai &middot; <a href="/faq">FAQ</a> &middot; <a href="/about">About us</a> &middot; <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a> &middot; <a href="/cookies">Cookie Policy</a> &middot; <a href="/refund-policy">Refund Policy</a> &middot; Powered by <a href="https://zanzarra.com/" target="_blank" rel="noopener noreferrer">Zanzarra</a>
+            &copy; 2026 Cartozo.ai &middot; <a href="mailto:support@cartozo.ai">support@cartozo.ai</a> &middot; <a href="/faq">FAQ</a> &middot; <a href="/about">About us</a> &middot; <a href="/terms">Terms</a> &middot; <a href="/privacy">Privacy</a> &middot; <a href="/cookies">Cookies</a> &middot; <a href="/refund-policy">Refunds</a> &middot; Powered by <a href="https://zanzarra.com/" target="_blank" rel="noopener noreferrer">Zanzarra</a>
         </div>
     </footer>"""
 

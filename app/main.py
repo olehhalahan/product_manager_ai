@@ -70,7 +70,18 @@ from .how_it_works_page import build_how_it_works_html
 from .pricing_page import build_pricing_html
 from .faq_page import build_faq_html
 from .privacy_pages import build_cookie_policy_html, build_privacy_policy_html, build_refund_policy_html
-from .seo import canonical_url_for_request, head_canonical_og_url_type, site_base_url, website_json_ld
+from .seo import (
+    canonical_url_for_request,
+    head_canonical_og_url_type,
+    site_base_url,
+    organization_json_ld_graph,
+    build_robots_txt_body,
+    build_llms_txt_body,
+    PUBLIC_SITEMAP_STATIC,
+)
+from .use_case_pages import register_use_case_routes
+from .guide_pages import register_guide_routes
+from .feed_structure_page import build_feed_structure_html
 from .about_us_page import build_about_us_html
 from .terms_page import build_terms_html
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
@@ -1649,6 +1660,24 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-step-title { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
     .hp-step-desc { font-size: 0.85rem; color: var(--hp-muted); line-height: 1.5; }
 
+    /* Answer-ready overview (AI / SEO) */
+    .hp-answer { padding: 72px 0; border-top: 1px solid var(--hp-border); position: relative; z-index: 2; }
+    .hp-answer-lead { font-size: 1.05rem; line-height: 1.7; color: var(--hp-muted); max-width: 820px; margin: 0 0 32px; }
+    .hp-answer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; margin-bottom: 28px; }
+    .hp-answer-card { background: rgba(255,255,255,0.03); border: 1px solid var(--hp-border-card); border-radius: 14px; padding: 20px 22px; }
+    [data-theme="light"] .hp-answer-card { background: #fff; }
+    .hp-answer-card h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 10px; }
+    .hp-answer-card p, .hp-answer-card ul { font-size: 0.88rem; color: var(--hp-muted); line-height: 1.6; }
+    .hp-answer-card ul { margin: 0; padding-left: 1.1rem; }
+    .hp-answer-card li { margin-bottom: 6px; }
+    .hp-answer-faq { margin-top: 8px; }
+    .hp-answer-faq details { border: 1px solid var(--hp-border-card); border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; background: rgba(255,255,255,0.02); }
+    .hp-answer-faq summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+    .hp-answer-faq p { margin-top: 10px; font-size: 0.88rem; color: var(--hp-muted); line-height: 1.6; }
+    .hp-answer-links { margin-top: 24px; font-size: 0.9rem; }
+    .hp-answer-links a { color: var(--hp-accent); text-decoration: none; margin-right: 16px; }
+    .hp-answer-links a:hover { text-decoration: underline; }
+
     /* CTA */
     .hp-cta { padding: 88px 0; text-align: center; border-top: 1px solid var(--hp-border); position: relative; overflow: hidden; }
     .hp-cta-bg { position: absolute; inset: 0; pointer-events: none; }
@@ -1762,6 +1791,54 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <button type="button" class="hp-chat-send" id="hpChatSend" title="Send" aria-label="Send message"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="14" width="3" height="6" rx="1"/><rect x="10" y="10" width="3" height="10" rx="1"/><rect x="16" y="6" width="3" height="14" rx="1"/></svg></button>
             </div>
         </div>
+        </div>
+    </section>
+
+    <section class="hp-answer" id="what-is-cartozo">
+        <div class="hp-container">
+            <h2 class="hp-section-title">What is Cartozo.ai?</h2>
+            <p class="hp-answer-lead">Cartozo.ai is an AI-powered product feed optimization tool for Google Merchant Center and Google Shopping campaigns. It analyzes product feed data, detects weak or missing attributes, improves product titles and descriptions around shopper search intent, assigns feed quality scores, and exports a Merchant-ready CSV that teams can review and upload.</p>
+            <div class="hp-answer-grid">
+                <div class="hp-answer-card">
+                    <h3>Who it is for</h3>
+                    <ul>
+                        <li>E-commerce managers improving Shopping feed quality</li>
+                        <li>Performance marketers reducing Merchant Center disapprovals</li>
+                        <li>Agencies optimizing client catalogs in batches</li>
+                    </ul>
+                </div>
+                <div class="hp-answer-card">
+                    <h3>Problems it solves</h3>
+                    <ul>
+                        <li>Weak or generic product titles and descriptions</li>
+                        <li>Missing GTIN, brand, or required Merchant fields</li>
+                        <li>Manual spreadsheet edits that do not scale</li>
+                    </ul>
+                </div>
+                <div class="hp-answer-card">
+                    <h3>Files &amp; output</h3>
+                    <p><strong>Input:</strong> UTF-8 CSV from Merchant Center, PIM, or spreadsheets.</p>
+                    <p style="margin-top:8px"><strong>Output:</strong> Reviewed, Merchant-ready CSV with quality scores.</p>
+                </div>
+                <div class="hp-answer-card">
+                    <h3>What Cartozo does not do</h3>
+                    <ul>
+                        <li>Does not guarantee Google approval or ad performance</li>
+                        <li>Does not replace a full feed management or PIM platform</li>
+                        <li>Does not fix website or landing-page policy issues alone</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="hp-answer-card">
+                <h3>Why feed quality affects Shopping performance</h3>
+                <p>Google Shopping matches products to shopper queries using your feed data. Incomplete attributes, weak titles, and identifier gaps can limit visibility or trigger disapprovals. Cleaner, intent-aligned product data makes it easier for Merchant Center to understand and serve your catalog.</p>
+            </div>
+            <div class="hp-answer-faq" aria-label="Quick FAQ">
+                <details><summary>Can Cartozo.ai fix Merchant Center disapprovals?</summary><p>It can help you find and fix many feed-data issues that cause disapprovals. Google makes the final approval decision. <a href="/use-cases/fix-google-merchant-center-disapprovals">Learn more</a></p></details>
+                <details><summary>Does Cartozo.ai work for large catalogs?</summary><p>Yes—Cartozo is built for batch CSV processing. Plan limits apply; see <a href="/pricing">pricing</a>.</p></details>
+                <details><summary>More questions?</summary><p>See the full <a href="/faq">FAQ</a> or <a href="/contact">contact support</a>.</p></details>
+            </div>
+            <p class="hp-answer-links"><a href="/how-it-works">How it works</a><a href="/use-cases/optimize-google-shopping-product-titles">Title optimization</a><a href="/guides">Guides</a></p>
         </div>
     </section>
 
@@ -2950,7 +3027,7 @@ __CONTACT_META_SEO__
     <div class="cp-container">
         <h1 class="title">Contact us</h1>
         <p class="subtitle">Have a question? Fill out the form below and we'll get back to you.</p>
-        <p class="contact-email">Or email us directly: <a href="mailto:oleh.halahan@zanzarra.com">oleh.halahan@zanzarra.com</a></p>
+        <p class="contact-email">Product support: <a href="mailto:support@cartozo.ai">support@cartozo.ai</a></p>
         <form id="contactForm">
             <div class="form-row">
                 <div class="form-group">
@@ -3251,12 +3328,12 @@ def _build_homepage_html(request: Request) -> str:
     seo_link_extra = (
         head_canonical_og_url_type(canonical_url=canonical, og_type="website")
         + tw_img
-        + website_json_ld(site_url=base, name=og_site)
+        + organization_json_ld_graph(logo_url=(og_image or f"{base.rstrip('/')}/assets/logo-dark.png"))
     )
     return HOMEPAGE_HTML.replace("{GTM_HEAD}", GTM_HEAD).replace(
-        "{PUBLIC_HP_NAV}", public_site_nav_html(feed_structure_href="#feed-structure")).replace(
+        "{PUBLIC_HP_NAV}", public_site_nav_html(feed_structure_href="/feed-structure")).replace(
         "{HP_FOOTER_CSS}", HP_FOOTER_CSS).replace(
-        "{PUBLIC_SITE_FOOTER}", public_site_footer_html(feed_structure_href="#feed-structure")).replace(
+        "{PUBLIC_SITE_FOOTER}", public_site_footer_html(feed_structure_href="/feed-structure")).replace(
         "{SEO_META_TITLE}", html_module.escape(meta_title)).replace(
         "{SEO_META_DESCRIPTION}", html_module.escape(meta_desc)).replace(
         "{SEO_OG_TITLE}", html_module.escape(og_title)).replace(
@@ -3344,8 +3421,8 @@ def _cookie_policy_html_response(request: Request) -> HTMLResponse:
 def _about_us_html_response(request: Request) -> HTMLResponse:
     title = "About us | Cartozo.ai"
     desc = (
-        "Legal information for the sole proprietor (FOP) behind Cartozo.ai — registered name, tax ID, "
-        "address in Ukraine, and business contact details."
+        "What Cartozo.ai is, who it is for, data handling, and support contact. "
+        "Legal operator information for the sole proprietor behind Cartozo.ai."
     )
     base = site_base_url()
     s = _get_settings()
@@ -7707,46 +7784,53 @@ def _sitemap_url_block(loc: str, *, priority: str, changefreq: str, lastmod: Opt
 
 
 def _build_robots_txt_body(base: str) -> str:
-    return f"""User-agent: *
-Disallow: /admin
-Disallow: /api/
-Disallow: /batches/
-Disallow: /upload
-Disallow: /settings
-Disallow: /login
-Disallow: /auth/
-Disallow: /merchant/
-Disallow: /docs
-Disallow: /logout
+    return build_robots_txt_body(base)
 
-Sitemap: {base}/sitemap.xml
-"""
+
+@app.get("/llms.txt", include_in_schema=False)
+async def llms_txt():
+    """Curated site map for LLM agents and answer engines."""
+    base = site_base_url()
+    return PlainTextResponse(build_llms_txt_body(base), media_type="text/plain; charset=utf-8")
+
+
+@app.get("/feed-structure", response_class=HTMLResponse)
+def feed_structure_page(request: Request):
+    title = "Google Merchant product feed structure — Cartozo.ai"
+    desc = "Reference table of common Google Merchant Center product data fields Cartozo.ai maps, validates, and optimizes."
+    s = _get_settings()
+    og_image = (s.get("seo_og_image") or "").strip()
+    return HTMLResponse(
+        content=build_feed_structure_html(
+            meta_title=title,
+            meta_description=desc,
+            og_title=title,
+            og_description=desc,
+            canonical_url=canonical_url_for_request(request),
+            og_image=og_image,
+            gtm_head=GTM_HEAD,
+            gtm_body=GTM_BODY,
+        )
+    )
+
+
+@app.get("/features", include_in_schema=False)
+def features_redirect():
+    return RedirectResponse(url="/presentation", status_code=301)
 
 
 def _build_sitemap_xml_body(base: str, db) -> str:
     """Build sitemap XML from current DB (published blog URLs + static pages)."""
+    from datetime import date
     from .services import db_repository as repo
 
+    today = date.today().isoformat()
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ]
-    static: List[tuple[str, str, str]] = [
-        ("/", "1.0", "weekly"),
-        ("/contact", "0.8", "monthly"),
-        ("/presentation", "0.8", "monthly"),
-        ("/how-it-works", "0.9", "monthly"),
-        ("/pricing", "0.9", "monthly"),
-        ("/terms", "0.5", "yearly"),
-        ("/privacy", "0.5", "yearly"),
-        ("/cookies", "0.5", "yearly"),
-        ("/refund-policy", "0.5", "yearly"),
-        ("/about", "0.5", "yearly"),
-        ("/faq", "0.6", "monthly"),
-        ("/blog", "0.9", "daily"),
-    ]
-    for path, pri, cf in static:
-        parts.append(_sitemap_url_block(base + path, priority=pri, changefreq=cf))
+    for path, pri, cf in PUBLIC_SITEMAP_STATIC:
+        parts.append(_sitemap_url_block(base + path, priority=pri, changefreq=cf, lastmod=today))
 
     articles: List[Dict[str, Any]] = repo.list_blog_articles_published(db, limit=500)
     for a in articles:
@@ -7755,7 +7839,7 @@ def _build_sitemap_xml_body(base: str, db) -> str:
             continue
         loc = f"{base}/blog/{quote(slug, safe='')}"
         ts = a.get("updated_at") or a.get("published_at") or a.get("created_at")
-        lm: Optional[str] = ts[:10] if isinstance(ts, str) and len(ts) >= 10 else None
+        lm: Optional[str] = ts[:10] if isinstance(ts, str) and len(ts) >= 10 else today
         parts.append(_sitemap_url_block(loc, priority="0.7", changefreq="weekly", lastmod=lm))
 
     parts.append("</urlset>")
@@ -7846,6 +7930,8 @@ async def admin_refund_subscription(request: Request, subscription_id: int):
 
 register_wayforpay_routes(app)
 register_writter_routes(app)
+register_use_case_routes(app)
+register_guide_routes(app)
 
 # Registered after all other routers so /terms is never shadowed by a catch-all elsewhere.
 app.add_api_route(

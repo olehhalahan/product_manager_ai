@@ -25,12 +25,17 @@ from .services import db_repository as repo
 from .services.db_repository import get_settings
 from .admin_nav import ADMIN_MERCHANT_SCRIPT, ADMIN_THEME_SCRIPT, admin_top_nav_html
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html
+from .blog_topics import PUBLIC_BLOG_TOPICS, related_links_for_cluster_slug, topic_by_slug
 from .seo import (
     blog_posting_json_ld,
+    breadcrumb_json_ld,
     canonical_url_blog_article,
     canonical_url_for_request,
     head_canonical_social,
+    organization_json_ld_graph,
     site_base_url,
+    web_page_json_ld,
+    BRAND_NAME,
 )
 from .blog_banner import prompt_visual_label_for_theme, resolve_theme_key
 from .blog_banner.screenshot import banner_dimensions
@@ -116,6 +121,41 @@ def _blog_public_subtitle_html(meta_plain: str, title_plain: str) -> str:
     if len(m) > 200:
         m = m[:197] + "…"
     return f'<p class="blog-article-subtitle">{html_module.escape(m)}</p>'
+
+
+def _blog_article_meta_html(ts_pub: Any, ts_mod: Any) -> str:
+    pub = str(ts_pub)[:10] if ts_pub else ""
+    mod = str(ts_mod)[:10] if ts_mod else ""
+    bits: List[str] = []
+    if pub:
+        bits.append(f"Published <time datetime=\"{html_module.escape(pub)}\">{html_module.escape(pub)}</time>")
+    if mod and mod != pub:
+        bits.append(f"Updated <time datetime=\"{html_module.escape(mod)}\">{html_module.escape(mod)}</time>")
+    bits.append(f"By {html_module.escape(BRAND_NAME)}")
+    return f'<p class="blog-article-meta">{" · ".join(bits)}</p>'
+
+
+def _blog_related_pages_html(cluster_slug: str) -> str:
+    links = related_links_for_cluster_slug(cluster_slug)
+    if not links:
+        links = [
+            ("/use-cases/fix-google-merchant-center-disapprovals", "Fix Merchant Center disapprovals"),
+            ("/how-it-works", "How Cartozo.ai works"),
+            ("/pricing", "Pricing"),
+        ]
+    rel = "".join(f'<li><a href="{html_module.escape(h)}">{html_module.escape(l)}</a></li>' for h, l in links[:4])
+    return f"""<section class="blog-related-pages" aria-labelledby="blog-related-h">
+  <h2 id="blog-related-h">Related Cartozo pages</h2>
+  <ul>{rel}</ul>
+</section>"""
+
+
+def _blog_how_cartozo_helps_html() -> str:
+    return """<section class="blog-how-helps" aria-labelledby="blog-helps-h">
+  <h2 id="blog-helps-h">How Cartozo helps</h2>
+  <p>Cartozo.ai is designed to speed up Google Merchant Center feed cleanup: upload a UTF-8 CSV, map fields, review intent-aware title and description improvements, score feed quality, and export a Merchant-ready file. It does not guarantee Google approval or replace your full feed management stack.</p>
+  <p><a href="/login">Upload your feed</a> · <a href="/faq">FAQ</a></p>
+</section>"""
 
 
 def _strip_trailing_writter_cta_block(html: str) -> str:
@@ -2723,6 +2763,123 @@ async def api_public_article_json(slug: str):
     return JSONResponse(data)
 
 
+def _blog_cluster_nav_html() -> str:
+    links = "".join(
+        f'<a class="blog-idx-cluster-link" href="/blog/topics/{html_module.escape(t["slug"])}">'
+        f'{html_module.escape(t["name"])}</a>'
+        for t in PUBLIC_BLOG_TOPICS
+    )
+    return f'<nav class="blog-idx-clusters" aria-label="Blog topics">{links}</nav>'
+
+
+def _blog_topic_page_html(
+    topic: Dict[str, Any],
+    rows: List[Dict[str, Any]],
+    *,
+    canonical_url: str,
+    og_image: str,
+    og_site_name: str,
+    gtm_head: str,
+    gtm_body: str,
+) -> str:
+    """Public filtered blog listing for a topic cluster."""
+    name = html_module.escape(topic.get("name") or "Topic")
+    desc = html_module.escape(topic.get("description") or "")
+    cards: List[str] = []
+    for r in rows:
+        slug = html_module.escape((r.get("slug") or "").strip())
+        title = html_module.escape((r.get("title") or "Untitled").strip())
+        meta = (r.get("meta_description") or "").strip()
+        if len(meta) > 180:
+            meta = meta[:177] + "…"
+        meta_esc = html_module.escape(meta) if meta else ""
+        pub = r.get("published_at") or r.get("created_at") or ""
+        date_esc = html_module.escape(pub[:10]) if isinstance(pub, str) and len(pub) >= 10 else ""
+        date_line = f'<time class="blog-idx-card-date" datetime="{date_esc}">{date_esc}</time>' if date_esc else ""
+        meta_line = f'<p class="blog-idx-card-meta">{meta_esc}</p>' if meta_esc else ""
+        cards.append(
+            f"""<li class="blog-idx-card"><a class="blog-idx-card-link" href="/blog/{slug}">
+  <div class="blog-idx-card-body"><h2 class="blog-idx-card-title">{title}</h2>{date_line}{meta_line}</div>
+</a></li>"""
+        )
+    cards_html = "\n".join(cards) if cards else '<li class="blog-idx-empty">No published articles in this topic yet. <a href="/blog">Browse all articles</a></li>'
+    related = topic.get("related") or []
+    related_html = ""
+    if related:
+        rel_links = "".join(f'<li><a href="{html_module.escape(h)}">{html_module.escape(l)}</a></li>' for h, l in related)
+        related_html = f'<section class="blog-topic-related"><h2>Related Cartozo pages</h2><ul>{rel_links}</ul></section>'
+    page_title = f"{topic.get('name')} — Cartozo.ai Blog"
+    meta_desc = (topic.get("description") or "")[:500]
+    seo_block = head_canonical_social(
+        canonical_url=canonical_url,
+        og_title=page_title,
+        og_description=meta_desc,
+        og_image=og_image,
+        og_site_name=og_site_name,
+        og_type="website",
+    )
+    base = site_base_url().rstrip("/")
+    json_ld = (
+        organization_json_ld_graph()
+        + breadcrumb_json_ld(
+            items=[
+                ("Home", f"{base}/"),
+                ("Blog", f"{base}/blog"),
+                (topic.get("name") or "Topic", canonical_url),
+            ]
+        )
+        + web_page_json_ld(url=canonical_url, name=page_title, description=meta_desc)
+    )
+    title_esc = html_module.escape(page_title)
+    meta_desc_esc = html_module.escape(meta_desc, quote=True)
+    return f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  {gtm_head}
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title_esc}</title>
+  <meta name="description" content="{meta_desc_esc}" />
+  {seo_block}{json_ld}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <style>
+  {HP_NAV_CSS}
+  {HP_FOOTER_CSS}
+  body.blog-idx-body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
+  .blog-idx-wrap {{ max-width:800px; margin:0 auto; padding:88px 24px 80px; }}
+  .blog-breadcrumbs {{ font-size:.85rem; color:#64748b; margin-bottom:16px; }}
+  .blog-breadcrumbs a {{ color:inherit; text-decoration:none; }}
+  .blog-breadcrumbs a:hover {{ text-decoration:underline; }}
+  .blog-idx-hero h1 {{ font-size:2rem; font-weight:700; margin:0 0 8px; }}
+  .blog-idx-hero p {{ color:#94a3b8; margin:0 0 24px; }}
+  .blog-idx-list {{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:14px; }}
+  .blog-idx-card {{ border-radius:14px; border:1px solid rgba(255,255,255,.08); background:rgba(17,24,39,.85); }}
+  .blog-idx-card-link {{ display:block; padding:22px 24px; text-decoration:none; color:inherit; }}
+  .blog-idx-card-title {{ font-size:1.1rem; font-weight:600; margin:0 0 8px; }}
+  .blog-idx-card-date {{ font-size:.78rem; color:#64748b; }}
+  .blog-idx-card-meta {{ font-size:.9rem; color:#94a3b8; margin:8px 0 0; }}
+  .blog-idx-empty {{ padding:32px; text-align:center; color:#94a3b8; }}
+  .blog-topic-related {{ margin-top:36px; padding-top:24px; border-top:1px solid rgba(255,255,255,.08); }}
+  .blog-topic-related ul {{ margin:12px 0 0 1.2rem; }}
+  .blog-idx-clusters {{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:28px; }}
+  .blog-idx-cluster-link {{ font-size:.8rem; padding:6px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.12); color:#cbd5e1; text-decoration:none; }}
+  </style>
+</head>
+<body class="blog-idx-body">
+  {gtm_body}
+  {public_site_nav_html(feed_structure_href="/feed-structure")}
+  <main class="blog-idx-wrap">
+    <nav class="blog-breadcrumbs" aria-label="Breadcrumb"><a href="/">Home</a> / <a href="/blog">Blog</a> / {name}</nav>
+    <header class="blog-idx-hero"><h1>{name}</h1><p>{desc}</p></header>
+    {_blog_cluster_nav_html()}
+    <ul class="blog-idx-list">{cards_html}</ul>
+    {related_html}
+  </main>
+  {public_site_footer_html(feed_structure_href="/feed-structure")}
+</body>
+</html>"""
+
+
 def _blog_index_page_html(
     rows: List[Dict[str, Any]],
     q_raw: str,
@@ -2786,6 +2943,12 @@ def _blog_index_page_html(
         og_site_name=og_site_name,
         og_type="website",
     )
+    base = site_base_url().rstrip("/")
+    json_ld = (
+        organization_json_ld_graph()
+        + breadcrumb_json_ld(items=[("Home", f"{base}/"), ("Blog", canonical_url)])
+        + web_page_json_ld(url=canonical_url, name=page_title, description=meta_desc)
+    )
     title_esc = html_module.escape(page_title)
     meta_desc_esc = html_module.escape(meta_desc, quote=True)
     return f"""<!DOCTYPE html>
@@ -2796,7 +2959,7 @@ def _blog_index_page_html(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title_esc}</title>
   <meta name="description" content="{meta_desc_esc}" />
-  {seo_block}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+  {seo_block}{json_ld}  <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
   <script src="/static/csrf.js"></script>
   <style>
@@ -2829,17 +2992,21 @@ def _blog_index_page_html(
   .blog-idx-card-kw {{ font-size:.78rem; color:#64748b; margin:0; }}
   .blog-idx-empty {{ padding:48px 24px; text-align:center; color:#94a3b8; border-radius:14px; border:1px dashed rgba(255,255,255,.12); }}
   .blog-idx-empty a {{ color:#818cf8; }}
+  .blog-idx-clusters {{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:28px; }}
+  .blog-idx-cluster-link {{ font-size:.8rem; padding:6px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.12); color:#cbd5e1; text-decoration:none; }}
+  .blog-idx-cluster-link:hover {{ border-color:rgba(129,140,248,.4); color:#e2e8f0; }}
   body.blog-idx-body > footer.hp-footer {{ flex-shrink:0; width:100%; margin-top:auto; }}
   </style>
 </head>
 <body class="blog-idx-body">
   {gtm_body}
-  {public_site_nav_html(feed_structure_href="/#feed-structure")}
+  {public_site_nav_html(feed_structure_href="/feed-structure")}
   <div class="blog-page-with-nav">
   <main class="blog-idx-wrap">
     <header class="blog-idx-hero">
       <h1>Blog</h1>
       <p>Guides and tips on product feeds, Google Merchant Center, and growing your catalog visibility.</p>
+      {_blog_cluster_nav_html()}
       <form class="blog-idx-search" method="get" action="/blog" role="search">
         <label for="blogq" class="visually-hidden">Search articles by keywords</label>
         <input type="search" id="blogq" name="q" value="{q_esc}" placeholder="Search by keywords (title, topic, tags…)" autocomplete="off" />
@@ -2849,7 +3016,7 @@ def _blog_index_page_html(
     <ul class="blog-idx-list">{cards_html}</ul>
   </main>
   </div>
-  {public_site_footer_html(feed_structure_href="/#feed-structure")}
+  {public_site_footer_html(feed_structure_href="/feed-structure")}
   <script>
   {ADMIN_THEME_SCRIPT.strip()}
   </script>
@@ -2881,6 +3048,35 @@ async def blog_index_page(request: Request, q: str = Query("", max_length=500)):
         canonical_url=canonical_url,
         meta_desc=meta_desc,
         page_title=page_title,
+        og_image=og_image,
+        og_site_name=og_site,
+        gtm_head=gtm_head_for_path(str(request.url.path)),
+        gtm_body=gtm_body_for_path(str(request.url.path)),
+    )
+    return HTMLResponse(content=html)
+
+
+@router.get("/blog/topics/{topic_slug}", response_class=HTMLResponse)
+async def blog_topic_page(request: Request, topic_slug: str):
+    """Public blog hub filtered by topical cluster."""
+    topic = topic_by_slug(topic_slug)
+    if not topic:
+        raise HTTPException(404, detail="Topic not found")
+    base = site_base_url().rstrip("/")
+    canonical_url = f"{base}/blog/topics/{topic_slug}"
+    with get_db() as db:
+        repo.ensure_default_content_clusters(db)
+        cluster = repo.get_content_cluster_by_slug(db, topic_slug)
+        if not cluster:
+            raise HTTPException(404, detail="Topic not found")
+        rows = repo.list_published_articles_in_cluster(db, cluster.id)
+        s = get_settings(db)
+        og_image = (s.get("seo_og_image") or "").strip()
+        og_site = (s.get("seo_og_site_name") or "").strip() or "Cartozo.ai"
+    html = _blog_topic_page_html(
+        topic,
+        rows,
+        canonical_url=canonical_url,
         og_image=og_image,
         og_site_name=og_site,
         gtm_head=gtm_head_for_path(str(request.url.path)),
@@ -2941,6 +3137,11 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
         # Materialize dates while session is open (avoid DetachedInstanceError on lazy refresh).
         ts_pub = row.published_at or row.created_at
         ts_mod = getattr(row, "updated_at", None) or ts_pub
+        cluster_slug = ""
+        if row.cluster_id:
+            cluster_row = repo.get_content_cluster_by_id(db, int(row.cluster_id))
+            if cluster_row and cluster_row.slug:
+                cluster_slug = cluster_row.slug
 
     if schedule_og and article_id:
         # Background-only often never completes on some hosts, or Chromium is missing — try sync first.
@@ -3154,6 +3355,9 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
     }}"""
 
     subtitle_block = _blog_public_subtitle_html(meta_plain, title_plain)
+    meta_line_block = _blog_article_meta_html(ts_pub, ts_mod)
+    related_pages_block = _blog_related_pages_html(cluster_slug)
+    how_helps_block = _blog_how_cartozo_helps_html()
     _bc = (title_plain or "").strip()
     if len(_bc) > 72:
         _bc = _bc[:69] + "…"
@@ -3173,13 +3377,23 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
         og_image_width=og_w if hero_rel else None,
         og_image_height=og_h if hero_rel else None,
     )
-    ld = blog_posting_json_ld(
-        headline=title_plain or "",
-        url=article_url,
-        description=meta_plain or "",
-        date_published=str(ts_pub) if ts_pub else "",
-        date_modified=str(ts_mod) if ts_mod else None,
-        image=og_image_abs if (og_image_abs or "").strip() else None,
+    ld = (
+        organization_json_ld_graph()
+        + breadcrumb_json_ld(
+            items=[
+                ("Home", f"{base_origin}/"),
+                ("Blog", f"{base_origin}/blog"),
+                ((title_plain or "Article")[:72], article_url),
+            ]
+        )
+        + blog_posting_json_ld(
+            headline=title_plain or "",
+            url=article_url,
+            description=meta_plain or "",
+            date_published=str(ts_pub) if ts_pub else "",
+            date_modified=str(ts_mod) if ts_mod else None,
+            image=og_image_abs if (og_image_abs or "").strip() else None,
+        )
     )
     hero_figure = ""
     if hero_rel:
@@ -3273,7 +3487,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
 </head>
 <body class="blog-article-body">
   {_bb}
-  {public_site_nav_html(feed_structure_href="/#feed-structure")}
+  {public_site_nav_html(feed_structure_href="/feed-structure")}
   <div class="blog-page-with-nav">
   <div class="blog-layout">
     <aside class="blog-side">
@@ -3293,6 +3507,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
           <header class="blog-article-header">
             <h1 class="blog-article-title">{title_esc}</h1>
             {subtitle_block}
+            {meta_line_block}
           </header>
           {hero_figure}
         </div>
@@ -3319,6 +3534,8 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
           <div class="article-content content writter-article" id="blogArticleContent">"""
         + blog_body
         + f"""</div>
+          {related_pages_block}
+          {how_helps_block}
           {_blog_article_end_cta_html()}
         </div>
       </div>
@@ -3326,7 +3543,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
     {admin_aside}
   </div>
   </div>
-  {public_site_footer_html(feed_structure_href="/#feed-structure")}
+  {public_site_footer_html(feed_structure_href="/feed-structure")}
   <script>
   {ADMIN_THEME_SCRIPT.strip()}
   (function(){{

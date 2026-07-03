@@ -118,8 +118,8 @@ __THEME_INLINE__
 </html>
 """
     ).replace("@@HP_NAV_STYLES@@", HP_NAV_CSS + HP_FOOTER_CSS).replace(
-        "@@PUBLIC_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
-    ).replace("@@PUBLIC_SITE_FOOTER@@", public_site_footer_html(feed_structure_href="/#feed-structure")).replace(
+        "@@PUBLIC_NAV@@", public_site_nav_html(feed_structure_href="/feed-structure")
+    ).replace("@@PUBLIC_SITE_FOOTER@@", public_site_footer_html(feed_structure_href="/feed-structure")).replace(
         "__THEME_INLINE__",
         "<script>" + public_site_theme_toggle_script().strip() + "</script>",
     )

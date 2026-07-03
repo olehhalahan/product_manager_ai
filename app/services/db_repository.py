@@ -1381,6 +1381,33 @@ def create_content_cluster(
     return row
 
 
+def ensure_default_content_clusters(db: Session) -> None:
+    """Seed public blog topic clusters if missing."""
+    from ..blog_topics import DEFAULT_CONTENT_CLUSTERS
+
+    changed = False
+    for slug, name, description in DEFAULT_CONTENT_CLUSTERS:
+        if not get_content_cluster_by_slug(db, slug):
+            create_content_cluster(db, slug=slug, name=name, description=description)
+            changed = True
+    if changed:
+        db.commit()
+
+
+def list_published_articles_in_cluster(db: Session, cluster_id: int, limit: int = 300) -> List[Dict[str, Any]]:
+    rows = (
+        db.execute(
+            select(BlogArticle)
+            .where(BlogArticle.cluster_id == cluster_id, BlogArticle.status == "published")
+            .order_by(BlogArticle.published_at.desc(), BlogArticle.updated_at.desc())
+            .limit(min(max(1, limit), 500))
+        )
+        .scalars()
+        .all()
+    )
+    return [blog_article_to_dict(r) for r in rows]
+
+
 def list_blog_article_versions(db: Session, article_id: int, limit: int = 80) -> List[Dict[str, Any]]:
     rows = (
         db.execute(

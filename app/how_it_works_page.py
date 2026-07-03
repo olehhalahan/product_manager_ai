@@ -14,7 +14,7 @@ from __future__ import annotations
 import html as html_module
 
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
-from .seo import head_canonical_social
+from .seo import breadcrumb_json_ld, head_canonical_social, organization_json_ld_graph, site_base_url, web_page_json_ld
 
 
 def build_how_it_works_html(
@@ -37,6 +37,14 @@ def build_how_it_works_html(
         og_site_name=og_site_name,
         og_type="website",
     )
+    base = site_base_url().rstrip("/")
+    json_ld = (
+        organization_json_ld_graph()
+        + breadcrumb_json_ld(
+            items=[("Home", f"{base}/"), ("How it works", canonical_url)]
+        )
+        + web_page_json_ld(url=canonical_url, name=meta_title, description=meta_description)
+    )
     mt = html_module.escape(meta_title)
     md = html_module.escape(meta_description)
 
@@ -48,7 +56,7 @@ def build_how_it_works_html(
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>{mt}</title>
 <meta name="description" content="{md}"/>
-{seo_block}<script>document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')</script>
+{seo_block}{json_ld}<script>document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800;900&display=swap" rel="stylesheet"/>
