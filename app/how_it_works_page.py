@@ -1109,7 +1109,7 @@ a{{text-decoration:none;color:inherit}}
 </html>"""
     return (
         html.replace("@@HP_NAV_STYLES@@", HP_NAV_CSS + HP_FOOTER_CSS)
-        .replace("@@PUBLIC_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure"))
-        .replace("@@PUBLIC_SITE_FOOTER@@", public_site_footer_html(feed_structure_href="/#feed-structure"))
+        .replace("@@PUBLIC_NAV@@", public_site_nav_html())
+        .replace("@@PUBLIC_SITE_FOOTER@@", public_site_footer_html())
         .replace("@@THEME_TOGGLE_INLINE@@", public_site_theme_toggle_script().strip())
     )

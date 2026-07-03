@@ -262,7 +262,7 @@ a{{color:#818cf8;text-decoration:none}}
 </head>
 <body>
 {GTM_BODY}
-{public_site_nav_html(feed_structure_href="/feed-structure")}
+{public_site_nav_html()}
 <main class="gi-wrap">
   <h1 class="gi-h1">Guides</h1>
   <p class="gi-lead">Evergreen guides for Google Merchant Center feed optimization, titles, identifiers, and feed quality.</p>
@@ -272,7 +272,7 @@ a{{color:#818cf8;text-decoration:none}}
     <ul>{use_case_items}</ul>
   </section>
 </main>
-{public_site_footer_html(feed_structure_href="/feed-structure")}
+{public_site_footer_html()}
 <script>{public_site_theme_toggle_script().strip()}</script>
 </body>
 </html>"""

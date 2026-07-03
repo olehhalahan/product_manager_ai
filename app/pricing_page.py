@@ -789,6 +789,6 @@ a{{color:inherit;text-decoration:none}}
 </html>
 """
     ).replace("@@HP_NAV_STYLES@@", HP_NAV_CSS + HP_FOOTER_CSS).replace(
-        "@@PUBLIC_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure"),
-    ).replace("@@PUBLIC_SITE_FOOTER@@", public_site_footer_html(feed_structure_href="/#feed-structure"))
+        "@@PUBLIC_NAV@@", public_site_nav_html(),
+    ).replace("@@PUBLIC_SITE_FOOTER@@", public_site_footer_html())
 

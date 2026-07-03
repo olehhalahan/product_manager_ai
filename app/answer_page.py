@@ -171,7 +171,7 @@ a{{color:#818cf8}}
 </head>
 <body>
 {GTM_BODY}
-{public_site_nav_html(feed_structure_href="/feed-structure")}
+{public_site_nav_html()}
 
 <main class="ap-wrap">
   <nav class="ap-bc" aria-label="Breadcrumb">
@@ -207,9 +207,7 @@ a{{color:#818cf8}}
   </div>
 </main>
 
-<div style="max-width:760px;margin:0 auto;padding:0 24px 48px">
-  {public_site_footer_html(feed_structure_href="/feed-structure")}
-</div>
+{public_site_footer_html()}
 <script>{public_site_theme_toggle_script().strip()}</script>
 <script src="/static/page-transition.js"></script>
 </body>

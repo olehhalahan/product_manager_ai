@@ -2876,7 +2876,7 @@ def _blog_topic_page_html(
 </head>
 <body class="blog-idx-body">
   {gtm_body}
-  {public_site_nav_html(feed_structure_href="/feed-structure")}
+  {public_site_nav_html()}
   <main class="blog-idx-wrap">
     <nav class="blog-breadcrumbs" aria-label="Breadcrumb"><a href="/">Home</a> / <a href="/blog">Blog</a> / {name}</nav>
     <header class="blog-idx-hero"><h1>{name}</h1><p>{desc}</p></header>
@@ -2884,7 +2884,7 @@ def _blog_topic_page_html(
     <ul class="blog-idx-list">{cards_html}</ul>
     {related_html}
   </main>
-  {public_site_footer_html(feed_structure_href="/feed-structure")}
+  {public_site_footer_html()}
 </body>
 </html>"""
 
@@ -3009,7 +3009,7 @@ def _blog_index_page_html(
 </head>
 <body class="blog-idx-body">
   {gtm_body}
-  {public_site_nav_html(feed_structure_href="/feed-structure")}
+  {public_site_nav_html()}
   <div class="blog-page-with-nav">
   <main class="blog-idx-wrap">
     <header class="blog-idx-hero">
@@ -3025,7 +3025,7 @@ def _blog_index_page_html(
     <ul class="blog-idx-list">{cards_html}</ul>
   </main>
   </div>
-  {public_site_footer_html(feed_structure_href="/feed-structure")}
+  {public_site_footer_html()}
   <script>
   {ADMIN_THEME_SCRIPT.strip()}
   </script>
@@ -3499,7 +3499,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
 </head>
 <body class="blog-article-body">
   {_bb}
-  {public_site_nav_html(feed_structure_href="/feed-structure")}
+  {public_site_nav_html()}
   <div class="blog-page-with-nav">
   <div class="blog-layout">
     <aside class="blog-side">
@@ -3555,7 +3555,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
     {admin_aside}
   </div>
   </div>
-  {public_site_footer_html(feed_structure_href="/feed-structure")}
+  {public_site_footer_html()}
   <script>
   {ADMIN_THEME_SCRIPT.strip()}
   (function(){{

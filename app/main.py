@@ -675,7 +675,7 @@ def _build_error_page(
     <script>__ERR_THEME__</script>
 </body>
 </html>""".replace("@@ERR_HP_NAV_STYLES@@", HP_NAV_CSS).replace(
-        "@@ERR_PUBLIC_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
+        "@@ERR_PUBLIC_NAV@@", public_site_nav_html()
     ).replace("__ERR_THEME__", public_site_theme_toggle_script().strip())
 
 
@@ -1310,30 +1310,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-bg-line-h { width: 300px; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent); }
     .hp-bg-glow { border-radius: 50%; background: radial-gradient(circle, rgba(79,70,229,0.12) 0%, transparent 70%); }
 
-    /* Navigation тАФ full-width bar, content capped at 1200px (not ultra-wide stretch) */
-    .hp-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; padding: 16px 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
-    [data-theme="light"] .hp-nav { background: rgba(248,250,252,0.95); border-bottom-color: rgba(15,23,42,0.08); }
-    .hp-nav-inner { max-width: 1200px; width: 100%; margin: 0 auto; padding: 0 40px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-    .hp-nav-logo { flex-shrink: 0; position: relative; }
-    .hp-nav-logo img { height: 32px; }
-    .hp-nav-logo .logo-dark { display: none; filter: brightness(0) invert(1); }
-    .hp-nav-logo .logo-light { display: block; filter: brightness(0) invert(1); }
-    [data-theme="light"] .hp-nav-logo .logo-light { display: none; }
-    [data-theme="light"] .hp-nav-logo .logo-dark { display: block; filter: none; }
-    .hp-nav-links { display: flex; align-items: center; justify-content: center; gap: 28px; flex: 1; }
-    .hp-nav-right { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
-    .hp-nav-link { color: var(--hp-muted); font-size: 0.9rem; text-decoration: none; transition: color 0.2s; }
-    .hp-nav-link:hover { color: var(--hp-text); }
-    .hp-theme-btn { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--hp-border); background: transparent; color: var(--hp-muted); cursor: pointer; font-size: 1rem; transition: all 0.2s; }
-    .hp-theme-btn:hover { color: var(--hp-text); background: rgba(255,255,255,0.08); }
-    [data-theme="light"] .hp-theme-btn:hover { background: rgba(15,23,42,0.06); }
-    .hp-nav-cta { background: var(--hp-text); color: var(--hp-bg); padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 500; text-decoration: none; transition: opacity 0.2s; }
-    .hp-nav-cta:hover { opacity: 0.9; }
-
-    @media (max-width: 1024px) {
-        .hp-nav-links { display: none; }
-        .hp-nav-right { gap: 12px; }
-    }
+    {HP_NAV_CSS}
 
     /* Hero тАФ same max width as page content */
     .hp-hero { text-align: center; padding: 160px 40px 120px; position: relative; min-height: 600px; max-width: 1200px; margin-left: auto; margin-right: auto; box-sizing: border-box; overflow: hidden; background: var(--hp-bg); }
@@ -1707,8 +1684,6 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .hp-chat-anchor { order: 5; margin-top: 20px; }
     }
     @media (max-width: 768px) {
-        .hp-nav { padding: 16px 0; }
-        .hp-nav-inner { padding: 0 24px; }
         .hp-hero { padding: 120px 20px 60px; min-height: auto; display: flex; flex-direction: column; }
         .hp-badge { order: 1; margin-bottom: 20px; }
         .hp-title { order: 2; margin-bottom: 20px; font-size: clamp(1.75rem, 5vw, 2.25rem); line-height: 1.2; }
@@ -2532,8 +2507,8 @@ def _build_login_page(
     <script src="/static/page-transition.js"></script>
 </body>
 </html>""".replace("@@LOGIN_HP_NAV_STYLES@@", HP_NAV_CSS).replace("__LOGIN_HP_FOOTER_STYLES__", HP_FOOTER_CSS).replace(
-        "@@LOGIN_PUBLIC_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
-    ).replace("__LOGIN_PUBLIC_FOOTER__", public_site_footer_html(feed_structure_href="/#feed-structure")).replace(
+        "@@LOGIN_PUBLIC_NAV@@", public_site_nav_html()
+    ).replace("__LOGIN_PUBLIC_FOOTER__", public_site_footer_html()).replace(
         "__LOGIN_THEME__", public_site_theme_toggle_script().strip()
     )
 
@@ -2912,7 +2887,6 @@ def _build_contact_page(request: Request) -> str:
     )
     meta_line = f'    <meta name="description" content="{html_module.escape(desc, quote=True)}" />\n'
     contact_meta_seo = meta_line + seo
-    _nav = public_site_nav_html(feed_structure_href="/#feed-structure")
     _contact_html = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -2993,7 +2967,6 @@ __CONTACT_META_SEO__
     .success-msg.show { display: block; }
     .error-msg { margin-top: 20px; padding: 16px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; color: #ef4444; font-size: 0.9rem; display: none; }
     .error-msg.show { display: block; }
-    .hp-footer { margin-top: 48px; position: relative; z-index: 2; }
     @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } .cp-moon-container { width: 220px; height: 220px; } .cp-moon-body { width: 90px; height: 90px; margin: -45px 0 0 -45px; } .cp-moon-glow { width: 150px; height: 150px; margin: -75px 0 0 -75px; } }
     </style>
 </head>
@@ -3078,10 +3051,9 @@ __CONTACT_META_SEO__
             }catch(err){errorMsg.textContent='Could not send. Please try again.';errorMsg.classList.add('show');}
             submitBtn.disabled=false;
         };
-        const t=document.getElementById('themeToggle');
-        if(t){const k='hp-theme';function g(){return localStorage.getItem(k)||'dark';}function s(v){document.documentElement.setAttribute('data-theme',v);localStorage.setItem(k,v);t.textContent=v==='dark'?'\u2600':'\u263E';}t.onclick=()=>s(g()==='dark'?'light':'dark');s(g());}
     })();
     </script>
+    <script>""" + public_site_theme_toggle_script().strip() + """</script>
     <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
@@ -3089,11 +3061,8 @@ __CONTACT_META_SEO__
     return (
         _contact_html.replace("__CONTACT_META_SEO__", contact_meta_seo)
         .replace("@@HP_NAV_STYLES@@", HP_NAV_CSS + HP_FOOTER_CSS)
-        .replace("@@PUBLIC_HP_NAV@@", _nav)
-        .replace(
-            "@@PUBLIC_SITE_FOOTER@@",
-            public_site_footer_html(feed_structure_href="/#feed-structure"),
-        )
+        .replace("@@PUBLIC_HP_NAV@@", public_site_nav_html())
+        .replace("@@PUBLIC_SITE_FOOTER@@", public_site_footer_html())
     )
 
 
@@ -3129,10 +3098,12 @@ __PRESENTATION_META_SEO__
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     [data-theme="light"] body { background: linear-gradient(165deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); }
     :root { --pp-accent: #4F46E5; --pp-accent-soft: rgba(79,70,229,0.15); --pp-muted: #9ca3af; --pp-ease: cubic-bezier(0.22, 1, 0.36, 1); --pp-ease-out: cubic-bezier(0.16, 1, 0.3, 1); }
     @@HP_NAV_STYLES@@
+    __PRESENTATION_FOOTER_STYLES__
+    .pp-shell { flex: 1; position: relative; min-height: 0; overflow: hidden; }
     .pp-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
     .pp-bg-gradient { position: absolute; inset: 0; background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(79,70,229,0.12) 0%, transparent 50%), radial-gradient(ellipse 80% 60% at 80% 80%, rgba(167,139,250,0.06) 0%, transparent 50%), radial-gradient(ellipse 60% 80% at 10% 50%, rgba(59,130,246,0.04) 0%, transparent 50%); }
     .pp-bg-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px); background-size: 60px 60px; mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 70%); }
@@ -3143,7 +3114,7 @@ __PRESENTATION_META_SEO__
     .pp-star:nth-child(5){top:85%;left:25%;animation-delay:2s;}.pp-star:nth-child(6){top:15%;left:55%;animation-delay:0.3s;}
     .pp-star:nth-child(7){top:55%;left:85%;animation-delay:2.2s;}.pp-star:nth-child(8){top:35%;right:8%;animation-delay:0.8s;}
     @keyframes pp-twinkle { 0%,100%{opacity:0.4;transform:scale(1)} 50%{opacity:1;transform:scale(1.3)} }
-    .pp-slides { position: relative; width: 100vw; height: 100vh; }
+    .pp-slides { position: relative; width: 100%; height: 100%; min-height: 480px; }
     .pp-slide { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 140px 48px 120px; opacity: 0; visibility: hidden; transform: scale(0.98); transition: opacity 0.7s var(--pp-ease), visibility 0.7s, transform 0.7s var(--pp-ease); z-index: 1; }
     .pp-slide.active { opacity: 1; visibility: visible; z-index: 2; transform: scale(1); }
     .pp-slide .pp-badge { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--pp-accent); margin-bottom: 28px; opacity: 0; transform: translateY(12px); transition: all 0.6s var(--pp-ease) 0.1s; }
@@ -3216,6 +3187,7 @@ __PRESENTATION_META_SEO__
         </div>
     </div>
     @@PUBLIC_HP_NAV@@
+    <div class="pp-shell">
     <div class="pp-slides">
         <div class="pp-slide active" data-slide="0">
             <span class="pp-badge">AI-Powered E-commerce</span>
@@ -3271,6 +3243,8 @@ __PRESENTATION_META_SEO__
     </div>
     <div class="pp-progress"><div class="pp-progress-bar" id="ppProgressBar"></div></div>
     <div class="pp-dots" id="ppDots"></div>
+    </div>
+    @@PUBLIC_SITE_FOOTER@@
     <script>
     (function(){
         var slides=document.querySelectorAll('.pp-slide');
@@ -3300,7 +3274,9 @@ __PRESENTATION_META_SEO__
     return (
         _html.replace("__PRESENTATION_META_SEO__", presentation_meta_seo)
         .replace("@@HP_NAV_STYLES@@", HP_NAV_CSS)
-        .replace("@@PUBLIC_HP_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure"))
+        .replace("__PRESENTATION_FOOTER_STYLES__", HP_FOOTER_CSS)
+        .replace("@@PUBLIC_HP_NAV@@", public_site_nav_html())
+        .replace("@@PUBLIC_SITE_FOOTER@@", public_site_footer_html())
         .replace(
             "__THEME_INLINE__",
             "<script>" + public_site_theme_toggle_script().strip() + "</script>",
@@ -3332,9 +3308,10 @@ def _build_homepage_html(request: Request) -> str:
         + organization_json_ld_graph(logo_url=(og_image or f"{base.rstrip('/')}/assets/logo-dark.png"))
     )
     return HOMEPAGE_HTML.replace("{GTM_HEAD}", GTM_HEAD).replace(
-        "{PUBLIC_HP_NAV}", public_site_nav_html(feed_structure_href="/feed-structure")).replace(
+        "{PUBLIC_HP_NAV}", public_site_nav_html()).replace(
+        "{HP_NAV_CSS}", HP_NAV_CSS).replace(
         "{HP_FOOTER_CSS}", HP_FOOTER_CSS).replace(
-        "{PUBLIC_SITE_FOOTER}", public_site_footer_html(feed_structure_href="/feed-structure")).replace(
+        "{PUBLIC_SITE_FOOTER}", public_site_footer_html()).replace(
         "{SEO_META_TITLE}", html_module.escape(meta_title)).replace(
         "{SEO_META_DESCRIPTION}", html_module.escape(meta_desc)).replace(
         "{SEO_OG_TITLE}", html_module.escape(og_title)).replace(
@@ -4047,7 +4024,7 @@ def _build_processing_page(upload_id: str, mode: str, target_language: str, mapp
 </html>""".replace(
         "@@APP_HP_NAV_STYLES@@", HP_NAV_CSS
     ).replace(
-        "@@PUBLIC_SITE_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
+        "@@PUBLIC_SITE_NAV@@", public_site_nav_html()
     )
 
 
@@ -4225,7 +4202,7 @@ def _build_mapping_page(
 </html>""".replace(
         "@@APP_HP_NAV_STYLES@@", HP_NAV_CSS
     ).replace(
-        "@@PUBLIC_SITE_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
+        "@@PUBLIC_SITE_NAV@@", public_site_nav_html()
     )
 
 
@@ -6007,7 +5984,7 @@ async def review_batch(request: Request, batch_id: str):
 </body>
 </html>"""
     html = html.replace("@@APP_HP_NAV_STYLES@@", HP_NAV_CSS).replace(
-        "@@PUBLIC_SITE_NAV@@", public_site_nav_html(feed_structure_href="/#feed-structure")
+        "@@PUBLIC_SITE_NAV@@", public_site_nav_html()
     )
     r = HTMLResponse(content=html)
     _onboarding_track(request, r, 5)

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import html
 
-from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
+from .public_nav import public_site_footer_html, public_site_nav_html, public_site_styles_block, public_site_theme_toggle_script
 
 
 def _legal_seo_extra(canonical_url: str, ot: str, od: str, og_image: str) -> str:
@@ -82,9 +82,9 @@ a{{color:#818cf8}}
 .t-bg{{position:fixed;inset:0;z-index:0;pointer-events:none;
   background:radial-gradient(ellipse 70% 45% at 50% -15%,rgba(94,106,210,.14),transparent);
 }}
-.t-wrap{{position:relative;z-index:1;max-width:720px;margin:0 auto;padding:88px 24px 64px;box-sizing:border-box}}
+.t-wrap{{position:relative;z-index:1;max-width:720px;margin:0 auto;padding:88px 24px 48px;box-sizing:border-box}}
 
-@@HP_NAV_STYLES@@
+{{PUBLIC_STYLES}}
 
 .legal-doc h1{{font-size:clamp(1.65rem,3.5vw,2.1rem);font-weight:700;letter-spacing:-.03em;margin-bottom:8px}}
 .legal-updated{{font-size:.88rem;color:rgba(229,231,235,.5);margin-bottom:22px}}
@@ -98,28 +98,27 @@ a{{color:#818cf8}}
 .legal-doc ul{{margin:8px 0 12px 1.15rem;font-size:.94rem;color:rgba(229,231,235,.82)}}
 [data-theme=light] .legal-doc ul{{color:rgba(15,23,42,.82)}}
 .legal-doc li{{margin-bottom:6px}}
-
-.t-foot-wrap{{margin-top:40px}}
 </style>
 </head>
 <body>
 {gtm_body}
 <div class="t-bg" aria-hidden="true"></div>
 
-@@PUBLIC_NAV@@
+{{PUBLIC_NAV}}
 
 <div class="t-wrap">
 {article_html}
-  <div class="t-foot-wrap">@@PUBLIC_SITE_FOOTER@@</div>
 </div>
 
-__THEME_INLINE__
+{{PUBLIC_FOOTER}}
+
+{{PUBLIC_THEME_SCRIPT}}
 </body>
 </html>
 """
-    ).replace("@@HP_NAV_STYLES@@", HP_NAV_CSS + HP_FOOTER_CSS).replace(
-        "@@PUBLIC_NAV@@", public_site_nav_html(feed_structure_href="/feed-structure")
-    ).replace("@@PUBLIC_SITE_FOOTER@@", public_site_footer_html(feed_structure_href="/feed-structure")).replace(
-        "__THEME_INLINE__",
-        "<script>" + public_site_theme_toggle_script().strip() + "</script>",
+    ).replace("{PUBLIC_STYLES}", public_site_styles_block()).replace(
+        "{PUBLIC_NAV}", public_site_nav_html()
+    ).replace("{PUBLIC_FOOTER}", public_site_footer_html()).replace(
+        "{PUBLIC_THEME_SCRIPT}",
+        "<script>" + public_site_theme_toggle_script().strip() + "</script>\n<script src=\"/static/page-transition.js\"></script>",
     )

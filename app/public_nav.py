@@ -30,11 +30,11 @@ HP_FOOTER_CSS = """
 # Tokens + nav bar (excerpt from `main.py` HOMEPAGE_HTML); safe to embed in any page `<style>`.
 HP_NAV_CSS = """
     :root, [data-theme="dark"] {
-      --hp-bg: #0b0f14;
+      --hp-bg: #0B0F19;
       --hp-card: #1f2937;
-      --hp-text: #f9fafb;
+      --hp-text: #E5E7EB;
       --hp-muted: #9ca3af;
-      --hp-accent: #93c5fd;
+      --hp-accent: #4F46E5;
       --hp-positive: #4ade80;
       --hp-negative: #f87171;
       --hp-border: rgba(255,255,255,0.08);
@@ -47,14 +47,14 @@ HP_NAV_CSS = """
       --hp-grad-1: #f8fbff;
       --hp-grad-2: #e8f0fe;
       --hp-grad-3: #f0f4ff;
-      --hp-bg: #f0f4ff;
+      --hp-bg: #f8fafc;
       --hp-card: #ffffff;
-      --hp-text: #1a1a1a;
+      --hp-text: #0f172a;
       --hp-muted: #4b5563;
-      --hp-accent: #2d333a;
+      --hp-accent: #4F46E5;
       --hp-positive: #4ade80;
       --hp-negative: #f87171;
-      --hp-border: rgba(26,26,26,0.08);
+      --hp-border: rgba(15,23,42,0.08);
       --hp-border-card: #e5e7eb;
       --hp-cta-gradient: linear-gradient(180deg, #2d333a 0%, #23292f 100%);
     }
@@ -91,6 +91,11 @@ HP_NAV_CSS = """
         .hp-nav-inner { padding: 0 24px; }
     }
 """
+
+
+def public_site_styles_block() -> str:
+    """Shared nav + footer CSS — embed once in each public page <style> block."""
+    return HP_NAV_CSS + HP_FOOTER_CSS
 
 
 def public_site_nav_html(*, feed_structure_href: str = "/feed-structure") -> str:
