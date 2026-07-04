@@ -1905,6 +1905,42 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .cz2-manifesto { padding: 72px 0 64px; }
         .cz2-final { padding: 90px 0; }
     }
+
+    /* ── Product visuals / screenshots ── */
+    .cz2-shot { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--hp-border-card); box-shadow: 0 30px 80px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(220,80,0,0.06); background: #100904; }
+    .cz2-shot img { display: block; width: 100%; height: auto; }
+    .cz2-shot::after { content: ""; position: absolute; inset: 0; border-radius: 18px; box-shadow: inset 0 1px 0 rgba(255,237,215,0.06); pointer-events: none; }
+    /* animated ember scan beam over a screenshot (reads like live processing) */
+    .cz2-shot-scan { position: absolute; left: 0; right: 0; top: 0; height: 14%; pointer-events: none; z-index: 3;
+      background: linear-gradient(180deg, transparent, rgba(220,80,0,0.10) 45%, rgba(255,138,61,0.55) 50%, rgba(220,80,0,0.10) 55%, transparent);
+      mix-blend-mode: screen; filter: blur(0.4px); animation: cz2Scan 4.6s cubic-bezier(0.45,0,0.55,1) infinite; }
+    @keyframes cz2Scan { 0% { transform: translateY(-20%); opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { transform: translateY(760%); opacity: 0; } }
+    .cz2-shot-glow { position: absolute; inset: -1px; border-radius: 18px; pointer-events: none; z-index: 2;
+      background: radial-gradient(120% 60% at 50% 0%, rgba(220,80,0,0.16), transparent 60%); }
+    @media (prefers-reduced-motion: reduce) { .cz2-shot-scan { animation: none; opacity: 0.5; top: 42%; } }
+
+    /* Hero showcase */
+    .cz2-hero-showcase { max-width: min(880px, 100%); margin: 46px auto 0; position: relative; z-index: 3; }
+    .cz2-hero-showcase .cz2-shot { animation: cz2Float 7s ease-in-out infinite; }
+    @keyframes cz2Float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+    @media (prefers-reduced-motion: reduce) { .cz2-hero-showcase .cz2-shot { animation: none; } }
+    .cz2-hero-caption { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 16px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--hp-muted); }
+    .cz2-hero-caption b { color: var(--cz2-ember); font-weight: 600; }
+    .cz2-hero-caption i { width: 6px; height: 6px; border-radius: 50%; background: var(--cz2-ember); display: inline-block; box-shadow: 0 0 10px rgba(220,80,0,0.8); animation: cz2Pulse 1.8s ease-in-out infinite; }
+    @keyframes cz2Pulse { 0%,100% { opacity: 0.4; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
+
+    /* Quality showcase (image + gauges) */
+    .cz2-quality-showcase { margin-bottom: 40px; }
+
+    /* Fix Packs decorative background */
+    .cz2-packs { overflow: hidden; }
+    .cz2-packs-bgimg { position: absolute; inset: 0; z-index: 0; background-size: cover; background-position: center; opacity: 0.5; pointer-events: none; }
+    [data-theme="light"] .cz2-packs-bgimg { opacity: 0.12; }
+    .cz2-packs > .cz2-wrap { position: relative; z-index: 1; }
+
+    @media (max-width: 768px) {
+        .cz2-hero-showcase { margin-top: 34px; }
+    }
     </style>
     <noscript><style>[data-reveal]{opacity:1 !important;transform:none !important;} .cz2-lab-title-after::after{content:"IKEA Ingolf Dining Chair, Solid Pine Wood, Black \2014 Kitchen & Dining";} .cz2-gauge-fill{stroke-dashoffset:40 !important;} .cz2-bar-val{width:80% !important;}</style></noscript>
 </head>
@@ -1968,6 +2004,15 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             </div>
         </div>
         </div>
+
+        <figure class="cz2-hero-showcase" data-parallax>
+            <div class="cz2-shot">
+                <div class="cz2-shot-glow" aria-hidden="true"></div>
+                <div class="cz2-shot-scan" aria-hidden="true"></div>
+                <img src="/static/hp/hero-console.png" width="1024" height="683" alt="Cartozo optimizing a product feed: raw messy product rows on the left transformed into clean, Merchant-ready rows on the right." loading="eager" />
+            </div>
+            <figcaption class="cz2-hero-caption"><i></i> <span>Raw feed <b>&rarr;</b> Merchant-ready &middot; live optimization pass</span></figcaption>
+        </figure>
     </section>
 
     <style>
@@ -2066,6 +2111,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
 
     <!-- Fix Packs (content-dense grid) -->
     <section class="cz2-packs" id="fix-packs">
+        <div class="cz2-packs-bgimg" aria-hidden="true" style="background-image:url('/static/hp/section-bg.png')"></div>
         <div class="cz2-wrap">
             <div class="cz2-packs-head">
                 <div data-reveal>
@@ -2141,6 +2187,12 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <h2 class="cz2-h2">Every product,<br>measured before you upload</h2>
                 <p class="cz2-lead">Cartozo scores each SKU 1&ndash;100 across intent, completeness and compliance&mdash;so you know exactly what improved.</p>
             </div>
+            <figure class="cz2-quality-showcase" data-reveal>
+                <div class="cz2-shot">
+                    <div class="cz2-shot-glow" aria-hidden="true"></div>
+                    <img src="/static/hp/quality-dashboard.png" width="1024" height="683" alt="Cartozo feed quality dashboard showing content quality, data completeness and AI readiness scores with trend charts." loading="lazy" />
+                </div>
+            </figure>
             <div class="cz2-score-grid">
                 <div class="cz2-gauge-card" data-reveal>
                     <div class="cz2-gauge">
@@ -2947,6 +2999,22 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             gauges.forEach(function(g){ gIO.observe(g); });
         } else {
             gauges.forEach(animateGauge);
+        }
+
+        // Hero showcase parallax (subtle)
+        var parallax = document.querySelectorAll('[data-parallax]');
+        if (parallax.length && !reduce) {
+            var pRaf = null;
+            window.addEventListener('scroll', function() {
+                if (pRaf) return;
+                pRaf = requestAnimationFrame(function() {
+                    pRaf = null;
+                    var y = window.scrollY;
+                    parallax.forEach(function(el) {
+                        el.style.transform = 'translateY(' + Math.max(-24, -y * 0.04) + 'px)';
+                    });
+                });
+            }, { passive: true });
         }
 
         // Benchmark bars
