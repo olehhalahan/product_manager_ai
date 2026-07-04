@@ -35,9 +35,10 @@ class TrafficAnalyticsMiddleware(BaseHTTPMiddleware):
             ua = request.headers.get("user-agent") or ""
             ref = request.headers.get("referer") or request.headers.get("referrer") or ""
             cls = classify_user_agent(ua)
-            from .db import get_db
+            from .db import ensure_traffic_analytics_schema, get_db
             from .services.db_repository import record_site_visit
 
+            ensure_traffic_analytics_schema()
             with get_db() as db:
                 record_site_visit(
                     db,

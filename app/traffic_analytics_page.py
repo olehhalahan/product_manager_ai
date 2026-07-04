@@ -12,7 +12,7 @@ from .gtm import gtm_body_for_path, gtm_head_for_path
 
 
 def build_traffic_analytics_page(request: Request, *, days: int, visitor_class: str) -> HTMLResponse:
-    from .db import get_db
+    from .db import ensure_traffic_analytics_schema, get_db
     from .services.db_repository import get_traffic_analytics_summary, list_recent_site_visits
 
     redir = require_admin_redirect(request, "/admin/traffic-analytics")
@@ -20,9 +20,13 @@ def build_traffic_analytics_page(request: Request, *, days: int, visitor_class: 
         return redir
 
     days = max(1, min(int(days or 7), 90))
-    with get_db() as db:
-        summary = get_traffic_analytics_summary(db, days=days)
-        recent = list_recent_site_visits(db, days=days, visitor_class=visitor_class, limit=80)
+    try:
+        ensure_traffic_analytics_schema()
+        with get_db() as db:
+            summary = get_traffic_analytics_summary(db, days=days)
+            recent = list_recent_site_visits(db, days=days, visitor_class=visitor_class, limit=80)
+    except Exception as exc:
+        return _traffic_analytics_error_page(request, exc)
 
     def esc(s: str) -> str:
         return html_module.escape(s or "")
@@ -181,3 +185,44 @@ def build_traffic_analytics_page(request: Request, *, days: int, visitor_class: 
 </body>
 </html>"""
     return HTMLResponse(content=page)
+
+
+def _traffic_analytics_error_page(request: Request, exc: Exception) -> HTMLResponse:
+    """Render HTML (not JSON) when analytics DB schema or query fails."""
+    import html as html_module
+
+    msg = html_module.escape(str(exc) or "Unknown error")
+    nav = admin_top_nav_html(active="traffic-analytics")
+    _h = gtm_head_for_path(str(request.url.path))
+    _b = gtm_body_for_path(str(request.url.path))
+    page = f"""<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+{_h}
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Traffic analytics — Cartozo.ai</title>
+<link rel="stylesheet" href="/static/styles.css"/>
+<style>
+.ta-wrap {{ max-width: 720px; margin: 48px auto; padding: 0 24px; }}
+.ta-err {{ background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.35); border-radius: 12px; padding: 20px; }}
+.ta-err h1 {{ font-size: 1.25rem; margin-bottom: 12px; }}
+.ta-err p {{ line-height: 1.55; color: rgba(255,255,255,.75); margin-bottom: 10px; }}
+.ta-err code {{ font-size: .85rem; word-break: break-word; }}
+</style>
+</head>
+<body>
+{_b}
+{nav}
+<div class="ta-wrap">
+  <div class="ta-err">
+    <h1>Traffic analytics unavailable</h1>
+    <p>The dashboard could not load analytics data. This usually means the database migration has not run yet.</p>
+    <p><strong>Fix:</strong> restart the app service so <code>init_db()</code> creates <code>site_visit_events</code> and new blog view columns, then reload this page.</p>
+    <p>Open <a href="/admin/traffic-analytics">/admin/traffic-analytics</a> (not <code>/api/admin/traffic-analytics</code> — that URL returns JSON).</p>
+    <p><code>{msg}</code></p>
+  </div>
+</div>
+</body>
+</html>"""
+    return HTMLResponse(content=page, status_code=503)

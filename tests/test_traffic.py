@@ -37,6 +37,38 @@ class TrafficClassificationTests(unittest.TestCase):
         self.assertFalse(should_track_path("/api/contact", "GET"))
         self.assertTrue(should_track_path("/faq", "GET"))
 
+    def test_ensure_traffic_analytics_schema_creates_site_visit_events(self):
+        import os
+        import tempfile
+        from sqlalchemy import create_engine, inspect, text
+
+        from app.db import ensure_traffic_analytics_schema
+
+        path = tempfile.mktemp(suffix=".db")
+        engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE blog_article_view_events (id INTEGER PRIMARY KEY, article_id INTEGER, viewed_at DATETIME)"
+                )
+            )
+        old_engine = os.environ.get("DATABASE_URL")
+        os.environ["DATABASE_URL"] = f"sqlite:///{path}"
+        try:
+            import app.db as db_mod
+
+            db_mod.engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
+            ensure_traffic_analytics_schema()
+            insp = inspect(db_mod.engine)
+            self.assertIn("site_visit_events", insp.get_table_names())
+            cols = {c["name"] for c in insp.get_columns("blog_article_view_events")}
+            self.assertIn("visitor_class", cols)
+        finally:
+            if old_engine is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = old_engine
+
 
 if __name__ == "__main__":
     unittest.main()

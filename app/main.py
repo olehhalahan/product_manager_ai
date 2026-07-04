@@ -7781,11 +7781,18 @@ async def admin_traffic_analytics_page(
 @app.get("/api/admin/traffic-analytics")
 async def api_admin_traffic_analytics(request: Request, days: int = 7):
     require_admin_http(request)
-    from .db import get_db
+    from .db import ensure_traffic_analytics_schema, get_db
     from .services.db_repository import get_traffic_analytics_summary
 
-    with get_db() as db:
-        return JSONResponse(get_traffic_analytics_summary(db, days=max(1, min(days, 90))))
+    try:
+        ensure_traffic_analytics_schema()
+        with get_db() as db:
+            return JSONResponse(get_traffic_analytics_summary(db, days=max(1, min(days, 90))))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Traffic analytics database not ready: {exc}. Restart the app after deploy.",
+        )
 
 
 def _sitemap_url_block(loc: str, *, priority: str, changefreq: str, lastmod: Optional[str] = None) -> str:

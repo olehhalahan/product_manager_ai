@@ -239,14 +239,21 @@ def init_db():
 
         WritterAutoRun.__table__.create(bind=engine, checkfirst=True)
 
+    ensure_traffic_analytics_schema()
+
+    Base.metadata.create_all(bind=engine)
+
+
+def ensure_traffic_analytics_schema() -> None:
+    """Create/migrate tables used by traffic analytics (safe to call repeatedly)."""
+    from sqlalchemy import inspect, text
+
     inspector = inspect(engine)
     if "blog_article_view_events" not in inspector.get_table_names():
         from .db_models import BlogArticleViewEvent
 
         BlogArticleViewEvent.__table__.create(bind=engine, checkfirst=True)
     else:
-        from sqlalchemy import text
-
         bve_cols = {c["name"] for c in inspector.get_columns("blog_article_view_events")}
         with engine.begin() as conn:
             if "visitor_class" not in bve_cols:
@@ -261,5 +268,3 @@ def init_db():
         from .db_models import SiteVisitEvent
 
         SiteVisitEvent.__table__.create(bind=engine, checkfirst=True)
-
-    Base.metadata.create_all(bind=engine)
