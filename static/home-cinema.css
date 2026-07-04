@@ -1,0 +1,230 @@
+/* Higgsfield-style cinematic showcase — full-bleed large films */
+
+.hp-cinema {
+  padding: clamp(80px, 10vh, 120px) 0 clamp(100px, 12vh, 140px);
+  border-top: 1px dashed var(--hp-border-card);
+}
+
+.hp-cinema-intro {
+  margin-bottom: clamp(40px, 6vh, 64px);
+}
+
+.hp-cinema-intro h2 {
+  font-size: clamp(2rem, 5vw, 51px);
+  line-height: 0.9;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+.hp-cinema-intro p {
+  font-size: clamp(1rem, 1.8vw, 20px);
+  line-height: 1.45;
+  color: var(--hp-muted);
+  max-width: 48ch;
+  font-weight: 400;
+}
+
+.hp-cinema-stack {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 3vh, 32px);
+  padding: 0 clamp(16px, 3vw, 48px);
+}
+
+.hp-cinema-card {
+  position: relative;
+  border: 1px solid rgba(64, 55, 46, 0.65);
+  overflow: hidden;
+  background: #100904;
+  cursor: pointer;
+  transition: border-color 0.35s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hp-cinema-card:hover {
+  border-color: rgba(220, 80, 0, 0.45);
+  transform: translateY(-2px);
+}
+
+.hp-cinema-card--flagship {
+  min-height: clamp(420px, 72vh, 780px);
+}
+
+.hp-cinema-duo {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: clamp(20px, 3vh, 32px);
+}
+
+.hp-cinema-duo .hp-cinema-card {
+  min-height: clamp(320px, 52vh, 560px);
+}
+
+.hp-cinema-media {
+  position: absolute;
+  inset: 0;
+}
+
+.hp-cinema-poster,
+.hp-cinema-media video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.hp-cinema-media video {
+  z-index: 2;
+}
+
+.hp-cinema-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(16, 9, 4, 0.35) 0%, transparent 28%),
+    linear-gradient(0deg, rgba(16, 9, 4, 0.92) 0%, rgba(16, 9, 4, 0.45) 38%, transparent 68%);
+}
+
+.hp-cinema-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: clamp(24px, 4vw, 56px);
+  pointer-events: none;
+}
+
+.hp-cinema-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hp-link);
+  margin-bottom: 12px;
+}
+
+.hp-cinema-overlay h3 {
+  font-size: clamp(1.75rem, 4.5vw, 42px);
+  font-weight: 500;
+  line-height: 0.92;
+  text-transform: uppercase;
+  color: var(--hp-text);
+  margin-bottom: 12px;
+  max-width: 16ch;
+}
+
+.hp-cinema-overlay p {
+  font-size: clamp(0.95rem, 1.6vw, 18px);
+  line-height: 1.45;
+  color: var(--hp-muted);
+  font-weight: 400;
+  max-width: 42ch;
+  margin-bottom: 20px;
+}
+
+.hp-cinema-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  pointer-events: auto;
+}
+
+.hp-cinema-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border-radius: 36px;
+  border: none;
+  background: var(--color-bark-brown, #382416);
+  color: var(--color-warm-cream, #ffedd7);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.hp-cinema-play:hover {
+  opacity: 0.92;
+  transform: scale(1.02);
+}
+
+.hp-cinema-play-icon {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 5px 0 5px 8px;
+  border-color: transparent transparent transparent currentColor;
+}
+
+.hp-cinema-meta {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--hp-muted);
+  font-family: Arial, sans-serif;
+}
+
+.hp-cinema-card.is-playing .hp-cinema-vignette {
+  opacity: 0.85;
+}
+
+/* Hero film — larger cinematic preview */
+.hp-body.hp-home .hp-hero-aside {
+  width: min(620px, 54vw);
+}
+
+.hp-body.hp-home .hp-hero-video {
+  min-height: clamp(240px, 28vw, 340px);
+  aspect-ratio: 16 / 9;
+  border: 1px solid rgba(255, 237, 215, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(64, 55, 46, 0.5),
+    0 32px 64px rgba(0, 0, 0, 0.55),
+    0 0 80px rgba(220, 80, 0, 0.08);
+}
+
+.hp-body.hp-home .hp-hero-video-play {
+  padding: 12px 22px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  background: rgba(16, 9, 4, 0.75);
+  backdrop-filter: blur(8px);
+}
+
+.hp-video-modal-inner {
+  width: min(1200px, 96vw);
+  border: 1px solid rgba(64, 55, 46, 0.8);
+  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.65);
+}
+
+.hp-video-modal video {
+  max-height: 85vh;
+}
+
+@media (max-width: 900px) {
+  .hp-cinema-duo {
+    grid-template-columns: 1fr;
+  }
+
+  .hp-cinema-card--flagship,
+  .hp-cinema-duo .hp-cinema-card {
+    min-height: clamp(280px, 58vw, 420px);
+  }
+
+  .hp-body.hp-home .hp-hero-aside {
+    width: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-cinema-card:hover { transform: none; }
+}
