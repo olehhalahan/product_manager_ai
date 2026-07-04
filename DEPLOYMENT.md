@@ -40,25 +40,50 @@ For production, set these **environment variables** in your hosting platform (Di
 
 ## Update production server
 
-Pushing to GitHub **`live`** does not restart cartozo.ai automatically. On the **server** (SSH):
+Pushing to GitHub **`live`** does not restart cartozo.ai automatically. On the **server** (SSH), app path is typically:
 
 ```bash
-cd /path/to/product_manager_ai   # your app directory
+cd /var/www/product_manager_ai
+```
+
+### Quick deploy
+
+```bash
+cd /var/www/product_manager_ai
+bash scripts/deploy_live.sh
+```
+
+If the script cannot find your systemd unit, set the service name explicitly:
+
+```bash
+CARTOZO_SERVICE=your-service-name bash scripts/deploy_live.sh
+```
+
+### Manual deploy
+
+```bash
+cd /var/www/product_manager_ai
 git fetch origin live
 git checkout live
 git pull origin live
-pip install -r requirements.txt    # if dependencies changed
-sudo systemctl restart cartozo     # or your service name
+
+# Use the project venv — do NOT pip install system-wide on Ubuntu 24.04+
+.venv/bin/pip install -r requirements.txt
+# or: venv/bin/pip install -r requirements.txt
+
+# Find your service name (cartozo.service may not exist on your host):
+systemctl list-units --type=service | grep -iE 'product|uvicorn|gunicorn|cartozo'
+ps aux | grep -E 'uvicorn|gunicorn|product_manager'
+
+sudo systemctl restart <your-service-name>
 ```
 
-Or run `bash scripts/deploy_live.sh` from the repo root (set `CARTOZO_SERVICE` if the systemd unit name differs).
+**Important:** `git pull` saying *Already up to date* only updates files on disk. You still must **restart the app process** — otherwise `/admin/traffic-analytics` keeps returning `{"detail":"Not Found"}` from the old in-memory code.
 
-**Verify:** open `https://cartozo.ai/health` — after a successful deploy you should see:
+**Verify:** open `https://cartozo.ai/health` — after a successful restart you should see:
 
 ```json
 "features": { "traffic_analytics": true, ... }
 ```
-
-If `/admin/traffic-analytics` returns `{"detail":"Not Found"}`, the running process is still on an **old commit** — repeat `git pull` and restart.
 
 **Traffic analytics URL:** `/admin/traffic-analytics` (HTML dashboard). Do not open `/api/admin/traffic-analytics` in the browser — that endpoint returns JSON.
