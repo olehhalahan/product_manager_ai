@@ -861,24 +861,26 @@ button.nav-merchant-pill:hover { filter: brightness(1.08); }
     filter: none;
 }
 
-/* ── Homepage-style nav (public blog — matches marketing header) ── */
+/* ── Homepage-style nav (public blog — Air-inspired marketing header) ── */
 .hp-nav {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     z-index: 1000;
-    padding: 16px 0;
-    background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    height: 72px;
+    display: flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 [data-theme="light"] .hp-nav {
-    background: rgba(248, 250, 252, 0.95);
-    border-bottom-color: rgba(15, 23, 42, 0.08);
+    background: rgba(245, 245, 245, 0.92);
+    border-bottom-color: rgba(27, 27, 27, 0.14);
 }
 .hp-nav-inner {
-    max-width: 1200px;
+    max-width: 1150px;
     width: 100%;
     margin: 0 auto;
     padding: 0 40px;
@@ -954,24 +956,27 @@ button.nav-merchant-pill:hover { filter: brightness(1.08); }
     background: rgba(15, 23, 42, 0.06);
 }
 .hp-nav-cta {
-    background: var(--text-primary);
-    color: var(--bg-1);
-    padding: 10px 20px;
-    border-radius: 6px;
-    font-size: 0.85rem;
+    background: transparent;
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid #fff;
+    font-size: 14px;
     font-weight: 500;
     text-decoration: none;
-    transition: opacity 0.2s;
+    transition: background 0.2s;
 }
 .hp-nav-cta:hover {
-    opacity: 0.9;
+    background: rgba(255, 255, 255, 0.06);
+    opacity: 1;
 }
 [data-theme="light"] .hp-nav-cta {
-    background: #0f172a;
-    color: #fff;
+    background: transparent;
+    color: #1b1b1b;
+    border-color: #1b1b1b;
 }
 .blog-page-with-nav {
-    padding-top: 56px;
+    padding-top: 72px;
 }
 @media (max-width: 1024px) {
     .hp-nav-links {
