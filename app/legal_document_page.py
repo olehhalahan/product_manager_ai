@@ -67,13 +67,10 @@ def build_legal_document_html(
 {seo_extra}{xh}
 {rss_feed_link_tag()}
 <script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
 body{{
-  font-family:var(--hp-font,'Inter',-apple-system,BlinkMacSystemFont,sans-serif);
+  font-family:var(--hp-font);
   background:var(--hp-bg,#100904);color:var(--hp-text,#ffedd7);line-height:1.5;
   font-weight:500;font-size:16px;
   -webkit-font-smoothing:antialiased;

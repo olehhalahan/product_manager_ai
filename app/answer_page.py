@@ -125,11 +125,9 @@ def build_answer_page_html(spec: AnswerPageSpec, *, og_image: str = "") -> str:
 {seo}{rss_feed_link_tag()}{json_ld}
 <script src="/static/csrf.js"></script>
 <script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:var(--hp-font,'Inter',system-ui,sans-serif);background:var(--hp-bg,#100904);color:var(--hp-text,#ffedd7);line-height:1.5;-webkit-font-smoothing:antialiased}}
+body{{font-family:var(--hp-font);background:var(--hp-bg,#100904);color:var(--hp-text,#ffedd7);line-height:1.5;-webkit-font-smoothing:antialiased}}
 {site_page_shell_css()}
 .ap-box h2,.ap-faq-item h3{{font-size:14px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;color:var(--hp-text)}}
 .ap-box ul,.ap-box p{{font-size:16px;font-weight:400;color:var(--hp-text)}}

@@ -25,7 +25,7 @@ HP_FOOTER_CSS = """
       border-bottom: 1px solid transparent;
     }
     .hp-footer-link:hover { color: var(--hp-link); border-bottom-color: var(--hp-link); }
-    .hp-footer-meta { font-size: 11px; color: var(--hp-muted); text-align: center; padding-top: 8px; line-height: 1.55; font-family: Arial, sans-serif; text-transform: uppercase; }
+    .hp-footer-meta { font-size: 11px; color: var(--hp-muted); text-align: center; padding-top: 8px; line-height: 1.55; font-family: var(--hp-font); text-transform: uppercase; }
     .hp-footer-meta a { color: var(--hp-muted); text-decoration: none; }
     .hp-footer-meta a:hover { color: var(--hp-link); }
     @media (max-width: 768px) {

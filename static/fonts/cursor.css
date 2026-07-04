@@ -1,0 +1,22 @@
+/* Cursor.com typography — self-hosted CursorGothic + Berkeley Mono (marketing site fonts) */
+@font-face {
+  font-family: 'CursorGothic';
+  src: url('/static/fonts/CursorGothic-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'CursorGothic';
+  src: url('/static/fonts/CursorGothic-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'BerkeleyMono';
+  src: url('/static/fonts/BerkeleyMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

@@ -31,7 +31,7 @@ PAGE = r"""<!DOCTYPE html>
   <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
   <link rel="stylesheet" href="/static/styles.css" />
   <style>
-  body { margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }
+  body { margin:0; font-family:var(--font-sans); background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }
   [data-theme="light"] body { background:#f8fafc; color:#0f172a; }
   .wt-layout { flex:1; display:flex; min-height:0; }
   .wt-side { width:240px; background:#0a0e18; border-right:1px solid rgba(255,255,255,.08); padding:24px 16px; }

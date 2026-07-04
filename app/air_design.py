@@ -1,12 +1,33 @@
 """ORYZO-inspired warm walnut design tokens (Cartozo public site)."""
 from __future__ import annotations
 
-# Inter substitutes for Halyard Display Variable (per DESIGN.md).
+# Cursor.com marketing typography: CursorGothic (sans), EB Garamond (serif display), Berkeley Mono.
 SITE_FONTS_URL = (
-    "https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap"
+    "https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap"
 )
 
-ORYZO_TOKENS_CSS = """
+SITE_FONTS_LINK_TAGS = """
+    <link rel="stylesheet" href="/static/fonts/cursor.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet" />
+"""
+
+SITE_FONT_SANS = (
+    "'CursorGothic', system-ui, -apple-system, BlinkMacSystemFont, "
+    "'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+)
+SITE_FONT_DISPLAY = (
+    "'EB Garamond', Iowan Old Style, Palatino Linotype, URW Palladio L, P052, "
+    "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif"
+)
+SITE_FONT_MONO = (
+    "'BerkeleyMono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "
+    "'Liberation Mono', 'Courier New', monospace"
+)
+
+ORYZO_TOKENS_CSS = (
+    """
     :root, [data-theme="dark"] {
       --color-warm-cream: #ffedd7;
       --color-walnut-shadow: #100904;
@@ -27,8 +48,15 @@ ORYZO_TOKENS_CSS = """
       --hp-negative: #f87171;
       --hp-border: #40372e;
       --hp-border-card: #40372e;
-      --hp-font: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-      --hp-font-display: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      --hp-font: """
+    + SITE_FONT_SANS
+    + """;
+      --hp-font-display: """
+    + SITE_FONT_DISPLAY
+    + """;
+      --hp-font-mono: """
+    + SITE_FONT_MONO
+    + """;
       --hp-max-width: 1150px;
       --hp-radius-btn-pill: 36px;
       --hp-radius-btn-outlined: 22.5px;
@@ -52,6 +80,7 @@ ORYZO_TOKENS_CSS = """
       --hp-border-card: #40372e;
     }
 """
+)
 
 ORYZO_COMPONENTS_CSS = """
     .cz-pill-btn {
@@ -154,6 +183,11 @@ SITE_PAGE_CSS = """
 AIR_TOKENS_CSS = ORYZO_TOKENS_CSS
 AIR_COMPONENTS_CSS = ORYZO_COMPONENTS_CSS
 AIR_FONTS_URL = SITE_FONTS_URL
+
+
+def site_fonts_link_tags() -> str:
+    """Link tags for Cursor.com-style typography (CursorGothic, EB Garamond, Berkeley Mono)."""
+    return SITE_FONTS_LINK_TAGS.strip()
 
 
 def site_public_styles_block() -> str:

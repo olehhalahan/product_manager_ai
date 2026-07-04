@@ -314,7 +314,7 @@ def _writter_article_missing_html(article_id: int) -> HTMLResponse:
   <link rel="stylesheet" href="/static/styles.css" />
   <script src="/static/csrf.js"></script>
   <style>
-  body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
+  body {{ margin:0; font-family:var(--font-sans); background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
   .wt-box {{ max-width:560px; margin:48px auto; padding:0 24px 80px; }}
   </style>
 </head>
@@ -366,7 +366,7 @@ def _writter_review_error_html(
   <link rel="stylesheet" href="/static/styles.css" />
   <script src="/static/csrf.js"></script>
   <style>
-  body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
+  body {{ margin:0; font-family:var(--font-sans); background:#0B0F19; color:#E5E7EB; min-height:100vh; }}
   .wt-box {{ max-width:640px; margin:48px auto; padding:0 24px 80px; }}
   .wt-rid {{ font-family:ui-monospace,monospace; font-size:.85rem; color:#94a3b8; }}
   </style>
@@ -548,7 +548,7 @@ async def writter_list_page(request: Request):
   <link rel="stylesheet" href="/static/styles.css" />
   <script src="/static/csrf.js"></script>
   <style>
-  body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
+  body {{ margin:0; font-family:var(--font-sans); background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
   [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
   .wt-layout {{ flex:1; display:flex; min-height:0; }}
   .wt-side {{ width:240px; background:#0a0e18; border-right:1px solid rgba(255,255,255,.08); padding:24px 16px; }}
@@ -1178,7 +1178,7 @@ async def writter_article_review(request: Request, article_id: int):
       <link rel="stylesheet" href="/static/styles.css" />
   <script src="/static/csrf.js"></script>
       <style>
-      body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
+      body {{ margin:0; font-family:var(--font-sans); background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
       [data-theme="light"] body {{ background:#f8fafc; color:#0f172a; }}
       .wt-layout {{ flex:1; display:flex; min-height:0; }}
       .wt-side {{ width:240px; background:#0a0e18; border-right:1px solid rgba(255,255,255,.08); padding:24px 16px; flex-shrink:0; }}
@@ -2854,7 +2854,7 @@ def _blog_topic_page_html(
   <style>
   {HP_NAV_CSS}
   {HP_FOOTER_CSS}
-  body.blog-idx-body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
+  body.blog-idx-body {{ margin:0; font-family:var(--font-sans); background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
   .blog-idx-wrap {{ max-width:800px; margin:0 auto; padding:88px 24px 80px; }}
   .blog-breadcrumbs {{ font-size:.85rem; color:#64748b; margin-bottom:16px; }}
   .blog-breadcrumbs a {{ color:inherit; text-decoration:none; }}
@@ -2974,7 +2974,7 @@ def _blog_index_page_html(
   <style>
   {HP_NAV_CSS}
   {HP_FOOTER_CSS}
-  body.blog-idx-body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
+  body.blog-idx-body {{ margin:0; font-family:var(--font-sans); background:#0B0F19; color:#E5E7EB; min-height:100vh; display:flex; flex-direction:column; }}
   [data-theme="light"] body.blog-idx-body {{ background:#f8fafc; color:#0f172a; }}
   .blog-page-with-nav {{ flex:1 0 auto; width:100%; }}
   .visually-hidden {{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }}
@@ -3445,7 +3445,7 @@ async def blog_public_page(request: Request, slug: str, background_tasks: Backgr
   <style>
   {HP_NAV_CSS}
   {HP_FOOTER_CSS}
-  body.blog-article-body {{ margin:0; font-family:Inter,system-ui,sans-serif; background:#0B0F19; color:#e2e8f0; min-height:100vh; display:flex; flex-direction:column; }}
+  body.blog-article-body {{ margin:0; font-family:var(--font-sans); background:#0B0F19; color:#e2e8f0; min-height:100vh; display:flex; flex-direction:column; }}
   [data-theme="light"] body.blog-article-body {{ background:#f8fafc; color:#0f172a; }}
   .blog-page-with-nav {{ flex:1 0 auto; width:100%; display:flex; flex-direction:column; }}
   .blog-layout {{ display:flex; flex:1; min-height:0; width:100%; }}
@@ -3683,7 +3683,7 @@ async def writter_clusters_page(request: Request):
 <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
 <link rel="stylesheet" href="/static/styles.css" />
 <style>
-body{{margin:0;font-family:Inter,system-ui,sans-serif;background:#0B0F19;color:#E5E7EB;min-height:100vh;}}
+body{{margin:0;font-family:var(--font-sans);background:#0B0F19;color:#E5E7EB;min-height:100vh;}}
 .wt-main{{max-width:720px;margin:0 auto;padding:32px 24px;}}
 .wt-btn{{padding:10px 18px;border-radius:8px;background:#4F46E5;color:#fff;border:none;font-weight:600;cursor:pointer;}}
 label{{display:block;font-size:.75rem;color:#9ca3af;margin:12px 0 6px;text-transform:uppercase;}}
@@ -3981,7 +3981,7 @@ async def writter_article_editor(request: Request, article_id: int):
 <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
 <link rel="stylesheet" href="/static/styles.css" />
 <style>
-body{{margin:0;font-family:Inter,system-ui,sans-serif;background:#0B0F19;color:#E5E7EB;min-height:100vh;}}
+body{{margin:0;font-family:var(--font-sans);background:#0B0F19;color:#E5E7EB;min-height:100vh;}}
 .wt-main{{max-width:960px;margin:0 auto;padding:32px 24px 80px;}}
 label{{display:block;font-size:.75rem;color:#9ca3af;margin:12px 0 6px;}}
 input,textarea{{width:100%;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:#111827;color:#e5e7eb;box-sizing:border-box;font-family:ui-monospace,Menlo,monospace;font-size:.85rem;}}
