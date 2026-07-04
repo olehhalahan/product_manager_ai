@@ -35,3 +35,30 @@ For production, set these **environment variables** in your hosting platform (Di
 **Error `deleted_client`:** The running server is still using a removed OAuth client. After updating `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` on the host, restart the app. Compare `GET /api/auth/oauth-debug` (returns the client id this process uses, no secrets) with the `client_id=` parameter in Google’s auth URL and with [Credentials](https://console.cloud.google.com/apis/credentials).
 
 **Note:** Never commit `.env` or real secrets to the repo. Use your host's environment variables UI.
+
+---
+
+## Update production server
+
+Pushing to GitHub **`live`** does not restart cartozo.ai automatically. On the **server** (SSH):
+
+```bash
+cd /path/to/product_manager_ai   # your app directory
+git fetch origin live
+git checkout live
+git pull origin live
+pip install -r requirements.txt    # if dependencies changed
+sudo systemctl restart cartozo     # or your service name
+```
+
+Or run `bash scripts/deploy_live.sh` from the repo root (set `CARTOZO_SERVICE` if the systemd unit name differs).
+
+**Verify:** open `https://cartozo.ai/health` — after a successful deploy you should see:
+
+```json
+"features": { "traffic_analytics": true, ... }
+```
+
+If `/admin/traffic-analytics` returns `{"detail":"Not Found"}`, the running process is still on an **old commit** — repeat `git pull` and restart.
+
+**Traffic analytics URL:** `/admin/traffic-analytics` (HTML dashboard). Do not open `/api/admin/traffic-analytics` in the browser — that endpoint returns JSON.
