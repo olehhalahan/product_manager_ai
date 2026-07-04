@@ -66,25 +66,25 @@ def build_how_it_works_html(
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
 body{{
   font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
-  background:#060711;color:#DCE0F2;
+  background:#100904;color:#ffedd7;
   overflow-x:hidden;-webkit-font-smoothing:antialiased;
   opacity:0;transition:opacity .48s ease;
 }}
 body.on{{opacity:1}}
-/* light: pure white bg, concrete hex muted (5.8:1 on #FFF) */
-[data-theme=light] body{{background:#FFFFFF;color:#0C0D1A}}
+[data-theme=light] body{{background:#ffedd7;color:#100904}}
 a{{text-decoration:none;color:inherit}}
+.aurora{{display:none!important}}
 
 /* ── tokens ──────────────────────────────────────── */
 :root{{
-  --ink:#DCE0F2; --muted:rgba(220,224,242,.5);
-  --line:rgba(255,255,255,.08);
-  --s1:rgba(255,255,255,.04); --s2:rgba(255,255,255,.08);
-  --acc:#5E6AD2; --vi:#8B5CF6; --cy:#3DCFEF;
+  --ink:#ffedd7; --muted:#6c5f51;
+  --line:#40372e;
+  --s1:rgba(255,237,215,.04); --s2:rgba(255,237,215,.08);
+  --acc:#382416; --vi:#6c5f51; --cy:#dc5000;
   --ok:#22C55E; --err:#EF4444; --warn:#F59E0B;
-  --r:18px;
-  --app-bg:#0B0F19; --app-fg:#E5E7EB;
-  --app-line:rgba(255,255,255,.08);
+  --r:12px;
+  --app-bg:#100904; --app-fg:#ffedd7;
+  --app-line:#40372e;
 }}
 /* light: --muted as concrete hex → 5.8:1 contrast on #FFF ✓ WCAG AA */
 [data-theme=light]{{
@@ -155,7 +155,7 @@ a{{text-decoration:none;color:inherit}}
 .btn:hover{{transform:translateY(-2px)}}
 .btn-primary{{
   color:#fff;
-  background:linear-gradient(135deg,#5E6AD2,#7C3AED 55%,#4F46E5);
+  background:linear-gradient(135deg,#382416,#7C3AED 55%,#382416);
   box-shadow:0 14px 44px -10px rgba(94,106,210,.62),0 0 0 1px rgba(255,255,255,.08) inset;
 }}
 .btn-primary:hover{{
@@ -222,7 +222,7 @@ a{{text-decoration:none;color:inherit}}
 /* animated rainbow gradient phrase — Stripe signature */
 .h1 .rainbow{{
   display:block;
-  background:linear-gradient(110deg,#818cf8 0%,#3DCFEF 32%,#22C55E 58%,#a78bfa 86%,#818cf8 100%);
+  background:linear-gradient(110deg,#dc5000 0%,#3DCFEF 32%,#22C55E 58%,#a78bfa 86%,#dc5000 100%);
   background-size:220% auto;
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
   animation:rainbowMove 6s linear infinite;
@@ -238,7 +238,7 @@ a{{text-decoration:none;color:inherit}}
   background:linear-gradient(135deg,rgba(79,70,229,.09),rgba(1,110,140,.09));
 }}
 [data-theme=light] .eyebrow-dot{{
-  background:linear-gradient(135deg,#4F46E5,#016E8C);
+  background:linear-gradient(135deg,#382416,#016E8C);
   box-shadow:0 0 8px rgba(1,110,140,.5);
 }}
 [data-theme=light] .s-label{{color:#016E8C}}
@@ -259,7 +259,7 @@ a{{text-decoration:none;color:inherit}}
 [data-theme=light] .nav{{border-bottom-color:rgba(12,13,26,.1)}}
 
 [data-theme=light] .h1 .rainbow{{
-  background:linear-gradient(110deg,#4F46E5 0%,#0891b2 32%,#059669 58%,#7C3AED 86%,#4F46E5 100%);
+  background:linear-gradient(110deg,#382416 0%,#0891b2 32%,#059669 58%,#7C3AED 86%,#382416 100%);
   background-size:220% auto;animation:rainbowMove 6s linear infinite;
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
 }}
@@ -471,7 +471,7 @@ a{{text-decoration:none;color:inherit}}
 .af .options-title{{font-size:.74rem;font-weight:600;color:rgba(255,255,255,.82);margin-bottom:8px}}
 .af .checkboxes{{display:flex;gap:14px;flex-wrap:wrap}}
 .af .checkbox-label{{display:flex;align-items:center;gap:7px;font-size:.72rem;color:rgba(255,255,255,.7);cursor:default}}
-.af .checkbox-label input{{width:13px;height:13px;accent-color:#4F46E5;cursor:default}}
+.af .checkbox-label input{{width:13px;height:13px;accent-color:#382416;cursor:default}}
 /* processing loader */
 .af .loader{{text-align:center;padding:22px 16px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:14px}}
 .af .spinner{{width:36px;height:36px;border:3px solid rgba(255,255,255,.1);border-top-color:#22D3EE;border-radius:50%;margin:0 auto 12px;animation:spin 1s linear infinite}}
@@ -479,7 +479,7 @@ a{{text-decoration:none;color:inherit}}
 .af .thinking{{font-size:.86rem;font-weight:600;color:var(--app-fg)}}
 .af .thinking-sub{{font-size:.72rem;color:rgba(255,255,255,.5);margin-top:4px}}
 .af .progress{{height:4px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden;margin-top:16px}}
-.af .progress-fill{{height:100%;background:linear-gradient(90deg,#4F46E5,#22D3EE);border-radius:99px;width:68%}}
+.af .progress-fill{{height:100%;background:linear-gradient(90deg,#382416,#22D3EE);border-radius:99px;width:68%}}
 /* gmc top-issues */
 .af .gmc-top-issues{{border-top:1px solid rgba(255,255,255,.06);margin-top:10px;padding-top:10px}}
 .af .gmc-ti-label{{font-size:.62rem;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}}
@@ -494,12 +494,12 @@ a{{text-decoration:none;color:inherit}}
 .af .gmc-ti-warn .gmc-ti-count{{background:rgba(245,158,11,.14);color:#fbbf24}}
 /* dropzone */
 .af .dropzone{{border:2px dashed rgba(255,255,255,.2);border-radius:12px;padding:22px 16px;text-align:center}}
-.af .dropzone.has-file{{border-color:#4F46E5;border-style:solid;background:rgba(79,70,229,.08)}}
+.af .dropzone.has-file{{border-color:#382416;border-style:solid;background:rgba(79,70,229,.08)}}
 .af .dropzone-icon{{font-size:1.5rem;margin-bottom:7px;opacity:.85}}
-.af .dropzone.has-file .dropzone-icon{{color:#818cf8}}
+.af .dropzone.has-file .dropzone-icon{{color:#dc5000}}
 .af .dropzone-text{{font-size:.78rem;color:rgba(255,255,255,.62)}}
 .af .dropzone-text strong{{color:var(--app-fg)}}
-.af .dropzone.has-file .dropzone-text{{color:#818cf8;font-weight:600}}
+.af .dropzone.has-file .dropzone-text{{color:#dc5000;font-weight:600}}
 .af .dropzone-filename{{margin-top:6px;font-size:.75rem;font-weight:500;color:rgba(255,255,255,.82)}}
 .af .dropzone-hint{{font-size:.66rem;color:rgba(255,255,255,.4);margin-top:4px}}
 .af .subtitle{{font-size:.78rem;color:rgba(255,255,255,.56);margin-bottom:12px;line-height:1.5}}
@@ -680,7 +680,7 @@ a{{text-decoration:none;color:inherit}}
 
 /* ── mini window chrome for each step ── */
 /* always dark — shows real app preview regardless of page theme */
-.mw{{border-radius:11px;border:1px solid rgba(255,255,255,.1);overflow:hidden;background:#0B0F19}}
+.mw{{border-radius:11px;border:1px solid rgba(255,255,255,.1);overflow:hidden;background:#100904}}
 [data-theme=light] .mw{{border-color:rgba(0,0,0,.14);box-shadow:0 4px 16px rgba(0,0,0,.15)}}
 .mw-bar{{display:flex;align-items:center;gap:7px;padding:8px 11px;border-bottom:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.22)}}
 .mw-dots{{display:flex;gap:4px}}
@@ -729,7 +729,7 @@ a{{text-decoration:none;color:inherit}}
   .af .spinner{{animation:none!important}}
   .af .spinner{{border-top-color:#22D3EE}}
   .rv,.rv-right{{opacity:1!important;transform:none!important;transition:none!important}}
-  .h1 .rainbow{{animation:none!important;background:linear-gradient(110deg,#818cf8,var(--cy));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}}
+  .h1 .rainbow{{animation:none!important;background:linear-gradient(110deg,#dc5000,var(--cy));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}}
   .ann-tl,.ann-br{{animation:none!important;opacity:1!important;transform:none!important}}
 }}
 </style>

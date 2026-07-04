@@ -54,7 +54,7 @@ def _base_head_snippet() -> str:
     <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
 {_GSC_META_LINE}    <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet" />
 """
 
 
