@@ -1703,7 +1703,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             <button type="button" class="hp-hero-video" id="hpHeroVideo" aria-label="Play Cartozo feed demo video">
                 <span class="hp-hero-video__glow" aria-hidden="true"></span>
                 <span class="hp-hero-video__border" aria-hidden="true"></span>
-                <img class="hp-hero-video-thumb" src="/static/home-media/cartozo-demo-poster.jpg" width="320" height="180" alt="" loading="eager" />
+                <canvas class="hp-hero-preview" id="hpHeroPreview" aria-hidden="true"></canvas>
                 <span class="hp-hero-video-play">Play</span>
             </button>
         </aside>
@@ -1739,10 +1739,10 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             </div>
             <div class="hp-powered-stage" id="hpPoweredStage">
                 <svg class="hp-powered-cursor" id="hpPoweredCursor" width="28" height="28" viewBox="0 0 32 40" aria-hidden="true"><path fill="currentColor" d="M6.718 22.615V17.36c-.325.341-.659.696-.986 1.058-1.276 1.407-2.352 2.76-2.775 3.622-.293.602-.263 1.344.017 2.186.271.816.721 1.549 1.03 2.016l5.182 6.817a5.1 5.1 0 0 1 1.04 3.085v2.231a1.375 1.375 0 0 1-2.75 0v-2.231c0-.515-.169-1.012-.48-1.421l-5.214-6.859-.028-.036-.025-.038c-.34-.513-.97-1.506-1.365-2.696-.393-1.182-.616-2.748.124-4.262.616-1.254 1.946-2.867 3.207-4.258a64 64 0 0 1 3.023-3.103V6.902a4.156 4.156 0 0 1 5.711-3.851 4.155 4.155 0 0 1 8.153.86c.466-.175.966-.27 1.483-.27A4.167 4.167 0 0 1 26.23 7.68a4.133 4.133 0 0 1 5.52 3.893v15.933c0 2.3-.866 4.735-3.162 7.469-.444.53-.681 1.14-.681 1.727v1.673a1.375 1.375 0 1 1-2.75 0v-1.673C28.46 30.854 29 29.024 29 27.506V11.572a1.383 1.383 0 1 0-2.767.008v8.293a1.375 1.375 0 1 1-2.75 0V7.808c0-.782-.635-1.417-1.418-1.417-.82 0-1.474.67-1.474 1.415v10.23a1.375 1.375 0 0 1-2.75 0V4.153a1.406 1.406 0 0 0-2.81 0v11.974a1.375 1.375 0 0 1-2.75 0V6.902l-.007-.142a1.406 1.406 0 0 0-2.806.142v15.713a1.375 1.375 0 0 1-2.75 0"/></svg>
-                <div class="hp-powered-row"><span>SKU</span><span>Generic Wooden Chair Black</span><span>42</span></div>
-                <div class="hp-powered-row"><span>SKU</span><span>IKEA Black Dining Chair Modern Kitchen</span><span>91</span></div>
-                <div class="hp-powered-row"><span>SKU</span><span>Nike Air Max 90 White Mens Running</span><span>88</span></div>
-                <div class="hp-powered-row"><span>SKU</span><span>Mens Cotton Oxford Shirt Blue Slim Fit</span><span>86</span></div>
+                <div class="hp-powered-row"><span>SKU</span><span>Generic Wooden Chair Black</span><span class="hp-powered-score" data-score="42">42</span></div>
+                <div class="hp-powered-row"><span>SKU</span><span>IKEA Black Dining Chair Modern Kitchen</span><span class="hp-powered-score" data-score="91">91</span></div>
+                <div class="hp-powered-row"><span>SKU</span><span>Nike Air Max 90 White Mens Running</span><span class="hp-powered-score" data-score="88">88</span></div>
+                <div class="hp-powered-row"><span>SKU</span><span>Mens Cotton Oxford Shirt Blue Slim Fit</span><span class="hp-powered-score" data-score="86">86</span></div>
             </div>
             <p class="hp-powered-hint" style="margin-top:18px"><span>AI fills in the gaps. You said optimize titles. It heard search intent.</span></p>
         </div>
@@ -1764,14 +1764,14 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                     </div>
                 </article>
                 <article class="hp-gallery-item">
-                    <video src="/static/home-media/gallery-titles.webm" muted playsinline loop preload="metadata" aria-label="Title rewrite demo"></video>
+                    <video src="/static/home-media/gallery-titles.webm" poster="/static/home-media/gallery-titles-poster.jpg" muted playsinline loop preload="metadata" aria-label="Title rewrite demo"></video>
                     <div class="hp-gallery-item-body">
                         <div class="hp-gallery-item-label">Issue 002</div>
                         <div class="hp-gallery-item-title">Intent-aligned titles</div>
                     </div>
                 </article>
                 <article class="hp-gallery-item">
-                    <video src="/static/home-media/gallery-disapproval.webm" muted playsinline loop preload="metadata" aria-label="Disapproval fix demo"></video>
+                    <video src="/static/home-media/gallery-disapproval.webm" poster="/static/home-media/gallery-disapproval-poster.jpg" muted playsinline loop preload="metadata" aria-label="Disapproval fix demo"></video>
                     <div class="hp-gallery-item-body">
                         <div class="hp-gallery-item-label">Issue 003</div>
                         <div class="hp-gallery-item-title">Disapproval recovery</div>
