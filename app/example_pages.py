@@ -6,6 +6,7 @@ import html
 from fastapi import Request
 from fastapi.responses import FileResponse, HTMLResponse
 
+from .air_design import site_page_shell_css
 from .gtm import GTM_BODY, GTM_HEAD
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
 from .seo import (
@@ -28,28 +29,9 @@ _TEMPLATE_DOWNLOADS = [
     ("/templates/sample-product-feed-after.csv", "Sample product feed — after optimization"),
 ]
 
-_SHARED_CSS = """
-.ap-wrap{position:relative;z-index:1;max-width:920px;margin:0 auto;padding:96px 24px 48px;box-sizing:border-box}
-.ap-bc{font-size:.85rem;color:rgba(229,231,235,.55);margin-bottom:18px}
-.ap-bc a{color:inherit}
-.ap-h1{font-size:clamp(1.6rem,3.5vw,2.1rem);font-weight:700;letter-spacing:-.03em;line-height:1.15;margin-bottom:14px}
-.ap-lead{font-size:1.02rem;line-height:1.65;color:rgba(229,231,235,.88);margin-bottom:24px}
-[data-theme=light] .ap-lead{color:rgba(15,23,42,.88)}
-.ap-box{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px 22px;margin:20px 0}
-[data-theme=light] .ap-box{background:#fff;border-color:rgba(15,23,42,.1)}
-.ap-table-wrap{overflow-x:auto;margin:20px 0;border:1px solid rgba(255,255,255,.08);border-radius:10px}
-[data-theme=light] .ap-table-wrap{border-color:rgba(15,23,42,.1)}
-.ap-table{width:100%;border-collapse:collapse;font-size:.82rem;min-width:640px}
-.ap-table th,.ap-table td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;vertical-align:top}
-[data-theme=light] .ap-table th,[data-theme=light] .ap-table td{border-color:rgba(15,23,42,.08)}
-.ap-table th{background:rgba(79,70,229,.12);font-weight:600;white-space:nowrap}
-.ap-cta{margin:32px 0;padding:24px;border-radius:12px;background:linear-gradient(135deg,rgba(79,70,229,.15),rgba(34,211,238,.08));border:1px solid rgba(129,140,248,.25);text-align:center}
-.ap-cta a{display:inline-block;margin:8px 6px 0;padding:12px 22px;border-radius:8px;font-weight:600;text-decoration:none;background:#4f46e5;color:#fff}
-.ap-cta a.secondary{background:transparent;border:1px solid rgba(255,255,255,.2);color:inherit}
-.ap-dl-list{margin:12px 0 0 1rem}
-.ap-dl-list li{margin-bottom:8px}
-.ap-note{font-size:.88rem;color:rgba(229,231,235,.65);margin-top:12px}
-[data-theme=light] .ap-note{color:rgba(15,23,42,.65)}
+_SHARED_CSS = site_page_shell_css() + """
+.ap-example{display:grid;gap:12px;margin:16px 0}
+@media(min-width:640px){.ap-example{grid-template-columns:1fr 1fr}}
 """
 
 
@@ -94,8 +76,7 @@ def _page_shell(
 <script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:#060711;color:#e5e7eb;line-height:1.6;-webkit-font-smoothing:antialiased}}
-[data-theme=light] body{{background:#fafbfc;color:#0f172a}}
+body{{font-family:var(--hp-font,'Inter',-apple-system,BlinkMacSystemFont,sans-serif);background:var(--hp-bg,#100904);color:var(--hp-text,#ffedd7);line-height:1.5;-webkit-font-smoothing:antialiased}}
 {_SHARED_CSS}
 {HP_NAV_CSS}
 {HP_FOOTER_CSS}

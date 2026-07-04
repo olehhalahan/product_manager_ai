@@ -368,11 +368,11 @@ a{{color:inherit;text-decoration:none}}
 }}
 .pp-hero-btn:hover{{transform:translateY(-1px);filter:brightness(1.05)}}
 .pp-hero-btn--primary{{
-  background:linear-gradient(135deg,#5e6ad2,#7c3aed);color:#fff;
+  background:linear-gradient(135deg,#382416,#7c3aed);color:#fff;
   box-shadow:0 8px 28px -12px rgba(94,106,210,.6);
 }}
 .pp-hero-btn--ghost{{
-  background:rgba(255,255,255,.06);border:1px solid var(--pp-line);color:#e5e7eb;
+  background:rgba(255,255,255,.06);border:1px solid var(--pp-line);color:#ffedd7;
 }}
 [data-theme=light] .pp-hero-btn--ghost{{background:#fff;color:#0f172a}}
 .pp-hero-trust{{font-size:.88rem;color:var(--pp-muted);letter-spacing:.02em}}
@@ -399,7 +399,7 @@ a{{color:inherit;text-decoration:none}}
   font-size:.88rem;line-height:1.45;color:var(--pp-muted);
 }}
 [data-theme=light] .pp-pain-item{{background:#f8fafc}}
-.pp-pain-item strong{{display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#e5e7eb;margin-bottom:6px}}
+.pp-pain-item strong{{display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#ffedd7;margin-bottom:6px}}
 [data-theme=light] .pp-pain-item strong{{color:#0f172a}}
 .pp-pain-sol{{font-size:.95rem;color:var(--pp-muted);line-height:1.6;margin-top:18px;text-align:center;font-weight:600;color:#cbd5e1}}
 [data-theme=light] .pp-pain-sol{{color:#475569}}
@@ -417,7 +417,7 @@ a{{color:inherit;text-decoration:none}}
   background:rgba(94,106,210,.25);border:1px solid rgba(94,106,210,.35);
   font-size:.8rem;font-weight:700;display:flex;align-items:center;justify-content:center;color:#c4b5fd;
 }}
-.pp-step-txt{{font-size:.92rem;color:#e5e7eb;line-height:1.5;padding-top:2px}}
+.pp-step-txt{{font-size:.92rem;color:#ffedd7;line-height:1.5;padding-top:2px}}
 [data-theme=light] .pp-step-txt{{color:#334155}}
 
 .pp-grid{{
@@ -452,7 +452,7 @@ a{{color:inherit;text-decoration:none}}
   position:absolute;top:-9px;left:50%;transform:translateX(-50%);
   font-size:.62rem;font-weight:700;letter-spacing:.05em;
   padding:5px 11px;border-radius:99px;
-  background:linear-gradient(135deg,#7c3aed,#5e6ad2);color:#fff;white-space:nowrap;
+  background:linear-gradient(135deg,#7c3aed,#382416);color:#fff;white-space:nowrap;
 }}
 .pp-name{{font-size:.95rem;font-weight:800;letter-spacing:.04em;margin-bottom:4px}}
 .pp-price-line{{margin-bottom:6px}}
@@ -460,7 +460,7 @@ a{{color:inherit;text-decoration:none}}
 .pp-price-period{{font-size:.88rem;font-weight:500;color:var(--pp-muted);margin-left:2px}}
 .pp-tagline{{font-size:.78rem;color:var(--pp-muted);margin-bottom:12px;line-height:1.4}}
 .pp-list{{list-style:none;padding:0;margin:0 0 12px;flex:1}}
-.pp-list li{{font-size:.8rem;padding:6px 0;color:#e5e7eb;border-bottom:1px solid rgba(255,255,255,.06)}}
+.pp-list li{{font-size:.8rem;padding:6px 0;color:#ffedd7;border-bottom:1px solid rgba(255,255,255,.06)}}
 [data-theme=light] .pp-list li{{color:#334155;border-bottom-color:var(--pp-line)}}
 .pp-list--features li:last-child{{border-bottom:none}}
 .pp-list--limits{{margin-top:4px}}
@@ -475,10 +475,10 @@ a{{color:inherit;text-decoration:none}}
 }}
 .pp-cta:hover{{transform:translateY(-1px);filter:brightness(1.06)}}
 .pp-cta--primary{{
-  background:linear-gradient(135deg,#5e6ad2,#7c3aed);color:#fff;
+  background:linear-gradient(135deg,#382416,#7c3aed);color:#fff;
 }}
 .pp-cta--secondary{{
-  background:rgba(255,255,255,.06);border:1px solid var(--pp-line);color:#e5e7eb;
+  background:rgba(255,255,255,.06);border:1px solid var(--pp-line);color:#ffedd7;
 }}
 [data-theme=light] .pp-cta--secondary{{background:#f8fafc;color:#0f172a}}
 
@@ -536,7 +536,7 @@ a{{color:inherit;text-decoration:none}}
 .pp-cmp-yes{{color:#22c55e}}
 .pp-cmp-check{{font-weight:800;font-size:.95rem}}
 .pp-cmp-no{{color:var(--pp-muted);opacity:.7}}
-.pp-cmp-txt{{color:#e5e7eb}}
+.pp-cmp-txt{{color:#ffedd7}}
 [data-theme=light] .pp-cmp-txt{{color:#334155}}
 
 .pp-add-compact{{border-radius:14px;border:1px solid var(--pp-line);background:var(--pp-card);padding:8px 0;overflow:hidden}}
@@ -547,14 +547,14 @@ a{{color:inherit;text-decoration:none}}
 .pp-add-line:last-child{{border-bottom:none}}
 .pp-add-line-txt{{font-size:.9rem;font-weight:600}}
 .pp-add-line-meta{{font-size:.88rem;color:var(--pp-muted);margin-left:auto}}
-.pp-add-line-price{{font-weight:700;color:#e5e7eb}}
+.pp-add-line-price{{font-weight:700;color:#ffedd7}}
 [data-theme=light] .pp-add-line-price{{color:#0f172a}}
 .pp-add-line-note{{font-weight:500}}
 .pp-add-line-btn{{
   padding:6px 12px;border-radius:8px;border:1px solid var(--pp-line);
   background:transparent;color:var(--pp-muted);font-size:.75rem;font-weight:600;cursor:pointer;
 }}
-.pp-add-line-btn:hover{{color:#e5e7eb;border-color:rgba(94,106,210,.45)}}
+.pp-add-line-btn:hover{{color:#ffedd7;border-color:rgba(94,106,210,.45)}}
 
 .pp-trust-commit{{text-align:center;padding:8px 12px 0}}
 .pp-trust-line{{font-size:.88rem;color:var(--pp-muted);margin:8px 0;display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}}

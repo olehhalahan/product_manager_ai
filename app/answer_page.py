@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 from .gtm import GTM_BODY, GTM_HEAD
+from .air_design import site_page_shell_css
 from .public_nav import HP_FOOTER_CSS, HP_NAV_CSS, public_site_footer_html, public_site_nav_html, public_site_theme_toggle_script
 from .seo import (
     BRAND_NAME,
@@ -128,44 +129,14 @@ def build_answer_page_html(spec: AnswerPageSpec, *, og_image: str = "") -> str:
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Inter',system-ui,sans-serif;background:#060711;color:#e5e7eb;line-height:1.65;-webkit-font-smoothing:antialiased}}
-[data-theme=light] body{{background:#fafbfc;color:#0f172a}}
-a{{color:#818cf8}}
-[data-theme=light] a{{color:#4f46e5}}
-.ap-wrap{{max-width:760px;margin:0 auto;padding:96px 24px 64px}}
-.ap-bc{{font-size:.85rem;color:rgba(229,231,235,.55);margin-bottom:20px}}
-[data-theme=light] .ap-bc{{color:rgba(15,23,42,.55)}}
-.ap-bc a{{color:inherit;text-decoration:none}}
-.ap-bc a:hover{{text-decoration:underline}}
-.ap-lead{{font-size:1.05rem;margin:16px 0 28px;color:rgba(229,231,235,.9)}}
-[data-theme=light] .ap-lead{{color:rgba(15,23,42,.88)}}
-.ap-box{{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px 22px;margin:20px 0}}
-[data-theme=light] .ap-box{{background:#fff;border-color:rgba(15,23,42,.1)}}
-.ap-box h2{{font-size:1rem;margin-bottom:10px}}
-.ap-box ul{{margin:8px 0 0 1.1rem;font-size:.94rem}}
-.ap-box li{{margin-bottom:6px}}
+body{{font-family:var(--hp-font,'Inter',system-ui,sans-serif);background:var(--hp-bg,#100904);color:var(--hp-text,#ffedd7);line-height:1.5;-webkit-font-smoothing:antialiased}}
+{site_page_shell_css()}
+.ap-box h2,.ap-faq-item h3{{font-size:14px;font-weight:500;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;color:var(--hp-text)}}
+.ap-box ul,.ap-box p{{font-size:16px;font-weight:400;color:var(--hp-text)}}
 .ap-example{{display:grid;gap:12px;margin:16px 0}}
 @media(min-width:640px){{.ap-example{{grid-template-columns:1fr 1fr}}}}
-.ap-ex-label{{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(229,231,235,.5);margin-bottom:4px}}
-.ap-ex pre{{background:#111827;border-radius:8px;padding:12px;font-size:.78rem;overflow:auto;white-space:pre-wrap;word-break:break-word}}
-[data-theme=light] .ap-ex pre{{background:#f1f5f9;color:#0f172a}}
-.ap-section{{margin:32px 0}}
-.ap-section h2{{font-size:1.15rem;margin-bottom:12px}}
-.ap-section p,.ap-section li{{font-size:.94rem;color:rgba(229,231,235,.85)}}
-[data-theme=light] .ap-section p,[data-theme=light] .ap-section li{{color:rgba(15,23,42,.82)}}
-.ap-toc{{margin:24px 0;padding:16px 20px;border-radius:10px;background:rgba(79,70,229,.08);border:1px solid rgba(129,140,248,.2)}}
-.ap-toc ol{{margin:8px 0 0 1.2rem;font-size:.9rem}}
-.ap-toc li{{margin-bottom:4px}}
-.ap-faq{{margin-top:36px}}
-.ap-faq h2{{font-size:1.2rem;margin-bottom:16px}}
-.ap-faq-item{{margin-bottom:18px}}
-.ap-faq-item h3{{font-size:.98rem;margin-bottom:6px}}
-.ap-cta{{margin:36px 0;padding:24px;border-radius:12px;background:linear-gradient(135deg,rgba(79,70,229,.15),rgba(34,211,238,.08));border:1px solid rgba(129,140,248,.25);text-align:center}}
-.ap-cta a{{display:inline-block;margin:8px 6px 0;padding:12px 22px;border-radius:8px;font-weight:600;text-decoration:none;background:#4f46e5;color:#fff}}
-.ap-cta a.secondary{{background:transparent;border:1px solid rgba(255,255,255,.2);color:inherit}}
-.ap-related{{margin-top:28px;font-size:.92rem}}
-.ap-related ul{{margin:8px 0 0 1.1rem}}
-.ap-h1{{font-size:clamp(1.6rem,3.5vw,2.1rem);font-weight:700;letter-spacing:-.03em;line-height:1.15}}
+.ap-ex-label{{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--hp-muted);margin-bottom:6px;font-weight:500}}
+.ap-related a{{color:var(--hp-link);text-decoration:none;border-bottom:1px solid currentColor;font-size:12px;text-transform:uppercase;font-weight:500}}
 {HP_NAV_CSS}
 {HP_FOOTER_CSS}
 </style>
