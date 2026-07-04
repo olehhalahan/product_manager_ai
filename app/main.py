@@ -6031,10 +6031,50 @@ def _request_is_loopback(request: Request) -> bool:
     return host.startswith("::ffff:127.0.0.1")
 
 
+def _deploy_git_commit() -> str:
+    """Short git SHA for deploy verification (set DEPLOY_COMMIT on hosts without .git)."""
+    env_commit = (_os.getenv("DEPLOY_COMMIT") or "").strip()
+    if env_commit:
+        return env_commit[:12]
+    try:
+        import subprocess
+
+        return (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=str(_root),
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            or "unknown"
+        )
+    except Exception:
+        return "unknown"
+
+
+def _registered_route_paths() -> set[str]:
+    paths: set[str] = set()
+    for route in app.routes:
+        path = getattr(route, "path", None)
+        if path:
+            paths.add(path)
+    return paths
+
+
 @app.get("/health")
 def health(request: Request):
-    """Health check for load balancers."""
-    return {"status": "ok", "upload_ui": UPLOAD_UI_REVISION}
+    """Health check for load balancers and post-deploy verification."""
+    paths = _registered_route_paths()
+    return {
+        "status": "ok",
+        "upload_ui": UPLOAD_UI_REVISION,
+        "commit": _deploy_git_commit(),
+        "features": {
+            "traffic_analytics": "/admin/traffic-analytics" in paths,
+            "rss_feed": "/feed.xml" in paths,
+            "examples": "/examples" in paths,
+        },
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
