@@ -522,7 +522,6 @@
     initHeroVideo();
     initHeroPreview();
     initSplitReveal();
-    initBgCanvas();
     initVoidScene();
     initPoweredSection();
     initGallery();

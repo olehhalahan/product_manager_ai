@@ -1270,10 +1270,11 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     <meta name="twitter:title" content="{SEO_OG_TITLE}" />
     <meta name="twitter:description" content="{SEO_OG_DESCRIPTION}" />
     {SEO_LINK_EXTRA}
-    <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
+    <script>document.documentElement.setAttribute('data-theme','dark');</script>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <link rel="stylesheet" href="/static/styles.css" />
     <link rel="stylesheet" href="/static/home-animations.css" />
+    <link rel="stylesheet" href="/static/home-oryzo-dark.css" />
     <style>
     html { scroll-behavior: smooth; }
 
@@ -1659,7 +1660,6 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
 <body class="hp-body hp-home">
 """ + GTM_BODY + """
     <div class="hp-canvas" aria-hidden="true"></div>
-    <canvas class="hp-bg-canvas" id="hpBgCanvas" aria-hidden="true"></canvas>
     <span class="hp-edge-label" aria-hidden="true">Cartozo Feed-1</span>
     {PUBLIC_HP_NAV}
 
@@ -1757,21 +1757,30 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         <div class="hp-gallery-track-wrap">
             <div class="hp-gallery-track">
                 <article class="hp-gallery-item">
-                    <video src="/static/home-media/cartozo-demo.webm" poster="/static/home-media/cartozo-demo-poster.jpg" muted playsinline loop preload="metadata" aria-label="Full feed optimization demo"></video>
+                    <div class="hp-gallery-media">
+                        <img class="hp-gallery-poster" src="/static/home-media/cartozo-demo-poster.jpg" alt="" loading="lazy" />
+                        <video src="/static/home-media/cartozo-demo.webm" poster="/static/home-media/cartozo-demo-poster.jpg" muted playsinline loop preload="metadata" aria-label="Full feed optimization demo"></video>
+                    </div>
                     <div class="hp-gallery-item-body">
                         <div class="hp-gallery-item-label">Issue 001</div>
                         <div class="hp-gallery-item-title">Full catalog rewrite</div>
                     </div>
                 </article>
                 <article class="hp-gallery-item">
-                    <video src="/static/home-media/gallery-titles.webm" poster="/static/home-media/gallery-titles-poster.jpg" muted playsinline loop preload="metadata" aria-label="Title rewrite demo"></video>
+                    <div class="hp-gallery-media">
+                        <img class="hp-gallery-poster" src="/static/home-media/gallery-titles-poster.jpg" alt="" loading="lazy" />
+                        <video src="/static/home-media/gallery-titles.webm" poster="/static/home-media/gallery-titles-poster.jpg" muted playsinline loop preload="metadata" aria-label="Title rewrite demo"></video>
+                    </div>
                     <div class="hp-gallery-item-body">
                         <div class="hp-gallery-item-label">Issue 002</div>
                         <div class="hp-gallery-item-title">Intent-aligned titles</div>
                     </div>
                 </article>
                 <article class="hp-gallery-item">
-                    <video src="/static/home-media/gallery-disapproval.webm" poster="/static/home-media/gallery-disapproval-poster.jpg" muted playsinline loop preload="metadata" aria-label="Disapproval fix demo"></video>
+                    <div class="hp-gallery-media">
+                        <img class="hp-gallery-poster" src="/static/home-media/gallery-disapproval-poster.jpg" alt="" loading="lazy" />
+                        <video src="/static/home-media/gallery-disapproval.webm" poster="/static/home-media/gallery-disapproval-poster.jpg" muted playsinline loop preload="metadata" aria-label="Disapproval fix demo"></video>
+                    </div>
                     <div class="hp-gallery-item-body">
                         <div class="hp-gallery-item-label">Issue 003</div>
                         <div class="hp-gallery-item-title">Disapproval recovery</div>
@@ -2034,24 +2043,12 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     </button>
 
     <script>
-    const btn = document.getElementById('backToTop');
-    
-    // Theme toggle
+    // Homepage is ORYZO dark-only — no theme toggle
+    document.documentElement.setAttribute('data-theme', 'dark');
     const themeToggle = document.getElementById('themeToggle');
-    const THEME_KEY = 'hp-theme';
-    function getTheme() { return localStorage.getItem(THEME_KEY) || 'dark'; }
-    function setTheme(theme) {
-        document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem(THEME_KEY, theme);
-        themeToggle.textContent = theme === 'dark' ? '\u2600' : '\u263E';
-        themeToggle.setAttribute('aria-label', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
-    }
-    if (themeToggle) {
-        setTheme(getTheme());
-        themeToggle.addEventListener('click', () => setTheme(getTheme() === 'dark' ? 'light' : 'dark'));
-    }
-
-    const siteNav = document.querySelector('.hp-nav');
+    if (themeToggle) themeToggle.style.display = 'none';
+    
+    const btn = document.getElementById('backToTop');
     function syncNavScroll() {
         if (!siteNav) return;
         if (window.scrollY > 48) siteNav.classList.add('scrolled');

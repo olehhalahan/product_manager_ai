@@ -451,6 +451,28 @@
   display: block;
 }
 
+.hp-gallery-media {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background: #100904;
+  overflow: hidden;
+}
+
+.hp-gallery-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+.hp-gallery-media video {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
 .hp-gallery-item-body {
   padding: 16px 18px 18px;
 }

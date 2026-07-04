@@ -66,7 +66,9 @@ def _draw_feed_window(
     badge: str = "CSV",
 ) -> tuple[int, int, int, int]:
     x0, y0, x1, y1 = box
-    draw.rectangle(box, fill=BARK, outline=CORK, width=1)
+    # Outer glow frame
+    draw.rectangle([x0 - 1, y0 - 1, x1 + 1, y1 + 1], outline=(255, 237, 215, 40))
+    draw.rectangle(box, fill=(48, 30, 18), outline=CORK, width=2)
     bar_h = 36
     draw.rectangle([x0, y0, x1, y0 + bar_h], fill=(24, 14, 8))
     _draw_dashed_hline(draw, y0 + bar_h, x0, x1, CORK)
@@ -304,7 +306,7 @@ def render_video(name: str, duration: float, frame_fn, *, width: int | None = No
             "-i", pattern,
             "-c:v", "libvpx-vp9",
             "-pix_fmt", "yuv420p",
-            "-b:v", "1800k",
+            "-b:v", "2400k",
             "-crf", "32",
             str(out_path),
         ]
