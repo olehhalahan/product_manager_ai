@@ -1273,6 +1273,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/home-animations.css" />
     <style>
     html { scroll-behavior: smooth; }
 
@@ -1301,7 +1302,6 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
       text-align: left; padding: min(18vh, 160px) 40px min(12vh, 120px) clamp(48px, 8vw, 96px);
       position: relative; min-height: 100vh; max-width: none; width: 100%; margin: 0;
       box-sizing: border-box; overflow: hidden; background: transparent;
-      display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
     }
     .hp-hero-void {
       position: absolute; inset: 0; z-index: 0; pointer-events: none;
@@ -1635,6 +1635,8 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .hp-badge { order: 1; margin-bottom: 22px; }
         .hp-title { order: 2; line-height: 0.95; margin-bottom: 22px; }
         .hp-sub { order: 3; line-height: 1.45; }
+        .hp-hero-inner { order: 2; }
+        .hp-hero-aside { order: 6; }
         .hp-chat-anchor { order: 5; margin-top: 20px; }
     }
     @media (max-width: 768px) {
@@ -1650,13 +1652,14 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .hp-chat-panel { padding: 8px 12px 8px 0; }
         .hp-chat-messages { max-height: 200px; }
         .hp-container { padding: 0 24px; }
-        .hp-features, .hp-steps, .hp-cta, .hp-answer, .hp-feed-section { padding: 72px 0; }
+        .hp-features, .hp-steps, .hp-cta, .hp-answer, .hp-feed-section, .hp-scene--powered, .hp-scene--gallery { padding: 72px 0; }
     }
     </style>
 </head>
 <body class="hp-body hp-home">
 """ + GTM_BODY + """
     <div class="hp-canvas" aria-hidden="true"></div>
+    <canvas class="hp-bg-canvas" id="hpBgCanvas" aria-hidden="true"></canvas>
     <span class="hp-edge-label" aria-hidden="true">Cartozo Feed-1</span>
     {PUBLIC_HP_NAV}
 
@@ -1689,6 +1692,92 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
                 <button type="button" class="hp-chat-send" id="hpChatSend" title="Send" aria-label="Send message"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="14" width="3" height="6" rx="1"/><rect x="10" y="10" width="3" height="10" rx="1"/><rect x="16" y="6" width="3" height="14" rx="1"/></svg></button>
             </div>
         </div>
+        </div>
+        </div>
+        <aside class="hp-hero-aside" aria-label="Product demo">
+            <div class="hp-hero-card">
+                <div class="hp-hero-card-kicker">Built for Merchant Center teams</div>
+                <hr class="hp-hero-card-dash" />
+                <p class="hp-hero-card-desc">The most unnecessarily thorough Google Shopping feed optimizer we could justify building.</p>
+            </div>
+            <button type="button" class="hp-hero-video" id="hpHeroVideo" aria-label="Play Cartozo feed demo video">
+                <span class="hp-hero-video__glow" aria-hidden="true"></span>
+                <span class="hp-hero-video__border" aria-hidden="true"></span>
+                <img class="hp-hero-video-thumb" src="/static/home-media/cartozo-demo-poster.jpg" width="320" height="180" alt="" loading="eager" />
+                <span class="hp-hero-video-play">Play</span>
+            </button>
+        </aside>
+    </section>
+
+    <section class="hp-scene hp-scene--reveal" id="feed-reveal" aria-label="Feed reveal">
+        <div class="hp-scene-sticky">
+            <div class="hp-scene-grid">
+                <div class="hp-scene-copy">
+                    <p class="hp-scene-tag">Cartozo Feed-1</p>
+                    <h2 data-split>Isn't just a CSV.</h2>
+                </div>
+                <div class="hp-scene-stage">
+                    <canvas id="hpVoidCanvas" aria-hidden="true"></canvas>
+                </div>
+                <div class="hp-scene-copy hp-scene-copy--right">
+                    <p data-split>Cartozo isn't just a spreadsheet export. It's a positioning engine that rebuilds every SKU around real shopper search intent.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="hp-scene hp-scene--powered" id="powered-by-ai" aria-label="Powered by AI">
+        <div class="hp-scene-powered-inner">
+            <div class="hp-scene-powered-head">
+                <h1 data-split>Powered by AI</h1>
+                <h4>Cartozo Feed-1</h4>
+            </div>
+            <div class="hp-powered-hint desktop-only">
+                <span class="hp-powered-hint-dash"></span>
+                <span>Try hovering rows</span>
+                <span class="hp-powered-hint-dash"></span>
+            </div>
+            <div class="hp-powered-stage" id="hpPoweredStage">
+                <svg class="hp-powered-cursor" id="hpPoweredCursor" width="28" height="28" viewBox="0 0 32 40" aria-hidden="true"><path fill="currentColor" d="M6.718 22.615V17.36c-.325.341-.659.696-.986 1.058-1.276 1.407-2.352 2.76-2.775 3.622-.293.602-.263 1.344.017 2.186.271.816.721 1.549 1.03 2.016l5.182 6.817a5.1 5.1 0 0 1 1.04 3.085v2.231a1.375 1.375 0 0 1-2.75 0v-2.231c0-.515-.169-1.012-.48-1.421l-5.214-6.859-.028-.036-.025-.038c-.34-.513-.97-1.506-1.365-2.696-.393-1.182-.616-2.748.124-4.262.616-1.254 1.946-2.867 3.207-4.258a64 64 0 0 1 3.023-3.103V6.902a4.156 4.156 0 0 1 5.711-3.851 4.155 4.155 0 0 1 8.153.86c.466-.175.966-.27 1.483-.27A4.167 4.167 0 0 1 26.23 7.68a4.133 4.133 0 0 1 5.52 3.893v15.933c0 2.3-.866 4.735-3.162 7.469-.444.53-.681 1.14-.681 1.727v1.673a1.375 1.375 0 1 1-2.75 0v-1.673C28.46 30.854 29 29.024 29 27.506V11.572a1.383 1.383 0 1 0-2.767.008v8.293a1.375 1.375 0 1 1-2.75 0V7.808c0-.782-.635-1.417-1.418-1.417-.82 0-1.474.67-1.474 1.415v10.23a1.375 1.375 0 0 1-2.75 0V4.153a1.406 1.406 0 0 0-2.81 0v11.974a1.375 1.375 0 0 1-2.75 0V6.902l-.007-.142a1.406 1.406 0 0 0-2.806.142v15.713a1.375 1.375 0 0 1-2.75 0"/></svg>
+                <div class="hp-powered-row"><span>SKU</span><span>Generic Wooden Chair Black</span><span>42</span></div>
+                <div class="hp-powered-row"><span>SKU</span><span>IKEA Black Dining Chair Modern Kitchen</span><span>91</span></div>
+                <div class="hp-powered-row"><span>SKU</span><span>Nike Air Max 90 White Mens Running</span><span>88</span></div>
+                <div class="hp-powered-row"><span>SKU</span><span>Mens Cotton Oxford Shirt Blue Slim Fit</span><span>86</span></div>
+            </div>
+            <p class="hp-powered-hint" style="margin-top:18px"><span>AI fills in the gaps. You said optimize titles. It heard search intent.</span></p>
+        </div>
+    </section>
+
+    <section class="hp-scene hp-scene--gallery" id="feed-gallery" aria-label="Feed transformations">
+        <div class="hp-gallery-head">
+            <p class="hp-scene-tag">Before &rarr; After</p>
+            <h2 data-split>See the feed transform</h2>
+            <p>Scroll the gallery — each clip shows a real Cartozo optimization pattern: titles, disapprovals, quality scores.</p>
+        </div>
+        <div class="hp-gallery-track-wrap">
+            <div class="hp-gallery-track">
+                <article class="hp-gallery-item">
+                    <video src="/static/home-media/cartozo-demo.webm" poster="/static/home-media/cartozo-demo-poster.jpg" muted playsinline loop preload="metadata" aria-label="Full feed optimization demo"></video>
+                    <div class="hp-gallery-item-body">
+                        <div class="hp-gallery-item-label">Issue 001</div>
+                        <div class="hp-gallery-item-title">Full catalog rewrite</div>
+                    </div>
+                </article>
+                <article class="hp-gallery-item">
+                    <video src="/static/home-media/gallery-titles.webm" muted playsinline loop preload="metadata" aria-label="Title rewrite demo"></video>
+                    <div class="hp-gallery-item-body">
+                        <div class="hp-gallery-item-label">Issue 002</div>
+                        <div class="hp-gallery-item-title">Intent-aligned titles</div>
+                    </div>
+                </article>
+                <article class="hp-gallery-item">
+                    <video src="/static/home-media/gallery-disapproval.webm" muted playsinline loop preload="metadata" aria-label="Disapproval fix demo"></video>
+                    <div class="hp-gallery-item-body">
+                        <div class="hp-gallery-item-label">Issue 003</div>
+                        <div class="hp-gallery-item-title">Disapproval recovery</div>
+                    </div>
+                </article>
+            </div>
         </div>
     </section>
 
@@ -1930,6 +2019,15 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     </section>
 
     {PUBLIC_SITE_FOOTER}
+
+    <div class="hp-video-modal" id="hpVideoModal" aria-hidden="true" role="dialog" aria-label="Cartozo demo video">
+        <div class="hp-video-modal-inner">
+            <button type="button" class="hp-video-modal-close" id="hpVideoModalClose">Close</button>
+            <video id="hpModalVideo" controls playsinline poster="/static/home-media/cartozo-demo-poster.jpg">
+                <source src="/static/home-media/cartozo-demo.webm" type="video/webm" />
+            </video>
+        </div>
+    </div>
 
     <button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">
         &#8593;
@@ -2347,6 +2445,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     </script>
     <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
+    <script src="/static/home-animations.js"></script>
 </body>
 </html>"""
 
