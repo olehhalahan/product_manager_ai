@@ -45,14 +45,29 @@ HP_NAV_CSS = (
       display: flex; align-items: center;
       background: rgba(16, 9, 4, 0.82); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px dashed var(--hp-border-card);
+      transition: background 0.35s ease, border-color 0.35s ease;
+    }
+    .hp-body.hp-home .hp-nav {
+      background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none;
+      border-bottom-color: transparent;
+    }
+    .hp-body.hp-home .hp-nav.scrolled {
+      background: rgba(16, 9, 4, 0.88); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border-bottom-color: var(--hp-border-card);
     }
     [data-theme="light"] .hp-nav { background: rgba(255, 237, 215, 0.92); }
+    [data-theme="light"] .hp-body.hp-home .hp-nav { background: transparent; border-bottom-color: transparent; }
+    [data-theme="light"] .hp-body.hp-home .hp-nav.scrolled { background: rgba(255, 237, 215, 0.94); border-bottom-color: var(--hp-border-card); }
     .hp-nav-inner {
       max-width: var(--hp-max-width, 1150px); width: 100%; margin: 0 auto; padding: 0 40px;
       box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 24px;
     }
-    .hp-nav-logo { flex-shrink: 0; text-decoration: none; }
-    .hp-nav-logo img { height: 28px; }
+    .hp-nav-logo { flex-shrink: 0; text-decoration: none; display: inline-flex; align-items: center; gap: 10px; }
+    .hp-nav-wordmark {
+      font-size: 12px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--hp-text); line-height: 1;
+    }
+    .hp-nav-logo img { height: 22px; display: none; }
     .hp-nav-logo .logo-dark { display: none; filter: brightness(0) invert(1); opacity: 0.95; }
     .hp-nav-logo .logo-light { display: block; filter: brightness(0) invert(1); opacity: 0.95; }
     [data-theme="light"] .hp-nav-logo .logo-light { display: none; }
@@ -94,16 +109,12 @@ def public_site_nav_html(*, feed_structure_href: str = "/feed-structure") -> str
     href = html_module.escape(feed_structure_href, quote=True)
     return f"""<nav class="hp-nav" aria-label="Main">
         <div class="hp-nav-inner">
-        <a href="/" class="hp-nav-logo"><img class="logo-light" src="/assets/logo-light.png" alt="Cartozo.ai" /><img class="logo-dark" src="/assets/logo-dark.png" alt="Cartozo.ai" /></a>
+        <a href="/" class="hp-nav-logo"><span class="hp-nav-wordmark">Cartozo</span><img class="logo-light" src="/assets/logo-light.png" alt="" /><img class="logo-dark" src="/assets/logo-dark.png" alt="" /></a>
         <div class="hp-nav-links">
             <a href="/presentation" class="hp-nav-link">Features</a>
             <a href="/guides" class="hp-nav-link">Guides</a>
-            <a href="/blog" class="hp-nav-link">Blog</a>
-            <a href="{href}" class="hp-nav-link">Feed Structure</a>
             <a href="/how-it-works" class="hp-nav-link">How it works</a>
             <a href="/pricing" class="hp-nav-link">Pricing</a>
-            <a href="/faq" class="hp-nav-link">FAQ</a>
-            <a href="/contact" class="hp-nav-link">Contact</a>
         </div>
         <div class="hp-nav-right">
             <button type="button" class="hp-theme-btn" id="themeToggle" title="Toggle light/dark theme" aria-label="Toggle theme">&#9728;</button>
