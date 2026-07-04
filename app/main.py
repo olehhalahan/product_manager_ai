@@ -1275,6 +1275,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     <link rel="stylesheet" href="/static/styles.css" />
     <link rel="stylesheet" href="/static/home-animations.css" />
     <link rel="stylesheet" href="/static/home-oryzo-dark.css" />
+    <link rel="stylesheet" href="/static/home-cinema.css" />
     <style>
     html { scroll-behavior: smooth; }
 
@@ -1748,45 +1749,77 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         </div>
     </section>
 
-    <section class="hp-scene hp-scene--gallery" id="feed-gallery" aria-label="Feed transformations">
-        <div class="hp-gallery-head">
-            <p class="hp-scene-tag">Before &rarr; After</p>
-            <h2 data-split>See the feed transform</h2>
-            <p>Scroll the gallery — each clip shows a real Cartozo optimization pattern: titles, disapprovals, quality scores.</p>
+    <section class="hp-cinema" id="feed-cinema" aria-label="Cartozo Studio films">
+        <div class="hp-cinema-intro hp-container">
+            <p class="hp-scene-tag">Cartozo Studio</p>
+            <h2 data-split>Watch your catalog transform</h2>
+            <p>Cinematic workflows for Shopping teams — upload once, export Merchant-ready. Click any film to play full screen.</p>
         </div>
-        <div class="hp-gallery-track-wrap">
-            <div class="hp-gallery-track">
-                <article class="hp-gallery-item">
-                    <div class="hp-gallery-media">
-                        <img class="hp-gallery-poster" src="/static/home-media/cartozo-demo-poster.jpg" alt="" loading="lazy" />
-                        <video src="/static/home-media/cartozo-demo.webm" poster="/static/home-media/cartozo-demo-poster.jpg" muted playsinline loop preload="metadata" aria-label="Full feed optimization demo"></video>
+        <div class="hp-cinema-stack">
+            <article class="hp-cinema-card hp-cinema-card--flagship" data-cinema-src="/static/home-media/cartozo-demo.webm" tabindex="0" role="button" aria-label="Play full catalog rewrite film">
+                <div class="hp-cinema-media">
+                    <img class="hp-cinema-poster" src="/static/home-media/cartozo-demo-poster.jpg" alt="" loading="lazy" />
+                    <video src="/static/home-media/cartozo-demo.webm" poster="/static/home-media/cartozo-demo-poster.jpg" muted playsinline loop preload="metadata"></video>
+                    <div class="hp-cinema-vignette" aria-hidden="true"></div>
+                    <div class="hp-cinema-overlay">
+                        <span class="hp-cinema-chip">Flagship workflow</span>
+                        <h3>Full catalog rewrite</h3>
+                        <p>12,418 SKUs in one upload — weak titles rebuilt, quality scores lifted, Google product spec aligned.</p>
+                        <div class="hp-cinema-actions">
+                            <button type="button" class="hp-cinema-play" data-cinema-src="/static/home-media/cartozo-demo.webm"><span class="hp-cinema-play-icon" aria-hidden="true"></span> Watch film</button>
+                            <span class="hp-cinema-meta">12s · 1280p</span>
+                        </div>
                     </div>
-                    <div class="hp-gallery-item-body">
-                        <div class="hp-gallery-item-label">Issue 001</div>
-                        <div class="hp-gallery-item-title">Full catalog rewrite</div>
+                </div>
+            </article>
+            <div class="hp-cinema-duo">
+                <article class="hp-cinema-card" data-cinema-src="/static/home-media/gallery-titles.webm" tabindex="0" role="button" aria-label="Play title rewrite film">
+                    <div class="hp-cinema-media">
+                        <img class="hp-cinema-poster" src="/static/home-media/gallery-titles-poster.jpg" alt="" loading="lazy" />
+                        <video src="/static/home-media/gallery-titles.webm" poster="/static/home-media/gallery-titles-poster.jpg" muted playsinline loop preload="metadata"></video>
+                        <div class="hp-cinema-vignette" aria-hidden="true"></div>
+                        <div class="hp-cinema-overlay">
+                            <span class="hp-cinema-chip">Title studio</span>
+                            <h3>Intent-aligned titles</h3>
+                            <p>Real search queries mapped to every SKU — CTR lift without guessing keywords.</p>
+                            <div class="hp-cinema-actions">
+                                <button type="button" class="hp-cinema-play" data-cinema-src="/static/home-media/gallery-titles.webm"><span class="hp-cinema-play-icon" aria-hidden="true"></span> Watch</button>
+                            </div>
+                        </div>
                     </div>
                 </article>
-                <article class="hp-gallery-item">
-                    <div class="hp-gallery-media">
-                        <img class="hp-gallery-poster" src="/static/home-media/gallery-titles-poster.jpg" alt="" loading="lazy" />
-                        <video src="/static/home-media/gallery-titles.webm" poster="/static/home-media/gallery-titles-poster.jpg" muted playsinline loop preload="metadata" aria-label="Title rewrite demo"></video>
-                    </div>
-                    <div class="hp-gallery-item-body">
-                        <div class="hp-gallery-item-label">Issue 002</div>
-                        <div class="hp-gallery-item-title">Intent-aligned titles</div>
-                    </div>
-                </article>
-                <article class="hp-gallery-item">
-                    <div class="hp-gallery-media">
-                        <img class="hp-gallery-poster" src="/static/home-media/gallery-disapproval-poster.jpg" alt="" loading="lazy" />
-                        <video src="/static/home-media/gallery-disapproval.webm" poster="/static/home-media/gallery-disapproval-poster.jpg" muted playsinline loop preload="metadata" aria-label="Disapproval fix demo"></video>
-                    </div>
-                    <div class="hp-gallery-item-body">
-                        <div class="hp-gallery-item-label">Issue 003</div>
-                        <div class="hp-gallery-item-title">Disapproval recovery</div>
+                <article class="hp-cinema-card" data-cinema-src="/static/home-media/gallery-disapproval.webm" tabindex="0" role="button" aria-label="Play disapproval recovery film">
+                    <div class="hp-cinema-media">
+                        <img class="hp-cinema-poster" src="/static/home-media/gallery-disapproval-poster.jpg" alt="" loading="lazy" />
+                        <video src="/static/home-media/gallery-disapproval.webm" poster="/static/home-media/gallery-disapproval-poster.jpg" muted playsinline loop preload="metadata"></video>
+                        <div class="hp-cinema-vignette" aria-hidden="true"></div>
+                        <div class="hp-cinema-overlay">
+                            <span class="hp-cinema-chip">GMC recovery</span>
+                            <h3>Disapprovals fixed</h3>
+                            <p>GTIN gaps, brand errors, image policy — batch-resolved for Merchant Center.</p>
+                            <div class="hp-cinema-actions">
+                                <button type="button" class="hp-cinema-play" data-cinema-src="/static/home-media/gallery-disapproval.webm"><span class="hp-cinema-play-icon" aria-hidden="true"></span> Watch</button>
+                            </div>
+                        </div>
                     </div>
                 </article>
             </div>
+            <article class="hp-cinema-card hp-cinema-card--flagship" data-cinema-src="/static/home-media/cinema-performance.webm" tabindex="0" role="button" aria-label="Play performance lift film" style="min-height:clamp(360px,58vh,640px)">
+                <div class="hp-cinema-media">
+                    <img class="hp-cinema-poster" src="/static/home-media/cinema-performance-poster.jpg" alt="" loading="lazy" />
+                    <video src="/static/home-media/cinema-performance.webm" poster="/static/home-media/cinema-performance-poster.jpg" muted playsinline loop preload="metadata"></video>
+                    <div class="hp-cinema-vignette" aria-hidden="true"></div>
+                    <div class="hp-cinema-overlay">
+                        <span class="hp-cinema-chip">Performance</span>
+                        <h3>Shopping lift report</h3>
+                        <p>Feed quality, CTR, impression share — before and after Cartozo on a live catalog.</p>
+                        <div class="hp-cinema-actions">
+                            <button type="button" class="hp-cinema-play" data-cinema-src="/static/home-media/cinema-performance.webm"><span class="hp-cinema-play-icon" aria-hidden="true"></span> Watch film</button>
+                            <span class="hp-cinema-meta">8s · metrics</span>
+                        </div>
+                    </div>
+                </div>
+            </article>
         </div>
     </section>
 

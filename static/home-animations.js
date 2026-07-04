@@ -226,31 +226,44 @@
     }
   }
 
-  /* --- Hero video modal --- */
+  /* --- Hero + cinema video modal --- */
+  function openVideoModal(src) {
+    var modal = qs('#hpVideoModal');
+    var video = qs('#hpModalVideo');
+    if (!modal || !video) return;
+    var source = video.querySelector('source');
+    if (source) source.src = src;
+    else video.src = src;
+    video.load();
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    video.currentTime = 0;
+    video.play().catch(function () {});
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeVideoModal() {
+    var modal = qs('#hpVideoModal');
+    var video = qs('#hpModalVideo');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    if (video) video.pause();
+    document.body.style.overflow = '';
+  }
+
   function initHeroVideo() {
     var trigger = qs('#hpHeroVideo');
     var modal = qs('#hpVideoModal');
     if (!trigger || !modal) return;
-    var video = qs('#hpModalVideo');
     var closeBtn = qs('#hpVideoModalClose');
-
-    function openModal() {
-      modal.classList.add('open');
-      modal.setAttribute('aria-hidden', 'false');
-      if (video) { video.currentTime = 0; video.play().catch(function () {}); }
-      document.body.style.overflow = 'hidden';
-    }
-    function closeModal() {
-      modal.classList.remove('open');
-      modal.setAttribute('aria-hidden', 'true');
-      if (video) video.pause();
-      document.body.style.overflow = '';
-    }
-    trigger.addEventListener('click', openModal);
-    if (closeBtn) closeBtn.addEventListener('click', closeModal);
-    modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+    trigger.addEventListener('click', function () {
+      openVideoModal('/static/home-media/cartozo-demo.webm');
+    });
+    if (closeBtn) closeBtn.addEventListener('click', closeVideoModal);
+    modal.addEventListener('click', function (e) { if (e.target === modal) closeVideoModal(); });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+      if (e.key === 'Escape' && modal.classList.contains('open')) closeVideoModal();
     });
   }
 
@@ -491,16 +504,42 @@
     });
   }
 
-  function initGallery() {
-    var videos = qsa('.hp-gallery-item video');
+  function initCinema() {
+    qsa('.hp-cinema-play').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var src = btn.getAttribute('data-cinema-src');
+        if (src) openVideoModal(src);
+      });
+    });
+    qsa('.hp-cinema-card').forEach(function (card) {
+      card.addEventListener('click', function () {
+        var src = card.getAttribute('data-cinema-src');
+        if (src) openVideoModal(src);
+      });
+      card.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          var src = card.getAttribute('data-cinema-src');
+          if (src) openVideoModal(src);
+        }
+      });
+    });
+    var videos = qsa('.hp-cinema-media video');
     if (!videos.length) return;
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         var v = entry.target;
-        if (entry.isIntersecting) v.play().catch(function () {});
-        else v.pause();
+        var card = v.closest('.hp-cinema-card');
+        if (entry.isIntersecting) {
+          v.play().catch(function () {});
+          if (card) card.classList.add('is-playing');
+        } else {
+          v.pause();
+          if (card) card.classList.remove('is-playing');
+        }
       });
-    }, { threshold: 0.45 });
+    }, { threshold: 0.3 });
     videos.forEach(function (v) {
       v.muted = true;
       v.loop = true;
@@ -524,7 +563,7 @@
     initSplitReveal();
     initVoidScene();
     initPoweredSection();
-    initGallery();
+    initCinema();
     initHeroParallax();
   }
 
