@@ -316,19 +316,19 @@ def build_pricing_html(
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
 body{{
-  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
-  background:#060711;color:#e5e7eb;
-  -webkit-font-smoothing:antialiased;line-height:1.5;
+  font-family:var(--hp-font,'Inter',-apple-system,BlinkMacSystemFont,sans-serif);
+  background:#000;color:#fff;
+  -webkit-font-smoothing:antialiased;line-height:1.5;font-weight:500;
 }}
-[data-theme=light] body{{background:#fafbfc;color:#0f172a}}
+[data-theme=light] body{{background:#f5f5f5;color:#1b1b1b}}
 a{{color:inherit;text-decoration:none}}
 
 :root{{
-  --pp-line:rgba(255,255,255,.1);
-  --pp-muted:rgba(229,231,235,.55);
-  --pp-card:rgba(255,255,255,.03);
-  --pp-accent:#5e6ad2;
-  --pp-accent2:#7c3aed;
+  --pp-line:rgba(255,255,255,.12);
+  --pp-muted:rgba(255,255,255,.55);
+  --pp-card:#f5f5f5;
+  --pp-accent:#426188;
+  --pp-accent2:#2b7fff;
   --pp-green:#22c55e;
   --pp-red:#f87171;
 }}

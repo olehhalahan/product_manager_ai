@@ -73,18 +73,21 @@ def build_legal_document_html(
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
 body{{
-  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
-  background:#060711;color:#e5e7eb;line-height:1.6;
+  font-family:var(--hp-font,'Inter',-apple-system,BlinkMacSystemFont,sans-serif);
+  background:var(--hp-bg,#000);color:var(--hp-text,#fff);line-height:1.5;
+  font-weight:500;font-size:16px;
   -webkit-font-smoothing:antialiased;
 }}
-[data-theme=light] body{{background:#fafbfc;color:#0f172a}}
-a{{color:#818cf8}}
-[data-theme=light] a{{color:#4f46e5}}
+[data-theme=light] body{{background:var(--hp-bg,#f5f5f5);color:var(--hp-text,#1b1b1b)}}
+a{{color:var(--hp-link,#2b7fff);text-decoration:none;border-bottom:2px solid currentColor}}
+a:hover{{opacity:.85}}
+[data-theme=light] a{{color:var(--hp-link,#2b7fff)}}
 
 .t-bg{{position:fixed;inset:0;z-index:0;pointer-events:none;
-  background:radial-gradient(ellipse 70% 45% at 50% -15%,rgba(94,106,210,.14),transparent);
+  background:radial-gradient(ellipse 100% 70% at 50% 0%,rgba(66,97,136,.22),transparent 55%),#000;
 }}
-.t-wrap{{position:relative;z-index:1;max-width:720px;margin:0 auto;padding:88px 24px 48px;box-sizing:border-box}}
+[data-theme=light] .t-bg{{background:radial-gradient(ellipse 90% 60% at 50% 0%,rgba(66,97,136,.1),transparent 50%),#f5f5f5}}
+.t-wrap{{position:relative;z-index:1;max-width:720px;margin:0 auto;padding:96px 24px 48px;box-sizing:border-box}}
 
 {{PUBLIC_STYLES}}
 

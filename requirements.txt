@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic
 python-multipart
+itsdangerous
 celery
 redis
 sqlalchemy
