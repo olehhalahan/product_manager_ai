@@ -1,4 +1,4 @@
-"""Canonical public URL collection for sitemap, RSS, IndexNow, and QA."""
+"""Canonical public URL collection for sitemap, RSS, IndexNow, robots, and QA."""
 from __future__ import annotations
 
 from typing import Any, Iterable, List, Optional, Set
@@ -6,13 +6,14 @@ from urllib.parse import quote, urlparse
 
 from .seo import PUBLIC_SITEMAP_STATIC, canonical_url_blog_article, site_base_url
 
-# Paths that must never be submitted to IndexNow or listed in public discovery feeds.
-PRIVATE_PATH_PREFIXES: tuple[str, ...] = (
+# Single source of truth for private/authenticated app areas.
+# Used by robots.txt, X-Robots-Tag middleware, sitemap/RSS/llms/IndexNow filtering, and QA.
+PRIVATE_ROUTE_PREFIXES: tuple[str, ...] = (
     "/admin",
     "/api/",
     "/articles/",
     "/auth/",
-    "/batches/",
+    "/batches",
     "/dashboard",
     "/app/",
     "/login",
@@ -21,7 +22,15 @@ PRIVATE_PATH_PREFIXES: tuple[str, ...] = (
     "/settings",
     "/merchant/",
     "/docs",
+    "/oauth-debug",
+    # Defensive SaaS prefixes (no public marketing pages at these paths today).
+    "/account",
+    "/billing",
+    "/exports",
 )
+
+# Backward-compatible alias.
+PRIVATE_PATH_PREFIXES = PRIVATE_ROUTE_PREFIXES
 
 # Raw downloadable assets: landing pages are indexed; direct CSV files are not in sitemap.
 PUBLIC_TEMPLATE_CSV_PATHS: tuple[str, ...] = (
@@ -44,9 +53,19 @@ def production_base_url() -> Optional[str]:
     return base
 
 
+def robots_disallow_lines() -> tuple[str, ...]:
+    """Disallow prefixes for robots.txt wildcard group."""
+    return PRIVATE_ROUTE_PREFIXES
+
+
+def private_route_fragments() -> tuple[str, ...]:
+    """Substring fragments forbidden in sitemap, llms.txt, RSS, and QA scans."""
+    return PRIVATE_ROUTE_PREFIXES
+
+
 def is_private_path(path: str) -> bool:
     p = path if path.startswith("/") else f"/{path}"
-    return any(p == pref.rstrip("/") or p.startswith(pref) for pref in PRIVATE_PATH_PREFIXES)
+    return any(p == pref.rstrip("/") or p.startswith(pref) for pref in PRIVATE_ROUTE_PREFIXES)
 
 
 def is_public_canonical_url(url: str) -> bool:

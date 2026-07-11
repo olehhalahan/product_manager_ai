@@ -285,23 +285,10 @@ class _RateLimiterProxy:
 rate_limiter = _RateLimiterProxy()
 
 
-_NOINDEX_PATH_PREFIXES: tuple[str, ...] = (
-    "/admin",
-    "/api/",
-    "/articles/",
-    "/auth/",
-    "/batches/",
-    "/dashboard",
-    "/app/",
-    "/login",
-    "/logout",
-    "/upload",
-    "/settings",
-    "/merchant/",
-    "/docs",
-)
+from .public_urls import is_private_path
 
-_NOINDEX_EXACT: frozenset[str] = frozenset({"/login", "/upload", "/settings"})
+
+_NOINDEX_EXACT: frozenset[str] = frozenset({"/login", "/upload", "/settings", "/oauth-debug"})
 
 
 def _x_robots_tag_for_path(path: str) -> str | None:
@@ -312,9 +299,8 @@ def _x_robots_tag_for_path(path: str) -> str | None:
         return "noindex, nofollow"
     if path.startswith("/templates/") and path.endswith(".csv"):
         return "noindex, nofollow"
-    for prefix in _NOINDEX_PATH_PREFIXES:
-        if path == prefix.rstrip("/") or path.startswith(prefix):
-            return "noindex, nofollow"
+    if is_private_path(path):
+        return "noindex, nofollow"
     return None
 
 

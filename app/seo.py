@@ -474,67 +474,36 @@ def seo_cached_snapshot_is_stale(cached: str) -> bool:
 
 
 def build_robots_txt_body(base: str) -> str:
-    """Public robots.txt with AI crawler rules."""
+    """Public robots.txt — wildcard allows public pages; training bots blocked site-wide."""
+    from .public_urls import robots_disallow_lines
+
     b = base.rstrip("/")
-    return f"""User-agent: *
-Allow: /
-
-Sitemap: {b}/sitemap.xml
-
-# OpenAI / ChatGPT Search
-User-agent: OAI-SearchBot
-Allow: /
-
-User-agent: ChatGPT-User
-Allow: /
-
-# Block model training; allow search bots above
-User-agent: GPTBot
-Disallow: /
-
-# Anthropic / Claude Search
-User-agent: Claude-SearchBot
-Allow: /
-
-User-agent: Claude-User
-Allow: /
-
-User-agent: ClaudeBot
-Disallow: /
-
-# Perplexity
-User-agent: PerplexityBot
-Allow: /
-
-User-agent: Perplexity-User
-Allow: /
-
-# Google Search / AI Overviews
-User-agent: Googlebot
-Allow: /
-
-# Microsoft / Bing / Copilot
-User-agent: bingbot
-Allow: /
-
-# Common Crawl — public marketing content only; private paths blocked below
-User-agent: CCBot
-Allow: /
-
-# App areas — block for all bots
-User-agent: *
-Disallow: /admin
-Disallow: /api/
-Disallow: /articles/
-Disallow: /batches/
-Disallow: /upload
-Disallow: /settings
-Disallow: /login
-Disallow: /auth/
-Disallow: /merchant/
-Disallow: /docs
-Disallow: /logout
-"""
+    disallows = robots_disallow_lines()
+    lines = [
+        "# Public site is crawlable by standard search and AI discovery crawlers.",
+        "User-agent: *",
+        "Allow: /",
+    ]
+    lines.extend(f"Disallow: {pref}" for pref in disallows)
+    lines.extend(
+        [
+            "",
+            "# OpenAI model-training crawler.",
+            "User-agent: GPTBot",
+            "Disallow: /",
+            "",
+            "# Anthropic model-training crawler.",
+            "User-agent: ClaudeBot",
+            "Disallow: /",
+            "",
+            "# Prevent Gemini training/grounding use without blocking Google Search.",
+            "User-agent: Google-Extended",
+            "Disallow: /",
+            "",
+            f"Sitemap: {b}/sitemap.xml",
+        ]
+    )
+    return "\n".join(lines) + "\n"
 
 
 def build_llms_txt_body(base: str) -> str:

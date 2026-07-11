@@ -3,6 +3,7 @@
 
 Usage:
   DEPLOY_URL=https://cartozo.ai python3 scripts/production_qa.py
+  DEPLOY_URL=https://cartozo.ai python3 scripts/production_qa.py --live
   DEPLOY_URL=https://cartozo.ai python3 scripts/production_qa.py --report docs/production-qa-report.md
 """
 from __future__ import annotations
@@ -15,7 +16,7 @@ import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Protocol
 
 os.environ.setdefault("DEPLOY_URL", "https://cartozo.ai")
 os.environ.setdefault("SESSION_SECRET", "qa-test-session-secret-at-least-32-chars-long")
@@ -25,15 +26,45 @@ os.environ.setdefault("SECRETS_ENCRYPTION_KEY", "dGVzdF9rZXlfMzJfYnl0ZXNfbG9uZ19
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from fastapi.testclient import TestClient  # noqa: E402
-
 from app.faq_page import all_faq_pairs  # noqa: E402
-from app.main import app  # noqa: E402
+from app.public_urls import PRIVATE_ROUTE_PREFIXES, private_route_fragments  # noqa: E402
+from app.robots_txt import DISCOVERY_CRAWLER_AGENTS, validate_robots_policy  # noqa: E402
 from app.seo import PUBLIC_SITEMAP_STATIC, seo_cached_snapshot_is_stale, site_base_url  # noqa: E402
 from app.use_case_pages import USE_CASE_PAGES  # noqa: E402
 from app.guide_pages import GUIDE_PAGES  # noqa: E402
 
 PRODUCTION_BASE = "https://cartozo.ai"
+
+DISCOVERY_ENDPOINTS: list[tuple[str, str]] = [
+    ("/", "text/html"),
+    ("/robots.txt", "text/plain"),
+    ("/sitemap.xml", "application/xml"),
+    ("/llms.txt", "text/plain"),
+    ("/feed.xml", "application/rss+xml"),
+    ("/examples", "text/html"),
+]
+
+CRAWLER_AGENTS: list[str] = [
+    "Googlebot",
+    "bingbot",
+    *list(DISCOVERY_CRAWLER_AGENTS),
+    "GPTBot",
+    "ClaudeBot",
+    "Google-Extended",
+]
+
+CRAWLER_TEST_PATHS: list[str] = [
+    "/",
+    "/pricing",
+    "/faq",
+    "/guides",
+    "/examples",
+    "/blog",
+    "/robots.txt",
+    "/sitemap.xml",
+    "/llms.txt",
+    "/feed.xml",
+]
 
 SMOKE_URLS: list[tuple[str, int | str]] = [
     ("/", 200),
@@ -90,8 +121,13 @@ for slug in USE_CASE_PAGES:
 for slug in GUIDE_PAGES:
     SCHEMA_PAGES.append((GUIDE_PAGES[slug].path, ["BreadcrumbList", "WebPage"]))
 
-PRIVATE_FRAGMENTS = ("/admin", "/upload", "/login", "/settings", "/api/", "/merchant/", "/batches/")
+PRIVATE_FRAGMENTS = private_route_fragments()
 BAD_HOST_FRAGMENTS = ("localhost", "127.0.0.1", "staging.", "dev.")
+
+
+class HttpLike(Protocol):
+    def get(self, path: str, **kwargs: Any) -> Any: ...
+    def head(self, path: str, **kwargs: Any) -> Any: ...
 
 
 @dataclass
@@ -106,9 +142,12 @@ class Report:
     meta_rows: list[Row] = field(default_factory=list)
     schema_rows: list[Row] = field(default_factory=list)
     file_rows: list[Row] = field(default_factory=list)
+    head_rows: list[Row] = field(default_factory=list)
+    crawler_rows: list[Row] = field(default_factory=list)
     p0: list[str] = field(default_factory=list)
     p1: list[str] = field(default_factory=list)
     p2: list[str] = field(default_factory=list)
+    live_robots_body: str = ""
 
 
 def extract_json_ld(html: str) -> list[dict[str, Any]]:
@@ -179,8 +218,40 @@ def page_meta(client: TestClient, path: str) -> dict[str, Any]:
     }
 
 
-def run_qa(report: Report) -> bool:
-    client = TestClient(app, raise_server_exceptions=True)
+def make_client(*, live: bool) -> HttpLike:
+    if live:
+        import httpx
+
+        base = PRODUCTION_BASE.rstrip("/")
+
+        class LiveClient:
+            def get(self, path: str, **kwargs: Any):
+                headers = kwargs.pop("headers", {})
+                kwargs.setdefault("follow_redirects", False)
+                return httpx.get(f"{base}{path}", headers=headers, timeout=30.0, **kwargs)
+
+            def head(self, path: str, **kwargs: Any):
+                headers = kwargs.pop("headers", {})
+                kwargs.setdefault("follow_redirects", False)
+                return httpx.head(f"{base}{path}", headers=headers, timeout=30.0, **kwargs)
+
+        return LiveClient()
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    return TestClient(app, raise_server_exceptions=True)
+
+
+def response_text(response: Any) -> str:
+    text = getattr(response, "text", None)
+    if text is not None:
+        return text
+    return (getattr(response, "content", b"") or b"").decode("utf-8", errors="replace")
+
+
+def run_qa(report: Report, *, live: bool = False) -> bool:
+    client = make_client(live=live)
     base = site_base_url().rstrip("/")
     if base != PRODUCTION_BASE:
         report.p0.append(f"DEPLOY_URL resolves to {base!r}, expected {PRODUCTION_BASE}")
@@ -254,22 +325,18 @@ def run_qa(report: Report) -> bool:
                 sm_notes.append(f"{loc} -> {rr.status_code}")
                 report.p0.append(f"sitemap URL {loc} returned {rr.status_code}")
 
-    robots = client.get("/robots.txt").text
+    robots = response_text(client.get("/robots.txt"))
+    report.live_robots_body = robots
     rb_ok = f"Sitemap: {PRODUCTION_BASE}/sitemap.xml" in robots
-    rb_ok = rb_ok and "Allow: /" in robots and "Disallow: /" in robots
-    for ua, policy in [
-        ("OAI-SearchBot", "Allow"),
-        ("GPTBot", "Disallow"),
-        ("Claude-SearchBot", "Allow"),
-        ("ClaudeBot", "Disallow"),
-        ("PerplexityBot", "Allow"),
-        ("Googlebot", "Allow"),
-        ("bingbot", "Allow"),
-        ("CCBot", "Allow"),
-    ]:
-        if f"User-agent: {ua}" not in robots:
-            rb_ok = False
-            report.p0.append(f"robots.txt missing User-agent: {ua}")
+    policy_errors = validate_robots_policy(
+        robots,
+        sitemap_url=f"{PRODUCTION_BASE}/sitemap.xml",
+        private_prefixes=PRIVATE_ROUTE_PREFIXES,
+    )
+    if policy_errors:
+        rb_ok = False
+        for err in policy_errors:
+            report.p0.append(f"robots.txt policy: {err}")
     if not rb_ok:
         report.p0.append("robots.txt policy incomplete or wrong sitemap line")
 
@@ -279,6 +346,45 @@ def run_qa(report: Report) -> bool:
     report.file_rows.append(
         Row(["/robots.txt", "200", "none", "none", "none", "PASS" if rb_ok else "FAIL"], ok=rb_ok)
     )
+
+    # GET + HEAD discovery endpoints
+    for path, expected_ct in DISCOVERY_ENDPOINTS:
+        get_r = client.get(path)
+        head_r = client.head(path)
+        get_ok = get_r.status_code == 200
+        head_ok = head_r.status_code == 200
+        ctype = (head_r.headers.get("content-type") or "").lower()
+        ct_ok = expected_ct.split("/")[0] in ctype or expected_ct in ctype
+        ok = get_ok and head_ok and ct_ok
+        notes = []
+        if not get_ok:
+            notes.append(f"GET {get_r.status_code}")
+            report.p0.append(f"{path} GET returned {get_r.status_code}, expected 200")
+        if not head_ok:
+            notes.append(f"HEAD {head_r.status_code}")
+            report.p0.append(f"{path} HEAD returned {head_r.status_code}, expected 200")
+        if not ct_ok:
+            notes.append(f"ctype {ctype!r}")
+            report.p0.append(f"{path} unexpected content-type {ctype!r}")
+        report.head_rows.append(
+            Row([path, str(get_r.status_code), str(head_r.status_code), ctype or "none", "PASS" if ok else "FAIL", ", ".join(notes)], ok=ok)
+        )
+
+    # Crawler user-agent matrix (public pages only)
+    for agent in CRAWLER_AGENTS:
+        for path in CRAWLER_TEST_PATHS:
+            r = client.get(path, headers={"User-Agent": agent})
+            blocked_training = agent in ("GPTBot", "ClaudeBot", "Google-Extended")
+            expected_ok = 200
+            if blocked_training and path not in ("/robots.txt",):
+                # Server should still return 200 — robots is advisory.
+                expected_ok = 200
+            ok = r.status_code == expected_ok and r.status_code not in (401, 403, 405, 429) and r.status_code < 500
+            if not ok:
+                report.p0.append(f"{agent} {path} -> {r.status_code}")
+            report.crawler_rows.append(
+                Row([agent, path, str(r.status_code), "PASS" if ok else "FAIL"], ok=ok)
+            )
 
     # llms.txt
     llms = client.get("/llms.txt").text
@@ -343,10 +449,15 @@ def run_qa(report: Report) -> bool:
     csv_robots = csv_r.headers.get("x-robots-tag", "")
     if "noindex" not in csv_robots.lower():
         report.p1.append("Public template CSV should include X-Robots-Tag: noindex")
-    upload_r = client.get("/upload", follow_redirects=False)
-    upload_robots = upload_r.headers.get("x-robots-tag", "")
-    if "noindex" not in upload_robots.lower() and upload_r.status_code in (200, 302, 307):
-        report.p1.append("/upload missing X-Robots-Tag: noindex on response")
+    # Private route auth / noindex (local client only — live may redirect to OAuth)
+    if not live:
+        upload_r = client.get("/upload", follow_redirects=False)
+        upload_robots = upload_r.headers.get("x-robots-tag", "")
+        if "noindex" not in upload_robots.lower() and upload_r.status_code in (200, 302, 307):
+            report.p1.append("/upload missing X-Robots-Tag: noindex on response")
+        batch_r = client.get("/batches/history", follow_redirects=False)
+        if batch_r.status_code not in (302, 307, 401, 403):
+            report.p0.append(f"/batches/history anonymous access returned {batch_r.status_code}, expected auth redirect/deny")
 
     # Pagination audit (documented behavior)
     blog_html = client.get("/blog").text
@@ -506,6 +617,35 @@ def render_report(report: Report, safe_to_merge: bool) -> str:
     lines.extend(
         [
             "",
+            "## GET / HEAD discovery endpoints",
+            "",
+            "| Path | GET | HEAD | Content-Type | Result | Notes |",
+            "|---|---|---|---|---|---|",
+        ]
+    )
+    for row in report.head_rows:
+        lines.append("| " + " | ".join(row.cols) + " |")
+
+    lines.extend(
+        [
+            "",
+            "## Crawler user-agent matrix (sample)",
+            "",
+            "| User-Agent | Path | Status | Result |",
+            "|---|---|---|---|",
+        ]
+    )
+    for row in report.crawler_rows[:40]:
+        lines.append("| " + " | ".join(row.cols) + " |")
+    if len(report.crawler_rows) > 40:
+        lines.append(f"| … | … | … | ({len(report.crawler_rows) - 40} more rows) |")
+
+    if report.live_robots_body:
+        lines.extend(["", "## Live robots.txt body", "", "```", report.live_robots_body.rstrip(), "```", ""])
+
+    lines.extend(
+        [
+            "",
             "## Sitemap / robots / llms",
             "",
             "| File | HTTP | Broken URLs | Localhost/staging | Private URLs | Result |",
@@ -535,16 +675,20 @@ def render_report(report: Report, safe_to_merge: bool) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--report", help="Write markdown report to path")
+    parser.add_argument("--live", action="store_true", help="Hit live DEPLOY_URL over HTTPS instead of in-process TestClient")
     args = parser.parse_args()
     report = Report()
-    safe = run_qa(report)
+    safe = run_qa(report, live=args.live)
     text = render_report(report, safe)
     print(text)
     if args.report:
         Path(args.report).write_text(text, encoding="utf-8")
         print(f"\nWrote {args.report}")
     # Console summary
-    fails = sum(1 for r in report.url_rows + report.meta_rows + report.schema_rows + report.file_rows if not r.ok)
+    fails = sum(
+        1 for r in report.url_rows + report.meta_rows + report.schema_rows + report.file_rows + report.head_rows + report.crawler_rows
+        if not r.ok
+    )
     print(f"\n{'PRODUCTION QA PASSED' if safe else 'PRODUCTION QA FAILED'} ({len(report.p0)} P0, {len(report.p1)} P1, {fails} table FAIL rows)")
     return 0 if safe else 1
 

@@ -62,7 +62,7 @@ curl -sI https://cartozo.ai/feed.xml | head -1
 
 ## Common Crawl (CCBot) policy
 
-Cartozo.ai is a public SaaS marketing site. **`CCBot` is allowed** on public pages in `/robots.txt` so Common Crawl may snapshot marketing content.
+Cartozo.ai is a public SaaS marketing site. **`CCBot` inherits the wildcard (`User-agent: *`) group** in `/robots.txt`, so Common Crawl may snapshot public marketing pages while private prefixes stay disallowed.
 
 **Tradeoff:** marketing copy may appear in Common Crawl datasets. **User/customer data is never exposed** — `/upload`, `/batches`, `/admin`, and auth routes are disallowed or require login. CCBot does not execute JavaScript; important pages are server-rendered HTML.
 
@@ -72,18 +72,19 @@ Private routes remain blocked for all bots via global `Disallow` rules (`/admin`
 
 | Bot | Policy | Purpose |
 |---|---|---|
-| OAI-SearchBot | Allow | ChatGPT Search |
-| ChatGPT-User | Allow | ChatGPT browsing |
-| GPTBot | Disallow | OpenAI training |
-| Claude-SearchBot | Allow | Claude search |
-| Claude-User | Allow | Claude browsing |
-| ClaudeBot | Disallow | Anthropic training |
-| PerplexityBot | Allow | Perplexity search |
-| Perplexity-User | Allow | Perplexity browsing |
-| Googlebot | Allow | Google Search |
+| OAI-SearchBot | Wildcard allow + private Disallow | ChatGPT Search |
+| ChatGPT-User | Wildcard allow + private Disallow | ChatGPT browsing |
+| GPTBot | Disallow `/` | OpenAI training |
+| Claude-SearchBot | Wildcard allow + private Disallow | Claude search |
+| Claude-User | Wildcard allow + private Disallow | Claude browsing |
+| ClaudeBot | Disallow `/` | Anthropic training |
+| PerplexityBot | Wildcard allow + private Disallow | Perplexity search |
+| Perplexity-User | Wildcard allow + private Disallow | Perplexity browsing |
+| Googlebot | Wildcard allow + private Disallow | Google Search |
+| Google-Extended | Disallow `/` | Gemini training/grounding (not Google Search) |
 | GoogleOther | (via Googlebot rules) | Google auxiliary fetches |
-| bingbot | Allow | Bing / Copilot |
-| CCBot | Allow | Common Crawl snapshots |
+| bingbot | Wildcard allow + private Disallow | Bing / Copilot |
+| CCBot | Wildcard allow + private Disallow | Common Crawl snapshots |
 
 ## AI referral tracking (GA4 / logs)
 

@@ -269,9 +269,18 @@ def _audit_example_html() -> str:
 
 
 def register_example_routes(app) -> None:
-    @app.get("/examples", response_class=HTMLResponse, include_in_schema=False)
-    def examples_index(_request: Request):
-        return HTMLResponse(content=_examples_index_html())
+    @app.api_route("/examples", methods=["GET", "HEAD"], response_class=HTMLResponse, include_in_schema=False)
+    def examples_index(request: Request):
+        content = _examples_index_html()
+        if request.method == "HEAD":
+            from fastapi.responses import Response
+
+            return Response(
+                content=b"",
+                media_type="text/html; charset=utf-8",
+                headers={"Content-Length": str(len(content.encode("utf-8")))},
+            )
+        return HTMLResponse(content=content)
 
     @app.get("/examples/google-shopping-feed-before-after", response_class=HTMLResponse, include_in_schema=False)
     def examples_before_after(_request: Request):
