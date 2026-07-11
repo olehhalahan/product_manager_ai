@@ -50,12 +50,23 @@ class IndexNowTests(unittest.TestCase):
 
 
 class SeoDiscoveryTests(unittest.TestCase):
-    def test_robots_allows_ccbot(self):
+    def test_robots_policy_safe_precedence(self):
+        from app.public_urls import PRIVATE_ROUTE_PREFIXES
+        from app.robots_txt import is_path_allowed_for_agent, validate_robots_policy
         from app.seo import build_robots_txt_body
 
         body = build_robots_txt_body("https://cartozo.ai")
-        self.assertIn("User-agent: CCBot", body)
-        self.assertIn("Allow: /", body)
+        self.assertIn("User-agent: *", body)
+        self.assertIn("Sitemap: https://cartozo.ai/sitemap.xml", body)
+        self.assertNotIn("User-agent: CCBot", body)
+        self.assertTrue(is_path_allowed_for_agent(body, "CCBot", "/pricing"))
+        self.assertFalse(is_path_allowed_for_agent(body, "CCBot", "/admin"))
+        errors = validate_robots_policy(
+            body,
+            sitemap_url="https://cartozo.ai/sitemap.xml",
+            private_prefixes=PRIVATE_ROUTE_PREFIXES,
+        )
+        self.assertEqual(errors, [])
 
     def test_rss_feed_xml_valid(self):
         from app.seo import build_rss_feed_xml

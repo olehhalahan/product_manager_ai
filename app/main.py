@@ -87,6 +87,7 @@ from .seo import (
 from .use_case_pages import register_use_case_routes
 from .guide_pages import register_guide_routes
 from .example_pages import register_example_routes
+from .http_discovery import discovery_response
 from .indexnow import indexnow_key, submit_all_public_urls
 from .feed_structure_page import build_feed_structure_html
 from .about_us_page import build_about_us_html
@@ -3301,9 +3302,12 @@ def _build_homepage_html(request: Request) -> str:
         "{SEO_LINK_EXTRA}", seo_link_extra)
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def homepage(request: Request):
-    return HTMLResponse(content=_build_homepage_html(request))
+    content = _build_homepage_html(request)
+    if request.method == "HEAD":
+        return Response(content=b"", media_type="text/html; charset=utf-8", headers={"Content-Length": str(len(content.encode("utf-8")))})
+    return HTMLResponse(content=content)
 
 
 @app.get("/contact", response_class=HTMLResponse)
@@ -7827,22 +7831,23 @@ def _build_robots_txt_body(base: str) -> str:
     return build_robots_txt_body(base)
 
 
-@app.get("/llms.txt", include_in_schema=False)
-async def llms_txt():
+@app.api_route("/llms.txt", methods=["GET", "HEAD"], include_in_schema=False)
+async def llms_txt(request: Request):
     """Curated site map for LLM agents and answer engines."""
     base = site_base_url()
-    return PlainTextResponse(build_llms_txt_body(base), media_type="text/plain; charset=utf-8")
+    body = build_llms_txt_body(base)
+    return discovery_response(request, body, media_type="text/plain; charset=utf-8")
 
 
-@app.get("/feed.xml", include_in_schema=False)
-async def rss_feed():
+@app.api_route("/feed.xml", methods=["GET", "HEAD"], include_in_schema=False)
+async def rss_feed(request: Request):
     """RSS 2.0 feed for blog posts, guides, and evergreen pages."""
     from .db import get_db
 
     with get_db() as db:
         items = collect_rss_items(db)
     body = build_rss_feed_xml(items=items)
-    return Response(content=body, media_type="application/rss+xml; charset=utf-8")
+    return discovery_response(request, body, media_type="application/rss+xml; charset=utf-8")
 
 
 @app.get("/feed-structure", response_class=HTMLResponse)
@@ -7875,13 +7880,14 @@ def _build_sitemap_xml_body(base: str, db) -> str:
     from datetime import date
     from .services import db_repository as repo
 
+    static_lastmod = "2026-07-01"
     today = date.today().isoformat()
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ]
     for path, pri, cf in PUBLIC_SITEMAP_STATIC:
-        parts.append(_sitemap_url_block(base + path, priority=pri, changefreq=cf, lastmod=today))
+        parts.append(_sitemap_url_block(base + path, priority=pri, changefreq=cf, lastmod=static_lastmod))
 
     articles: List[Dict[str, Any]] = repo.list_blog_articles_published(db, limit=500)
     for a in articles:
@@ -7897,7 +7903,7 @@ def _build_sitemap_xml_body(base: str, db) -> str:
     return "\n".join(parts) + "\n"
 
 
-@app.get("/sitemap.xml")
+@app.api_route("/sitemap.xml", methods=["GET", "HEAD"])
 async def sitemap_xml(request: Request):
     """
     Public URLs only — no /admin, /batches, /upload, or authenticated flows.
@@ -7906,17 +7912,17 @@ async def sitemap_xml(request: Request):
     s = _get_settings()
     cached = (s.get("cached_sitemap_xml") or "").strip()
     if cached and not seo_cached_snapshot_is_stale(cached):
-        return Response(content=cached, media_type="application/xml; charset=utf-8")
+        body = cached
+    else:
+        from .db import get_db
 
-    from .db import get_db
-
-    base = site_base_url()
-    with get_db() as db:
-        body = _build_sitemap_xml_body(base, db)
-    return Response(content=body, media_type="application/xml; charset=utf-8")
+        base = site_base_url()
+        with get_db() as db:
+            body = _build_sitemap_xml_body(base, db)
+    return discovery_response(request, body, media_type="application/xml; charset=utf-8")
 
 
-@app.get("/robots.txt")
+@app.api_route("/robots.txt", methods=["GET", "HEAD"])
 async def robots_txt(request: Request):
     """
     Block indexing of admin, batch review, APIs, and auth-gated app areas.
@@ -7925,11 +7931,11 @@ async def robots_txt(request: Request):
     s = _get_settings()
     cached = (s.get("cached_robots_txt") or "").strip()
     if cached and not seo_cached_snapshot_is_stale(cached):
-        return PlainTextResponse(cached, media_type="text/plain; charset=utf-8")
-
-    base = site_base_url()
-    text = _build_robots_txt_body(base)
-    return PlainTextResponse(text, media_type="text/plain; charset=utf-8")
+        text = cached
+    else:
+        base = site_base_url()
+        text = _build_robots_txt_body(base)
+    return discovery_response(request, text, media_type="text/plain; charset=utf-8")
 
 
 def _register_indexnow_key_route() -> None:
@@ -7944,7 +7950,7 @@ def _register_indexnow_key_route() -> None:
     app.add_api_route(
         f"/{key}.txt",
         indexnow_verification_file,
-        methods=["GET"],
+        methods=["GET", "HEAD"],
         include_in_schema=False,
     )
 
