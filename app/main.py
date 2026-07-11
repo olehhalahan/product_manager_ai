@@ -659,7 +659,7 @@ def _build_error_page(
     <script>document.documentElement.setAttribute('data-theme', localStorage.getItem('hp-theme') || 'dark');</script>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; padding: 96px 24px 48px; box-sizing: border-box; }}
+    body {{ font-family: 'CursorGothic', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; -webkit-font-smoothing: antialiased; padding: 96px 24px 48px; box-sizing: border-box; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     @@ERR_HP_NAV_STYLES@@
     .err-box {{ text-align: center; padding: 48px 24px; max-width: 480px; }}
@@ -1571,7 +1571,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-feed-dot:nth-child(1) { background: #ff5f57; }
     .hp-feed-dot:nth-child(2) { background: #febc2e; }
     .hp-feed-dot:nth-child(3) { background: #28c840; }
-    .hp-feed-filename { flex: 1; text-align: center; font-size: 0.8rem; font-weight: 500; color: var(--hp-muted); font-family: 'SF Mono', monospace; }
+    .hp-feed-filename { flex: 1; text-align: center; font-size: 0.8rem; font-weight: 500; color: var(--hp-muted); font-family: var(--hp-font-mono); }
     .hp-feed-window-badge { padding: 4px 12px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; border-radius: 6px; background: linear-gradient(135deg, rgba(79,70,229,0.2), rgba(79,70,229,0.1)); color: #4F46E5; border: 1px solid rgba(79,70,229,0.3); }
     .hp-feed-scan { position: absolute; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, transparent, rgba(79,70,229,0.6), rgba(167,139,250,0.4), transparent); animation: feedScan 5s ease-in-out infinite; pointer-events: none; z-index: 1; filter: blur(1px); }
     @keyframes feedScan { 0% { top: 52px; opacity: 0; } 5% { opacity: 1; } 95% { opacity: 1; } 100% { top: calc(100% - 80px); opacity: 0; } }
@@ -1580,7 +1580,7 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
     .hp-feed-table-wrap::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); border-radius: 4px; }
     .hp-feed-table-wrap::-webkit-scrollbar-thumb { background: rgba(79,70,229,0.3); border-radius: 4px; }
     .hp-feed-table-wrap::-webkit-scrollbar-thumb:hover { background: rgba(79,70,229,0.5); }
-    .hp-feed-table { width: 100%; min-width: 950px; border-collapse: separate; border-spacing: 0; font-size: 0.76rem; font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; }
+    .hp-feed-table { width: 100%; min-width: 950px; border-collapse: separate; border-spacing: 0; font-size: 0.76rem; font-family: var(--hp-font-mono); }
     .hp-feed-table th, .hp-feed-table td { padding: 12px 16px; text-align: left; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
     .hp-feed-table th { background: linear-gradient(180deg, rgba(79,70,229,0.12) 0%, rgba(79,70,229,0.06) 100%); color: #22D3EE; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.68rem; border-bottom: 1px solid rgba(79,70,229,0.2); }
     [data-theme="light"] .hp-feed-table th { background: linear-gradient(180deg, rgba(79,70,229,0.15) 0%, rgba(79,70,229,0.08) 100%); color: #4338ca; border-bottom-color: rgba(79,70,229,0.25); }
@@ -1686,6 +1686,264 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         .hp-features, .hp-steps, .hp-cta { padding: 56px 0; }
     }
     </style>
+    <style>
+    /* ============================================================
+       CARTOZO redesign — cinematic (oryzo-style) + content-dense (higgsfield-style)
+       ============================================================ */
+    :root { --cz2-ember: var(--color-ember-accent, #dc5000); }
+
+    [data-reveal] { opacity: 0; transform: translateY(28px); transition: opacity 0.8s cubic-bezier(0.16,1,0.3,1), transform 0.8s cubic-bezier(0.16,1,0.3,1); will-change: opacity, transform; }
+    [data-reveal].cz2-in { opacity: 1; transform: none; }
+    [data-reveal-delay="1"] { transition-delay: 0.08s; }
+    [data-reveal-delay="2"] { transition-delay: 0.16s; }
+    [data-reveal-delay="3"] { transition-delay: 0.24s; }
+    [data-reveal-delay="4"] { transition-delay: 0.32s; }
+    [data-reveal-delay="5"] { transition-delay: 0.40s; }
+    @media (prefers-reduced-motion: reduce) { [data-reveal] { opacity: 1 !important; transform: none !important; transition: none !important; } }
+
+    .cz2-wrap { max-width: var(--hp-max-width, 1150px); width: 100%; margin: 0 auto; padding: 0 40px; box-sizing: border-box; }
+    .cz2-kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cz2-ember); margin-bottom: 18px; }
+    .cz2-kicker::before { content: ""; width: 22px; height: 1px; background: var(--cz2-ember); display: inline-block; }
+    .cz2-h2 { font-family: var(--hp-font-display); font-size: clamp(2rem, 4.4vw, 3.4rem); font-weight: 500; line-height: 0.94; text-transform: uppercase; color: var(--hp-text); letter-spacing: -0.01em; margin: 0; }
+    .cz2-lead { color: var(--hp-muted); font-size: clamp(1rem, 1.4vw, 1.15rem); line-height: 1.55; max-width: 54ch; margin: 18px 0 0; }
+    .cz2-em { color: var(--cz2-ember); }
+
+    /* ── Kinetic marquee ── */
+    .cz2-marquee { border-top: 1px dashed var(--hp-border); border-bottom: 1px dashed var(--hp-border); overflow: hidden; padding: 22px 0; background: transparent; position: relative; z-index: 2; }
+    .cz2-marquee-track { display: flex; gap: 0; width: max-content; animation: cz2Marquee 42s linear infinite; }
+    .cz2-marquee:hover .cz2-marquee-track { animation-play-state: paused; }
+    .cz2-marquee-item { display: inline-flex; align-items: center; gap: 16px; padding: 0 28px; font-family: var(--hp-font-display); font-size: clamp(1.1rem, 2vw, 1.7rem); font-weight: 500; text-transform: uppercase; letter-spacing: 0.02em; color: var(--hp-text); white-space: nowrap; }
+    .cz2-marquee-item .cz2-strike { color: var(--hp-muted); text-decoration: line-through; text-decoration-color: var(--cz2-ember); }
+    .cz2-marquee-item .cz2-arrow { color: var(--cz2-ember); }
+    .cz2-marquee-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cz2-ember); opacity: 0.7; }
+    @keyframes cz2Marquee { to { transform: translateX(-50%); } }
+    @media (prefers-reduced-motion: reduce) { .cz2-marquee-track { animation: none; } }
+
+    /* ── Manifesto ── */
+    .cz2-manifesto { padding: 110px 0 96px; position: relative; z-index: 2; }
+    .cz2-manifesto-title { font-family: var(--hp-font-display); font-size: clamp(2rem, 5.2vw, 4.2rem); font-weight: 500; line-height: 0.98; text-transform: uppercase; color: var(--hp-text); max-width: 20ch; letter-spacing: -0.015em; }
+    .cz2-manifesto-title .cz2-muted { color: var(--hp-muted); }
+    .cz2-manifesto-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 48px; align-items: end; }
+    .cz2-manifesto-note { color: var(--hp-muted); font-size: 1.05rem; line-height: 1.65; max-width: 42ch; }
+    .cz2-manifesto-note strong { color: var(--hp-text); font-weight: 500; }
+    @media (max-width: 900px) { .cz2-manifesto-grid { grid-template-columns: 1fr; gap: 28px; align-items: start; } }
+
+    /* ── Section shell ── */
+    .cz2-section { padding: 96px 0; position: relative; z-index: 2; border-top: 1px dashed var(--hp-border); }
+    .cz2-section-head { max-width: 720px; margin: 0 auto 52px; text-align: center; }
+    .cz2-section-head.left { margin-left: 0; text-align: left; }
+    .cz2-section-head .cz2-kicker { justify-content: center; }
+    .cz2-section-head.left .cz2-kicker { justify-content: flex-start; }
+    .cz2-section-head .cz2-lead { margin-left: auto; margin-right: auto; }
+    .cz2-section-head.left .cz2-lead { margin-left: 0; }
+
+    /* ── What is Cartozo (SEO) ── */
+    .cz2-what-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-bottom: 20px; }
+    @media (max-width: 1000px) { .cz2-what-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px) { .cz2-what-grid { grid-template-columns: 1fr; } }
+    .cz2-what-card { border: 1px solid var(--hp-border-card); border-radius: 14px; padding: 22px; background: transparent; transition: border-color 0.25s, transform 0.25s; }
+    .cz2-what-card:hover { border-color: var(--cz2-ember); transform: translateY(-3px); }
+    [data-theme="light"] .cz2-what-card { background: #fff; }
+    .cz2-what-card h3 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 12px; color: var(--hp-text); }
+    .cz2-what-card ul { margin: 0; padding-left: 1.05rem; }
+    .cz2-what-card li, .cz2-what-card p { font-size: 0.92rem; color: var(--hp-muted); line-height: 1.55; margin-bottom: 6px; }
+    .cz2-what-card p strong { color: var(--hp-text); font-weight: 500; }
+    .cz2-what-wide { border: 1px dashed var(--hp-border); border-radius: 14px; padding: 24px; margin-top: 6px; }
+    .cz2-what-wide h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 10px; color: var(--hp-text); font-weight: 500; }
+    .cz2-what-wide p { color: var(--hp-muted); line-height: 1.65; font-size: 0.98rem; }
+    .cz2-faq { margin-top: 20px; display: grid; gap: 10px; }
+    .cz2-faq details { border: 1px solid var(--hp-border-card); border-radius: 12px; padding: 14px 18px; background: transparent; }
+    .cz2-faq summary { cursor: pointer; font-weight: 500; font-size: 0.95rem; color: var(--hp-text); list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .cz2-faq summary::-webkit-details-marker { display: none; }
+    .cz2-faq summary::after { content: "+"; color: var(--cz2-ember); font-size: 1.2rem; line-height: 1; }
+    .cz2-faq details[open] summary::after { content: "\2212"; }
+    .cz2-faq p { margin-top: 12px; color: var(--hp-muted); font-size: 0.92rem; line-height: 1.6; }
+    .cz2-faq a { color: var(--cz2-ember); text-decoration: none; border-bottom: 1px solid currentColor; }
+    .cz2-inline-links { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px 20px; }
+    .cz2-inline-links a { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; color: var(--hp-text); text-decoration: none; border-bottom: 1px solid var(--hp-border); padding-bottom: 2px; transition: color 0.2s, border-color 0.2s; }
+    .cz2-inline-links a:hover { color: var(--cz2-ember); border-color: var(--cz2-ember); }
+
+    /* ── Fix Packs (higgsfield presets style) ── */
+    .cz2-packs { padding: 100px 0; border-top: 1px dashed var(--hp-border); position: relative; z-index: 2; }
+    .cz2-packs-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 40px; }
+    .cz2-packs-count { font-family: var(--hp-font-display); font-size: clamp(2.4rem, 6vw, 4.4rem); font-weight: 500; line-height: 0.85; color: var(--cz2-ember); }
+    .cz2-packs-count span { display: block; font-size: 12px; letter-spacing: 0.12em; color: var(--hp-muted); text-transform: uppercase; margin-top: 8px; }
+    .cz2-packs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    @media (max-width: 1000px) { .cz2-packs-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 520px) { .cz2-packs-grid { grid-template-columns: 1fr; } }
+    .cz2-pack { position: relative; overflow: hidden; border: 1px solid var(--hp-border-card); border-radius: 14px; padding: 20px 18px 18px; min-height: 148px; display: flex; flex-direction: column; justify-content: space-between; background: transparent; cursor: default; transition: border-color 0.3s, transform 0.3s, background 0.3s; }
+    [data-theme="light"] .cz2-pack { background: #fff; }
+    .cz2-pack::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 100% 0%, rgba(220,80,0,0.16), transparent 60%); opacity: 0; transition: opacity 0.35s; pointer-events: none; }
+    .cz2-pack:hover { transform: translateY(-4px); border-color: var(--cz2-ember); }
+    .cz2-pack:hover::before { opacity: 1; }
+    .cz2-pack-top { display: flex; align-items: center; justify-content: space-between; }
+    .cz2-pack-idx { font-size: 11px; color: var(--hp-muted); font-family: var(--hp-font-mono); letter-spacing: 0.04em; }
+    .cz2-pack-tag { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 7px; border-radius: 999px; border: 1px solid var(--hp-border-card); color: var(--hp-muted); }
+    .cz2-pack-tag.hot { color: var(--cz2-ember); border-color: var(--cz2-ember); }
+    .cz2-pack-name { font-family: var(--hp-font-display); font-size: 1.15rem; font-weight: 500; text-transform: uppercase; line-height: 1; color: var(--hp-text); margin-top: 22px; position: relative; z-index: 1; }
+    .cz2-pack-desc { font-size: 0.82rem; color: var(--hp-muted); line-height: 1.45; margin-top: 8px; position: relative; z-index: 1; }
+    .cz2-packs-foot { margin-top: 28px; text-align: center; }
+
+    /* ── Title Lab (interactive, oryzo-style) ── */
+    .cz2-lab-grid { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 40px; align-items: center; }
+    @media (max-width: 900px) { .cz2-lab-grid { grid-template-columns: 1fr; gap: 28px; } }
+    .cz2-lab-modes { display: inline-flex; gap: 6px; padding: 5px; border: 1px solid var(--hp-border-card); border-radius: 999px; margin-top: 24px; }
+    .cz2-lab-mode { border: none; background: transparent; color: var(--hp-muted); font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 16px; border-radius: 999px; cursor: pointer; transition: color 0.2s, background 0.2s; }
+    .cz2-lab-mode.active { background: var(--color-bark-brown, #382416); color: var(--color-warm-cream, #ffedd7); }
+    [data-theme="light"] .cz2-lab-mode.active { color: #fff; }
+    .cz2-lab-hint { margin-top: 14px; font-size: 0.85rem; color: var(--hp-muted); }
+    .cz2-lab-panel { border: 1px solid var(--hp-border-card); border-radius: 18px; overflow: hidden; background: linear-gradient(165deg, rgba(56,36,22,0.35), rgba(16,9,4,0.6)); }
+    [data-theme="light"] .cz2-lab-panel { background: #fff; }
+    .cz2-lab-bar { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--hp-border); }
+    .cz2-lab-dots { display: flex; gap: 7px; }
+    .cz2-lab-dots i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+    .cz2-lab-dots i:nth-child(1){ background:#ff5f57; } .cz2-lab-dots i:nth-child(2){ background:#febc2e; } .cz2-lab-dots i:nth-child(3){ background:#28c840; }
+    .cz2-lab-file { font-size: 0.76rem; color: var(--hp-muted); font-family: var(--hp-font-mono); }
+    .cz2-lab-body { padding: 22px; }
+    .cz2-lab-row { margin-bottom: 18px; }
+    .cz2-lab-row:last-child { margin-bottom: 0; }
+    .cz2-lab-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--hp-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .cz2-lab-label.bad { color: #f87171; }
+    .cz2-lab-label.good { color: #4ade80; }
+    .cz2-lab-title-before { font-family: var(--hp-font-mono); font-size: 0.92rem; color: var(--hp-muted); text-decoration: line-through; text-decoration-color: rgba(248,113,113,0.6); }
+    .cz2-lab-title-after { font-family: var(--hp-font-display); font-size: clamp(1.05rem, 1.8vw, 1.35rem); font-weight: 500; color: var(--hp-text); line-height: 1.15; min-height: 1.2em; }
+    .cz2-lab-cursor { display: inline-block; width: 2px; height: 1em; background: var(--cz2-ember); vertical-align: text-bottom; margin-left: 2px; animation: cz2Blink 1s steps(2) infinite; }
+    @keyframes cz2Blink { 50% { opacity: 0; } }
+    .cz2-lab-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+    .cz2-chip { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--hp-border-card); color: var(--hp-muted); }
+    .cz2-chip.on { color: var(--cz2-ember); border-color: var(--cz2-ember); }
+
+    /* ── Score gauge ── */
+    .cz2-score-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+    @media (max-width: 820px) { .cz2-score-grid { grid-template-columns: 1fr; } }
+    .cz2-gauge-card { border: 1px solid var(--hp-border-card); border-radius: 18px; padding: 30px 26px; text-align: center; background: transparent; }
+    [data-theme="light"] .cz2-gauge-card { background: #fff; }
+    .cz2-gauge { position: relative; width: 150px; height: 150px; margin: 0 auto 18px; }
+    .cz2-gauge svg { transform: rotate(-90deg); width: 150px; height: 150px; }
+    .cz2-gauge-track { fill: none; stroke: var(--hp-border-card); stroke-width: 10; }
+    .cz2-gauge-fill { fill: none; stroke: var(--cz2-ember); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 408; stroke-dashoffset: 408; transition: stroke-dashoffset 1.6s cubic-bezier(0.16,1,0.3,1); }
+    .cz2-gauge-num { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .cz2-gauge-num b { font-family: var(--hp-font-display); font-size: 2.4rem; font-weight: 500; color: var(--hp-text); line-height: 1; }
+    .cz2-gauge-num span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--hp-muted); margin-top: 4px; }
+    .cz2-gauge-card h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 6px; color: var(--hp-text); font-weight: 500; }
+    .cz2-gauge-card p { font-size: 0.88rem; color: var(--hp-muted); line-height: 1.5; }
+
+    /* ── Cartozo-1 engine (satirical SOTA) ── */
+    .cz2-engine { padding: 100px 0; border-top: 1px dashed var(--hp-border); position: relative; z-index: 2; }
+    .cz2-engine-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+    @media (max-width: 900px) { .cz2-engine-grid { grid-template-columns: 1fr; gap: 32px; } }
+    .cz2-engine-badge { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--hp-muted); border: 1px dashed var(--hp-border); border-radius: 999px; padding: 6px 14px; margin-bottom: 20px; }
+    .cz2-engine-badge b { color: var(--cz2-ember); font-weight: 600; }
+    .cz2-engine h2 { font-family: var(--hp-font-display); font-size: clamp(1.8rem,3.4vw,2.8rem); font-weight: 500; text-transform: uppercase; line-height: 0.96; color: var(--hp-text); margin: 0 0 18px; }
+    .cz2-engine p { color: var(--hp-muted); line-height: 1.65; font-size: 0.98rem; margin-bottom: 14px; }
+    .cz2-engine p .cz2-hl { color: var(--hp-text); font-weight: 500; }
+    .cz2-bench { border: 1px solid var(--hp-border-card); border-radius: 18px; padding: 26px; background: transparent; }
+    [data-theme="light"] .cz2-bench { background: #fff; }
+    .cz2-bench-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--hp-muted); margin-bottom: 4px; }
+    .cz2-bench-sub { font-size: 10px; color: var(--hp-muted); opacity: 0.7; margin-bottom: 20px; }
+    .cz2-bar-row { margin-bottom: 16px; }
+    .cz2-bar-row:last-child { margin-bottom: 0; }
+    .cz2-bar-head { display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 6px; }
+    .cz2-bar-head b { color: var(--hp-text); font-weight: 500; }
+    .cz2-bar-head b.win { color: var(--cz2-ember); }
+    .cz2-bar-head span { color: var(--hp-muted); font-family: var(--hp-font-mono); }
+    .cz2-bar-track { height: 8px; border-radius: 999px; background: var(--hp-border-card); overflow: hidden; }
+    .cz2-bar-val { height: 100%; width: 0; border-radius: 999px; background: var(--hp-muted); transition: width 1.4s cubic-bezier(0.16,1,0.3,1); }
+    .cz2-bar-val.win { background: linear-gradient(90deg, #dc5000, #ff8a3d); }
+    .cz2-bibtex { margin-top: 22px; border: 1px dashed var(--hp-border); border-radius: 12px; padding: 16px 18px; font-family: var(--hp-font-mono); font-size: 0.72rem; color: var(--hp-muted); line-height: 1.6; overflow-x: auto; white-space: pre; }
+    .cz2-bibtex .k { color: var(--cz2-ember); }
+    .cz2-engine-note { font-size: 11px; color: var(--hp-muted); opacity: 0.65; margin-top: 12px; font-style: italic; }
+
+    /* ── Reviews ── */
+    .cz2-reviews { padding: 100px 0; border-top: 1px dashed var(--hp-border); position: relative; z-index: 2; }
+    .cz2-reviews-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    @media (max-width: 900px) { .cz2-reviews-grid { grid-template-columns: 1fr; } }
+    .cz2-review { border: 1px solid var(--hp-border-card); border-radius: 16px; padding: 24px; background: transparent; display: flex; flex-direction: column; gap: 14px; transition: border-color 0.25s, transform 0.25s; }
+    [data-theme="light"] .cz2-review { background: #fff; }
+    .cz2-review:hover { border-color: var(--cz2-ember); transform: translateY(-3px); }
+    .cz2-review-stars { color: var(--cz2-ember); font-size: 0.9rem; letter-spacing: 2px; }
+    .cz2-review-text { font-size: 0.98rem; line-height: 1.55; color: var(--hp-text); flex: 1; }
+    .cz2-review-who { display: flex; align-items: center; gap: 12px; }
+    .cz2-review-ava { width: 38px; height: 38px; border-radius: 50%; background: var(--color-bark-brown, #382416); color: var(--color-warm-cream, #ffedd7); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.9rem; flex-shrink: 0; }
+    .cz2-review-name { font-size: 0.85rem; font-weight: 500; color: var(--hp-text); }
+    .cz2-review-role { font-size: 0.75rem; color: var(--hp-muted); }
+
+    /* ── Tiers ── */
+    .cz2-tiers { padding: 100px 0; border-top: 1px dashed var(--hp-border); position: relative; z-index: 2; }
+    .cz2-tiers-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; }
+    @media (max-width: 900px) { .cz2-tiers-grid { grid-template-columns: 1fr; } }
+    .cz2-tier { border: 1px solid var(--hp-border-card); border-radius: 18px; padding: 30px 26px; background: transparent; display: flex; flex-direction: column; transition: border-color 0.25s, transform 0.25s; }
+    [data-theme="light"] .cz2-tier { background: #fff; }
+    .cz2-tier:hover { transform: translateY(-4px); border-color: var(--cz2-ember); }
+    .cz2-tier.featured { border-color: var(--cz2-ember); }
+    .cz2-tier-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .cz2-tier-name { font-family: var(--hp-font-display); font-size: 1.3rem; font-weight: 500; text-transform: uppercase; color: var(--hp-text); }
+    .cz2-tier-flag { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cz2-ember); border: 1px solid var(--cz2-ember); border-radius: 999px; padding: 3px 9px; }
+    .cz2-tier-line { font-size: 0.88rem; color: var(--hp-muted); line-height: 1.5; margin-bottom: 22px; min-height: 2.8em; }
+    .cz2-tier-feats { list-style: none; margin: 0 0 26px; padding: 0; display: grid; gap: 10px; }
+    .cz2-tier-feats li { font-size: 0.88rem; color: var(--hp-text); display: flex; align-items: flex-start; gap: 10px; line-height: 1.4; }
+    .cz2-tier-feats li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--cz2-ember); margin-top: 7px; flex-shrink: 0; }
+    .cz2-tier-cta { margin-top: auto; display: inline-flex; align-items: center; justify-content: center; padding: 13px 22px; border-radius: 36px; font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; text-decoration: none; transition: opacity 0.2s, background 0.2s; }
+    .cz2-tier-cta.solid { background: var(--color-bark-brown, #382416); color: var(--color-warm-cream, #ffedd7); border: none; }
+    .cz2-tier-cta.solid:hover { opacity: 0.9; }
+    .cz2-tier-cta.ghost { background: transparent; color: var(--hp-text); border: 1px solid var(--hp-border-card); }
+    .cz2-tier-cta.ghost:hover { border-color: var(--cz2-ember); color: var(--cz2-ember); }
+
+    /* ── Big final CTA ── */
+    .cz2-final { padding: 130px 0; text-align: center; border-top: 1px dashed var(--hp-border); position: relative; z-index: 2; overflow: hidden; }
+    .cz2-final::before { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 60% at 50% 100%, rgba(220,80,0,0.14), transparent 70%); pointer-events: none; }
+    .cz2-final-title { font-family: var(--hp-font-display); font-size: clamp(2.2rem, 6vw, 4.6rem); font-weight: 500; text-transform: uppercase; line-height: 0.94; color: var(--hp-text); max-width: 18ch; margin: 0 auto 20px; position: relative; z-index: 1; }
+    .cz2-final-sub { color: var(--hp-muted); font-size: 1.05rem; line-height: 1.55; max-width: 46ch; margin: 0 auto 34px; position: relative; z-index: 1; }
+    .cz2-final-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; position: relative; z-index: 1; }
+    .cz2-btn-solid { display: inline-flex; align-items: center; gap: 10px; padding: 16px 30px; border-radius: 36px; background: var(--color-bark-brown, #382416); color: var(--color-warm-cream, #ffedd7); font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; text-decoration: none; transition: opacity 0.2s, transform 0.2s; }
+    .cz2-btn-solid:hover { opacity: 0.92; transform: translateY(-2px); }
+    .cz2-btn-ghost { display: inline-flex; align-items: center; padding: 16px 26px; border-radius: 36px; background: transparent; color: var(--hp-text); border: 1px solid var(--hp-border-card); font-size: 14px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; text-decoration: none; transition: border-color 0.2s, color 0.2s; }
+    .cz2-btn-ghost:hover { border-color: var(--cz2-ember); color: var(--cz2-ember); }
+
+    @media (max-width: 768px) {
+        .cz2-wrap { padding: 0 24px; }
+        .cz2-section, .cz2-packs, .cz2-engine, .cz2-reviews, .cz2-tiers { padding: 68px 0; }
+        .cz2-manifesto { padding: 72px 0 64px; }
+        .cz2-final { padding: 90px 0; }
+    }
+
+    /* ── Product visuals / screenshots ── */
+    .cz2-shot { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--hp-border-card); box-shadow: 0 30px 80px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(220,80,0,0.06); background: #100904; }
+    .cz2-shot img { display: block; width: 100%; height: auto; }
+    .cz2-shot::after { content: ""; position: absolute; inset: 0; border-radius: 18px; box-shadow: inset 0 1px 0 rgba(255,237,215,0.06); pointer-events: none; }
+    /* animated ember scan beam over a screenshot (reads like live processing) */
+    .cz2-shot-scan { position: absolute; left: 0; right: 0; top: 0; height: 14%; pointer-events: none; z-index: 3;
+      background: linear-gradient(180deg, transparent, rgba(220,80,0,0.10) 45%, rgba(255,138,61,0.55) 50%, rgba(220,80,0,0.10) 55%, transparent);
+      mix-blend-mode: screen; filter: blur(0.4px); animation: cz2Scan 4.6s cubic-bezier(0.45,0,0.55,1) infinite; }
+    @keyframes cz2Scan { 0% { transform: translateY(-20%); opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { transform: translateY(760%); opacity: 0; } }
+    .cz2-shot-glow { position: absolute; inset: -1px; border-radius: 18px; pointer-events: none; z-index: 2;
+      background: radial-gradient(120% 60% at 50% 0%, rgba(220,80,0,0.16), transparent 60%); }
+    @media (prefers-reduced-motion: reduce) { .cz2-shot-scan { animation: none; opacity: 0.5; top: 42%; } }
+
+    /* Hero showcase */
+    .cz2-hero-showcase { max-width: min(880px, 100%); margin: 46px auto 0; position: relative; z-index: 3; }
+    .cz2-hero-showcase .cz2-shot { animation: cz2Float 7s ease-in-out infinite; }
+    @keyframes cz2Float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+    @media (prefers-reduced-motion: reduce) { .cz2-hero-showcase .cz2-shot { animation: none; } }
+    .cz2-hero-caption { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 16px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--hp-muted); }
+    .cz2-hero-caption b { color: var(--cz2-ember); font-weight: 600; }
+    .cz2-hero-caption i { width: 6px; height: 6px; border-radius: 50%; background: var(--cz2-ember); display: inline-block; box-shadow: 0 0 10px rgba(220,80,0,0.8); animation: cz2Pulse 1.8s ease-in-out infinite; }
+    @keyframes cz2Pulse { 0%,100% { opacity: 0.4; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
+
+    /* Quality showcase (image + gauges) */
+    .cz2-quality-showcase { margin-bottom: 40px; }
+
+    /* Fix Packs decorative background */
+    .cz2-packs { overflow: hidden; }
+    .cz2-packs-bgimg { position: absolute; inset: 0; z-index: 0; background-size: cover; background-position: center; opacity: 0.5; pointer-events: none; }
+    [data-theme="light"] .cz2-packs-bgimg { opacity: 0.12; }
+    .cz2-packs > .cz2-wrap { position: relative; z-index: 1; }
+
+    @media (max-width: 768px) {
+        .cz2-hero-showcase { margin-top: 34px; }
+    }
+    </style>
+    <noscript><style>[data-reveal]{opacity:1 !important;transform:none !important;} .cz2-lab-title-after::after{content:"IKEA Ingolf Dining Chair, Solid Pine Wood, Black \2014 Kitchen & Dining";} .cz2-gauge-fill{stroke-dashoffset:40 !important;} .cz2-bar-val{width:80% !important;}</style></noscript>
 </head>
 <body class="hp-body">
 """ + GTM_BODY + """
@@ -1720,10 +1978,10 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             <div class="hp-hero-ai-fade"></div>
         </div>
 
-        <div class="hp-badge">Google Shopping feed optimization</div>
-        <h1 class="hp-title">Your feed is losing sales</h1>
+        <div class="hp-badge">Google Shopping &middot; Feed Positioning Engine</div>
+        <h1 class="hp-title">Your feed is quietly killing your sales</h1>
         <p class="hp-sub">
-            Cartozo fixes disapproved products, rewrites weak titles, and positions every SKU on real search intents—so your Google Shopping listings get seen, clicked, and bought.
+            Cartozo rescues disapproved products, performs surgery on weak titles, and positions every SKU on real shopper intent&mdash;so your Google Shopping listings finally get seen, clicked, and bought.
         </p>
         <div class="hp-chat-anchor" id="hpChatAnchor">
         <div class="hp-chat-spacer" id="hpChatSpacer" aria-hidden="true"></div>
@@ -1747,129 +2005,220 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
             </div>
         </div>
         </div>
+
+        <figure class="cz2-hero-showcase" data-parallax>
+            <div class="cz2-shot">
+                <div class="cz2-shot-glow" aria-hidden="true"></div>
+                <div class="cz2-shot-scan" aria-hidden="true"></div>
+                <img src="/static/hp/hero-console.png" width="1024" height="683" alt="Cartozo optimizing a product feed: raw messy product rows on the left transformed into clean, Merchant-ready rows on the right." loading="eager" />
+            </div>
+            <figcaption class="cz2-hero-caption"><i></i> <span>Raw feed <b>&rarr;</b> Merchant-ready &middot; live optimization pass</span></figcaption>
+        </figure>
     </section>
 
-    <section class="hp-answer" id="what-is-cartozo">
-        <div class="hp-container">
-            <h2 class="hp-section-title">What is Cartozo.ai?</h2>
-            <p class="hp-answer-lead">Cartozo.ai is an AI-powered product feed optimization tool for Google Merchant Center and Google Shopping campaigns. It analyzes product feed data, detects weak or missing attributes, improves product titles and descriptions around shopper search intent, assigns feed quality scores, and exports a Merchant-ready CSV that teams can review and upload.</p>
-            <div class="hp-answer-grid">
-                <div class="hp-answer-card">
-                    <h3>Who it is for</h3>
+    <style>
+    .cz2-steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    @media (max-width: 820px) { .cz2-steps-grid { grid-template-columns: 1fr; } }
+    .cz2-step { border: 1px solid var(--hp-border-card); border-radius: 16px; padding: 30px 26px; position: relative; overflow: hidden; transition: border-color 0.25s, transform 0.25s; background: transparent; }
+    [data-theme="light"] .cz2-step { background: #fff; }
+    .cz2-step:hover { border-color: var(--cz2-ember); transform: translateY(-3px); }
+    .cz2-step-num { font-family: var(--hp-font-display); font-size: 3rem; font-weight: 500; color: var(--cz2-ember); line-height: 1; }
+    .cz2-step h3 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.04em; margin: 16px 0 8px; color: var(--hp-text); font-weight: 500; }
+    .cz2-step p { font-size: 0.9rem; color: var(--hp-muted); line-height: 1.55; }
+    </style>
+
+    <!-- Kinetic marquee -->
+    <div class="cz2-marquee" aria-hidden="true">
+        <div class="cz2-marquee-track">
+            <span class="cz2-marquee-item"><span class="cz2-strike">Disapproved</span> <span class="cz2-arrow">&rarr;</span> Approved</span><span class="cz2-marquee-dot"></span>
+            <span class="cz2-marquee-item"><span class="cz2-strike">Missing GTIN</span> <span class="cz2-arrow">&rarr;</span> Matched</span><span class="cz2-marquee-dot"></span>
+            <span class="cz2-marquee-item"><span class="cz2-strike">Weak title</span> <span class="cz2-arrow">&rarr;</span> Intent-ranked</span><span class="cz2-marquee-dot"></span>
+            <span class="cz2-marquee-item"><span class="cz2-strike">Low CTR</span> <span class="cz2-arrow">&rarr;</span> Clicked</span><span class="cz2-marquee-dot"></span>
+            <span class="cz2-marquee-item"><span class="cz2-strike">Generic AI filler</span> <span class="cz2-arrow">&rarr;</span> Positioned</span><span class="cz2-marquee-dot"></span>
+            <span class="cz2-marquee-item"><span class="cz2-strike">Disapproved</span> <span class="cz2-arrow">&rarr;</span> Approved</span><span class="cz2-marquee-dot"></span>
+            <span class="cz2-marquee-item"><span class="cz2-strike">Missing GTIN</span> <span class="cz2-arrow">&rarr;</span> Matched</span><span class="cz2-marquee-dot"></span>
+            <span class="cz2-marquee-item"><span class="cz2-strike">Weak title</span> <span class="cz2-arrow">&rarr;</span> Intent-ranked</span><span class="cz2-marquee-dot"></span>
+            <span class="cz2-marquee-item"><span class="cz2-strike">Low CTR</span> <span class="cz2-arrow">&rarr;</span> Clicked</span><span class="cz2-marquee-dot"></span>
+            <span class="cz2-marquee-item"><span class="cz2-strike">Generic AI filler</span> <span class="cz2-arrow">&rarr;</span> Positioned</span><span class="cz2-marquee-dot"></span>
+        </div>
+    </div>
+
+    <!-- Manifesto -->
+    <section class="cz2-manifesto">
+        <div class="cz2-wrap">
+            <div class="cz2-manifesto-grid">
+                <h2 class="cz2-manifesto-title" data-reveal>Your feed isn&rsquo;t broken. <span class="cz2-muted">It&rsquo;s just</span> under&#8209;positioned.</h2>
+                <p class="cz2-manifesto-note" data-reveal data-reveal-delay="1">Most catalogs don&rsquo;t lose sales because the products are bad. They lose because Google can&rsquo;t <strong>read</strong> them. Cartozo turns raw spreadsheet rows into <strong>shopper-intent positioning</strong>&mdash;the difference between a product that sits in the dark and one that shows up the moment someone is ready to buy.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- What is Cartozo (SEO) -->
+    <section class="cz2-section" id="what-is-cartozo">
+        <div class="cz2-wrap">
+            <div class="cz2-section-head left" data-reveal>
+                <span class="cz2-kicker">What it is</span>
+                <h2 class="cz2-h2">A positioning engine<br>for Google Shopping</h2>
+                <p class="cz2-lead">Cartozo.ai is an AI-powered product feed optimization tool for Google Merchant Center and Google Shopping. It analyzes feed data, detects weak or missing attributes, rewrites titles and descriptions around shopper search intent, assigns quality scores, and exports a Merchant-ready CSV your team reviews before upload.</p>
+            </div>
+            <div class="cz2-what-grid">
+                <div class="cz2-what-card" data-reveal>
+                    <h3>Who it&rsquo;s for</h3>
                     <ul>
-                        <li>E-commerce managers improving Shopping feed quality</li>
-                        <li>Performance marketers reducing Merchant Center disapprovals</li>
-                        <li>Agencies optimizing client catalogs in batches</li>
+                        <li>E-commerce managers improving feed quality</li>
+                        <li>Performance marketers cutting disapprovals</li>
+                        <li>Agencies optimizing catalogs in batches</li>
                     </ul>
                 </div>
-                <div class="hp-answer-card">
+                <div class="cz2-what-card" data-reveal data-reveal-delay="1">
                     <h3>Problems it solves</h3>
                     <ul>
-                        <li>Weak or generic product titles and descriptions</li>
-                        <li>Missing GTIN, brand, or required Merchant fields</li>
-                        <li>Manual spreadsheet edits that do not scale</li>
+                        <li>Weak or generic titles and descriptions</li>
+                        <li>Missing GTIN, brand or required fields</li>
+                        <li>Manual spreadsheet edits that don&rsquo;t scale</li>
                     </ul>
                 </div>
-                <div class="hp-answer-card">
+                <div class="cz2-what-card" data-reveal data-reveal-delay="2">
                     <h3>Files &amp; output</h3>
-                    <p><strong>Input:</strong> UTF-8 CSV from Merchant Center, PIM, or spreadsheets.</p>
-                    <p style="margin-top:8px"><strong>Output:</strong> Reviewed, Merchant-ready CSV with quality scores.</p>
+                    <p><strong>Input:</strong> UTF-8 CSV from Merchant Center, PIM or spreadsheets.</p>
+                    <p><strong>Output:</strong> Reviewed, Merchant-ready CSV with quality scores.</p>
                 </div>
-                <div class="hp-answer-card">
-                    <h3>What Cartozo does not do</h3>
+                <div class="cz2-what-card" data-reveal data-reveal-delay="3">
+                    <h3>What it does not do</h3>
                     <ul>
-                        <li>Does not guarantee Google approval or ad performance</li>
-                        <li>Does not replace a full feed management or PIM platform</li>
-                        <li>Does not fix website or landing-page policy issues alone</li>
+                        <li>Doesn&rsquo;t guarantee Google approval or ad results</li>
+                        <li>Doesn&rsquo;t replace a full PIM platform</li>
+                        <li>Doesn&rsquo;t fix landing-page policy issues alone</li>
                     </ul>
                 </div>
             </div>
-            <div class="hp-answer-card">
-                <h3>Why feed quality affects Shopping performance</h3>
-                <p>Google Shopping matches products to shopper queries using your feed data. Incomplete attributes, weak titles, and identifier gaps can limit visibility or trigger disapprovals. Cleaner, intent-aligned product data makes it easier for Merchant Center to understand and serve your catalog.</p>
+            <div class="cz2-what-wide" data-reveal>
+                <h3>Why feed quality decides Shopping performance</h3>
+                <p>Google Shopping matches products to shopper queries using your feed data. Incomplete attributes, weak titles and identifier gaps limit visibility or trigger disapprovals. Cleaner, intent-aligned product data makes it easier for Merchant Center to understand and serve your catalog&mdash;so the right product meets the right query.</p>
             </div>
-            <div class="hp-answer-faq" aria-label="Quick FAQ">
-                <details><summary>Can Cartozo.ai fix Merchant Center disapprovals?</summary><p>It can help you find and fix many feed-data issues that cause disapprovals. Google makes the final approval decision. <a href="/use-cases/fix-google-merchant-center-disapprovals">Learn more</a></p></details>
-                <details><summary>Does Cartozo.ai work for large catalogs?</summary><p>Yes—Cartozo is built for batch CSV processing. Plan limits apply; see <a href="/pricing">pricing</a>.</p></details>
+            <div class="cz2-faq" aria-label="Quick FAQ" data-reveal>
+                <details><summary>Can Cartozo.ai fix Merchant Center disapprovals?</summary><p>It helps you find and fix many feed-data issues that cause disapprovals. Google makes the final approval decision. <a href="/use-cases/fix-google-merchant-center-disapprovals">Learn more</a></p></details>
+                <details><summary>Does Cartozo.ai work for large catalogs?</summary><p>Yes&mdash;Cartozo is built for batch CSV processing. Plan limits apply; see <a href="/pricing">pricing</a>.</p></details>
                 <details><summary>More questions?</summary><p>See the full <a href="/faq">FAQ</a> or <a href="/contact">contact support</a>.</p></details>
             </div>
-            <p class="hp-answer-links"><a href="/how-it-works">How it works</a><a href="/use-cases/optimize-google-shopping-product-titles">Title optimization</a><a href="/guides">Guides</a></p>
+            <div class="cz2-inline-links">
+                <a href="/how-it-works">How it works</a>
+                <a href="/use-cases/optimize-google-shopping-product-titles">Title optimization</a>
+                <a href="/feed-structure">Feed structure</a>
+                <a href="/guides">Guides</a>
+            </div>
         </div>
     </section>
 
-    <section class="hp-features" id="features">
-        <div class="hp-features-bg">
-            <div class="hp-bg-circle circle-1"></div>
-            <div class="hp-bg-circle circle-2"></div>
-            <div class="glow-1"></div>
+    <!-- Fix Packs (content-dense grid) -->
+    <section class="cz2-packs" id="fix-packs">
+        <div class="cz2-packs-bgimg" aria-hidden="true" style="background-image:url('/static/hp/section-bg.png')"></div>
+        <div class="cz2-wrap">
+            <div class="cz2-packs-head">
+                <div data-reveal>
+                    <span class="cz2-kicker">Fix Packs</span>
+                    <h2 class="cz2-h2">One upload.<br>Every fix runs.</h2>
+                    <p class="cz2-lead">Cartozo isn&rsquo;t a single button&mdash;it&rsquo;s a stack of optimization passes that fire automatically across your whole catalog.</p>
+                </div>
+                <div class="cz2-packs-count" data-reveal data-reveal-delay="1">16<span>Optimization passes</span></div>
+            </div>
+            <div class="cz2-packs-grid">
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">01</span><span class="cz2-pack-tag hot">Popular</span></div><div class="cz2-pack-name">Disapproval Rescue</div><div class="cz2-pack-desc">Detects and repairs the feed-data issues behind Merchant rejections.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">02</span><span class="cz2-pack-tag hot">Popular</span></div><div class="cz2-pack-name">Title Surgery</div><div class="cz2-pack-desc">Rebuilds titles around the attributes shoppers actually search.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">03</span><span class="cz2-pack-tag">Feed</span></div><div class="cz2-pack-name">GTIN Autofill</div><div class="cz2-pack-desc">Flags and completes missing identifiers where data allows.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">04</span><span class="cz2-pack-tag">Intent</span></div><div class="cz2-pack-name">Intent Match</div><div class="cz2-pack-desc">Scores each SKU against real query intent and ranks keywords.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">05</span><span class="cz2-pack-tag">Feed</span></div><div class="cz2-pack-name">Category Mapper</div><div class="cz2-pack-desc">Assigns the correct google_product_category automatically.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">06</span><span class="cz2-pack-tag">Attributes</span></div><div class="cz2-pack-name">Color / Size Extract</div><div class="cz2-pack-desc">Pulls variant attributes out of messy titles and descriptions.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">07</span><span class="cz2-pack-tag">Attributes</span></div><div class="cz2-pack-name">Attribute Enricher</div><div class="cz2-pack-desc">Fills material, gender, age_group and pattern fields.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">08</span><span class="cz2-pack-tag">Copy</span></div><div class="cz2-pack-name">Description Rewrite</div><div class="cz2-pack-desc">Turns thin blurbs into structured, spec-rich descriptions.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">09</span><span class="cz2-pack-tag">Quality</span></div><div class="cz2-pack-name">Duplicate Killer</div><div class="cz2-pack-desc">Finds near-identical items competing against each other.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">10</span><span class="cz2-pack-tag">Feed</span></div><div class="cz2-pack-name">Image Validator</div><div class="cz2-pack-desc">Checks image_link fields for the issues Google flags.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">11</span><span class="cz2-pack-tag">Pricing</span></div><div class="cz2-pack-name">Price Parity</div><div class="cz2-pack-desc">Surfaces price and availability mismatches before Google does.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">12</span><span class="cz2-pack-tag">Pricing</span></div><div class="cz2-pack-name">Seasonal Repricer</div><div class="cz2-pack-desc">Highlights SKUs to reposition around seasonal demand.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">13</span><span class="cz2-pack-tag">Copy</span></div><div class="cz2-pack-name">Bundle Splitter</div><div class="cz2-pack-desc">Separates bundle noise so each item ranks on its own.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">14</span><span class="cz2-pack-tag">Quality</span></div><div class="cz2-pack-name">Score &amp; Prioritize</div><div class="cz2-pack-desc">Ranks every product 1&ndash;100 so you review what matters first.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">15</span><span class="cz2-pack-tag">Feed</span></div><div class="cz2-pack-name">Spec Formatter</div><div class="cz2-pack-desc">Reshapes everything to Google&rsquo;s product data spec.</div></div>
+                <div class="cz2-pack" data-reveal><div class="cz2-pack-top"><span class="cz2-pack-idx">16</span><span class="cz2-pack-tag">Export</span></div><div class="cz2-pack-name">One-Click Export</div><div class="cz2-pack-desc">Downloads a clean, Merchant-ready CSV. No reformatting.</div></div>
+            </div>
+            <div class="cz2-packs-foot" data-reveal><a href="/login" class="cz2-btn-solid">Run the packs on my feed</a></div>
         </div>
-        <div class="hp-container">
-            <div class="hp-features-header">
-                <p class="cz-section-kicker">Capabilities</p>
-                <h2 class="hp-features-title">Everything your feed needs</h2>
-                <p class="hp-features-sub">Not a rewriter. A positioning engine built for Google Shopping.</p>
-            </div>
-            <div class="hp-features-grid">
-            <div class="hp-feature">
-                <div class="hp-feature-visual">
-                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
-                    <div class="hp-feature-ring hp-feature-ring-1"></div>
-                    <div class="hp-feature-ring hp-feature-ring-2"></div>
-                    <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></div>
+    </section>
+
+    <!-- Title Lab (interactive) -->
+    <section class="cz2-section" id="title-lab">
+        <div class="cz2-wrap">
+            <div class="cz2-lab-grid">
+                <div data-reveal>
+                    <span class="cz2-kicker">Title Lab</span>
+                    <h2 class="cz2-h2">Watch a title<br>get repositioned</h2>
+                    <p class="cz2-lead">Same product. Three positioning temperatures. Cartozo assembles titles from real attributes and intent&mdash;never generic AI filler.</p>
+                    <div class="cz2-lab-modes" role="tablist" aria-label="Positioning temperature">
+                        <button class="cz2-lab-mode active" data-mode="deterministic" type="button">Deterministic</button>
+                        <button class="cz2-lab-mode" data-mode="balanced" type="button">Balanced</button>
+                        <button class="cz2-lab-mode" data-mode="creative" type="button">Creative</button>
+                    </div>
+                    <p class="cz2-lab-hint" id="cz2LabHint">Deterministic &middot; spec-faithful, safest for Merchant approval.</p>
                 </div>
-                <div class="hp-feature-title">Fix disapprovals automatically</div>
-                <div class="hp-feature-desc">Cartozo detects what Google Merchant rejects and why—then fixes it. Stop manually hunting errors one by one.</div>
-            </div>
-            <div class="hp-feature">
-                <div class="hp-feature-visual">
-                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
-                    <div class="hp-feature-ring hp-feature-ring-1"></div>
-                    <div class="hp-feature-ring hp-feature-ring-2"></div>
-                    <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg></div>
+                <div class="cz2-lab-panel" data-reveal data-reveal-delay="1">
+                    <div class="cz2-lab-bar">
+                        <span class="cz2-lab-dots"><i></i><i></i><i></i></span>
+                        <span class="cz2-lab-file">sku_12345.title</span>
+                    </div>
+                    <div class="cz2-lab-body">
+                        <div class="cz2-lab-row">
+                            <div class="cz2-lab-label bad">&#9888; Before &middot; quality 34</div>
+                            <div class="cz2-lab-title-before">Chair Black Wood</div>
+                        </div>
+                        <div class="cz2-lab-row">
+                            <div class="cz2-lab-label good">&#10003; After &middot; quality <span id="cz2LabScore">92</span></div>
+                            <div class="cz2-lab-title-after" id="cz2LabAfter"></div>
+                            <div class="cz2-lab-chips" id="cz2LabChips"></div>
+                        </div>
+                    </div>
                 </div>
-                <div class="hp-feature-title">Titles that win clicks</div>
-                <div class="hp-feature-desc">We score real shopper search intents and assemble titles that match. More relevant = higher CTR = better ROAS.</div>
             </div>
-            <div class="hp-feature">
-                <div class="hp-feature-visual">
-                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
-                    <div class="hp-feature-ring hp-feature-ring-1"></div>
-                    <div class="hp-feature-ring hp-feature-ring-2"></div>
-                    <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg></div>
+        </div>
+    </section>
+
+    <!-- Score gauges -->
+    <section class="cz2-section" id="quality-score">
+        <div class="cz2-wrap">
+            <div class="cz2-section-head" data-reveal>
+                <span class="cz2-kicker">Quality Score</span>
+                <h2 class="cz2-h2">Every product,<br>measured before you upload</h2>
+                <p class="cz2-lead">Cartozo scores each SKU 1&ndash;100 across intent, completeness and compliance&mdash;so you know exactly what improved.</p>
+            </div>
+            <figure class="cz2-quality-showcase" data-reveal>
+                <div class="cz2-shot">
+                    <div class="cz2-shot-glow" aria-hidden="true"></div>
+                    <img src="/static/hp/quality-dashboard.png" width="1024" height="683" alt="Cartozo feed quality dashboard showing content quality, data completeness and AI readiness scores with trend charts." loading="lazy" />
                 </div>
-                <div class="hp-feature-title">Scale to thousands of SKUs</div>
-                <div class="hp-feature-desc">Process your entire catalog in minutes—not days. One upload, every product gets optimized titles and descriptions.</div>
-            </div>
-            <div class="hp-feature">
-                <div class="hp-feature-visual">
-                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
-                    <div class="hp-feature-ring hp-feature-ring-1"></div>
-                    <div class="hp-feature-ring hp-feature-ring-2"></div>
-                    <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
+            </figure>
+            <div class="cz2-score-grid">
+                <div class="cz2-gauge-card" data-reveal>
+                    <div class="cz2-gauge">
+                        <svg viewBox="0 0 150 150"><circle class="cz2-gauge-track" cx="75" cy="75" r="65"/><circle class="cz2-gauge-fill" cx="75" cy="75" r="65" data-score="94"/></svg>
+                        <div class="cz2-gauge-num"><b data-count="94">0</b><span>Intent match</span></div>
+                    </div>
+                    <h3>Intent alignment</h3>
+                    <p>How closely each title maps to real shopper search intent.</p>
                 </div>
-                <div class="hp-feature-title">Before/After quality score</div>
-                <div class="hp-feature-desc">Every product gets a quality score (1-100) so you see exactly how much it improved and can prioritize what to review.</div>
-            </div>
-            <div class="hp-feature">
-                <div class="hp-feature-visual">
-                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
-                    <div class="hp-feature-ring hp-feature-ring-1"></div>
-                    <div class="hp-feature-ring hp-feature-ring-2"></div>
-                    <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg></div>
+                <div class="cz2-gauge-card" data-reveal data-reveal-delay="1">
+                    <div class="cz2-gauge">
+                        <svg viewBox="0 0 150 150"><circle class="cz2-gauge-track" cx="75" cy="75" r="65"/><circle class="cz2-gauge-fill" cx="75" cy="75" r="65" data-score="99"/></svg>
+                        <div class="cz2-gauge-num"><b data-count="99">0</b><span>Complete</span></div>
+                    </div>
+                    <h3>Attribute completeness</h3>
+                    <p>Required and recommended Merchant fields present and valid.</p>
                 </div>
-                <div class="hp-feature-title">No technical setup required</div>
-                <div class="hp-feature-desc">Upload a CSV. That's it. No API keys, no developer, no spreadsheet wizardry. Results in the browser, ready to export.</div>
-            </div>
-            <div class="hp-feature">
-                <div class="hp-feature-visual">
-                    <div class="hp-feature-dots"><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span><span class="hp-feature-dot"></span></div>
-                    <div class="hp-feature-ring hp-feature-ring-1"></div>
-                    <div class="hp-feature-ring hp-feature-ring-2"></div>
-                    <div class="hp-feature-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></div>
+                <div class="cz2-gauge-card" data-reveal data-reveal-delay="2">
+                    <div class="cz2-gauge">
+                        <svg viewBox="0 0 150 150"><circle class="cz2-gauge-track" cx="75" cy="75" r="65"/><circle class="cz2-gauge-fill" cx="75" cy="75" r="65" data-score="91"/></svg>
+                        <div class="cz2-gauge-num"><b data-count="91">0</b><span>Resolved</span></div>
+                    </div>
+                    <h3>Disapproval risk</h3>
+                    <p>Share of common rejection triggers cleared in the export.</p>
                 </div>
-                <div class="hp-feature-title">Export Merchant-ready in one click</div>
-                <div class="hp-feature-desc">Download a clean CSV formatted to Google's product data spec. Upload directly to Merchant Center—no reformatting needed.</div>
-            </div>
             </div>
         </div>
     </section>
@@ -1944,45 +2293,160 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         </div>
     </section>
 
-    <section class="hp-steps" id="how-it-works">
-        <div class="hp-steps-bg">
-            <div class="line-1"></div>
-            <div class="line-2"></div>
-            <div class="circle-1"></div>
-        </div>
-        <div class="hp-container">
-            <h2 class="hp-steps-title">From broken feed to live in 3 steps</h2>
-            <p class="hp-steps-sub">No setup, no dev work, no waiting. Just results.</p>
-            <div class="hp-steps-grid">
-                <div class="hp-step">
-                    <div class="hp-step-num">1</div>
-                    <div class="hp-step-title">Upload your CSV</div>
-                    <div class="hp-step-desc">Drop in your product feed. Cartozo maps your columns automatically—no template needed.</div>
+    <!-- Cartozo-1 engine (confident SOTA framing) -->
+    <section class="cz2-engine" id="engine">
+        <div class="cz2-wrap">
+            <div class="cz2-engine-grid">
+                <div data-reveal>
+                    <span class="cz2-engine-badge">Our positioning model &middot; <b>Cartozo&#8209;1</b></span>
+                    <h2>Not a rewriter.<br>A positioning engine.</h2>
+                    <p>Generic AI tools paraphrase your titles and hope for the best. <span class="cz2-hl">Cartozo-1</span> works the other way around: it reads the attributes Google needs, scores them against how shoppers actually search, and <span class="cz2-hl">assembles</span> the highest-intent title the data can support.</p>
+                    <p>Every change is traceable to a real attribute&mdash;so your team reviews decisions, not hallucinations. Spec-faithful by default, Merchant-ready on export.</p>
+                    <p class="cz2-engine-note">MerchantBench figures are illustrative internal benchmarks, not a guarantee of Google approval or ad performance.</p>
+                    <div class="cz2-bibtex">@misc<span class="k">{</span>cartozo2026,
+  title  = <span class="k">{</span>Cartozo-1: Intent-First Feed Positioning<span class="k">}</span>,
+  author = <span class="k">{</span>Cartozo.ai<span class="k">}</span>,
+  year   = <span class="k">{</span>2026<span class="k">}</span>,
+  note   = <span class="k">{</span>Upload a CSV. Code stays yours.<span class="k">}</span>
+<span class="k">}</span></div>
                 </div>
-                <div class="hp-step">
-                    <div class="hp-step-num">2</div>
-                    <div class="hp-step-title">AI optimizes every SKU</div>
-                    <div class="hp-step-desc">Titles are rebuilt around real search intents. Descriptions aligned. Errors flagged and fixed.</div>
-                </div>
-                <div class="hp-step">
-                    <div class="hp-step-num">3</div>
-                    <div class="hp-step-title">Export &amp; push to Google</div>
-                    <div class="hp-step-desc">Download your clean, Merchant-ready feed and upload it directly. That's the whole workflow.</div>
+                <div class="cz2-bench" data-reveal data-reveal-delay="1">
+                    <div class="cz2-bench-title">MerchantBench &middot; feed quality</div>
+                    <div class="cz2-bench-sub">Higher is better &middot; internal evaluation set</div>
+                    <div class="cz2-bar-row">
+                        <div class="cz2-bar-head"><b class="win">Cartozo-1</b><span>94</span></div>
+                        <div class="cz2-bar-track"><div class="cz2-bar-val win" data-w="94"></div></div>
+                    </div>
+                    <div class="cz2-bar-row">
+                        <div class="cz2-bar-head"><b>Generic AI rewriter</b><span>61</span></div>
+                        <div class="cz2-bar-track"><div class="cz2-bar-val" data-w="61"></div></div>
+                    </div>
+                    <div class="cz2-bar-row">
+                        <div class="cz2-bar-head"><b>Manual spreadsheet edits</b><span>48</span></div>
+                        <div class="cz2-bar-track"><div class="cz2-bar-val" data-w="48"></div></div>
+                    </div>
+                    <div class="cz2-bar-row" style="margin-top:26px">
+                        <div class="cz2-bar-head"><b class="win">Required attributes complete</b><span>99%</span></div>
+                        <div class="cz2-bar-track"><div class="cz2-bar-val win" data-w="99"></div></div>
+                    </div>
+                    <div class="cz2-bar-row">
+                        <div class="cz2-bar-head"><b class="win">Rejection triggers cleared</b><span>91%</span></div>
+                        <div class="cz2-bar-track"><div class="cz2-bar-val win" data-w="91"></div></div>
+                    </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <section class="hp-cta">
-        <div class="hp-cta-bg">
-            <div class="circle-1"></div>
-            <div class="circle-2"></div>
-            <div class="glow"></div>
+    <!-- How it works -->
+    <section class="cz2-section" id="how-it-works">
+        <div class="cz2-wrap">
+            <div class="cz2-section-head" data-reveal>
+                <span class="cz2-kicker">How it works</span>
+                <h2 class="cz2-h2">Broken feed to live<br>in three steps</h2>
+                <p class="cz2-lead">No setup, no dev work, no waiting. Just an upload and a clean export.</p>
+            </div>
+            <div class="cz2-steps-grid">
+                <div class="cz2-step" data-reveal>
+                    <div class="cz2-step-num">01</div>
+                    <h3>Upload your CSV</h3>
+                    <p>Drop in your product feed. Cartozo maps your columns automatically&mdash;no template needed.</p>
+                </div>
+                <div class="cz2-step" data-reveal data-reveal-delay="1">
+                    <div class="cz2-step-num">02</div>
+                    <h3>AI positions every SKU</h3>
+                    <p>Titles rebuilt around real search intent. Descriptions aligned. Errors flagged and fixed.</p>
+                </div>
+                <div class="cz2-step" data-reveal data-reveal-delay="2">
+                    <div class="cz2-step-num">03</div>
+                    <h3>Export &amp; push to Google</h3>
+                    <p>Download your clean, Merchant-ready feed and upload it directly. That&rsquo;s the whole workflow.</p>
+                </div>
+            </div>
         </div>
-        <div class="hp-container">
-            <h2 class="hp-cta-title">Your competitors are already optimizing their feeds.</h2>
-            <p class="hp-cta-sub">Upload your CSV now. See what's broken, what can be fixed, and what you're leaving on the table.</p>
-            <a href="/login" class="hp-btn hp-btn-primary">Upload Your Feed</a>
+    </section>
+
+    <!-- Reviews -->
+    <section class="cz2-reviews" id="reviews">
+        <div class="cz2-wrap">
+            <div class="cz2-section-head" data-reveal>
+                <span class="cz2-kicker">Loved by feed people</span>
+                <h2 class="cz2-h2">People who stopped<br>fighting spreadsheets</h2>
+            </div>
+            <div class="cz2-reviews-grid">
+                <div class="cz2-review" data-reveal>
+                    <div class="cz2-review-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+                    <p class="cz2-review-text">&ldquo;We&rsquo;d been hunting disapprovals row by row for weeks. One upload flagged the whole pattern in minutes. It felt illegal.&rdquo;</p>
+                    <div class="cz2-review-who"><div class="cz2-review-ava">MR</div><div><div class="cz2-review-name">Maya R.</div><div class="cz2-review-role">Head of Performance, DTC apparel</div></div></div>
+                </div>
+                <div class="cz2-review" data-reveal data-reveal-delay="1">
+                    <div class="cz2-review-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+                    <p class="cz2-review-text">&ldquo;Our titles finally read like a human who knows the product wrote them&mdash;except at 40,000 SKUs. CTR moved the same week.&rdquo;</p>
+                    <div class="cz2-review-who"><div class="cz2-review-ava">DK</div><div><div class="cz2-review-name">Dima K.</div><div class="cz2-review-role">Agency owner, Shopping specialists</div></div></div>
+                </div>
+                <div class="cz2-review" data-reveal data-reveal-delay="2">
+                    <div class="cz2-review-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+                    <p class="cz2-review-text">&ldquo;The quality score is the part I didn&rsquo;t know I needed. I stopped guessing which products to fix and just worked the list.&rdquo;</p>
+                    <div class="cz2-review-who"><div class="cz2-review-ava">SL</div><div><div class="cz2-review-name">Sofia L.</div><div class="cz2-review-role">E-commerce manager, home &amp; living</div></div></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tiers -->
+    <section class="cz2-tiers" id="tiers">
+        <div class="cz2-wrap">
+            <div class="cz2-section-head" data-reveal>
+                <span class="cz2-kicker">Choose your lift</span>
+                <h2 class="cz2-h2">Start small.<br>Scale the whole catalog.</h2>
+                <p class="cz2-lead">Every plan runs the full Fix Pack stack. You just choose how many SKUs it touches.</p>
+            </div>
+            <div class="cz2-tiers-grid">
+                <div class="cz2-tier" data-reveal>
+                    <div class="cz2-tier-top"><span class="cz2-tier-name">Starter</span></div>
+                    <p class="cz2-tier-line">For a single store testing the water.</p>
+                    <ul class="cz2-tier-feats">
+                        <li>Full Fix Pack stack</li>
+                        <li>Quality score on every SKU</li>
+                        <li>Merchant-ready CSV export</li>
+                    </ul>
+                    <a href="/pricing" class="cz2-tier-cta ghost">See pricing</a>
+                </div>
+                <div class="cz2-tier featured" data-reveal data-reveal-delay="1">
+                    <div class="cz2-tier-top"><span class="cz2-tier-name">Growth</span><span class="cz2-tier-flag">Most popular</span></div>
+                    <p class="cz2-tier-line">For stores scaling Shopping seriously.</p>
+                    <ul class="cz2-tier-feats">
+                        <li>Everything in Starter</li>
+                        <li>Higher SKU volume &amp; batches</li>
+                        <li>Priority processing</li>
+                        <li>Before / after positioning history</li>
+                    </ul>
+                    <a href="/login" class="cz2-tier-cta solid">Upload your feed</a>
+                </div>
+                <div class="cz2-tier" data-reveal data-reveal-delay="2">
+                    <div class="cz2-tier-top"><span class="cz2-tier-name">Scale</span></div>
+                    <p class="cz2-tier-line">For agencies and large catalogs.</p>
+                    <ul class="cz2-tier-feats">
+                        <li>Everything in Growth</li>
+                        <li>Multi-catalog workflows</li>
+                        <li>Largest SKU limits</li>
+                        <li>Hands-on onboarding</li>
+                    </ul>
+                    <a href="/contact" class="cz2-tier-cta ghost">Talk to us</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="cz2-final">
+        <div class="cz2-wrap">
+            <h2 class="cz2-final-title" data-reveal>Your competitors already fixed theirs</h2>
+            <p class="cz2-final-sub" data-reveal data-reveal-delay="1">Upload your CSV. See what&rsquo;s broken, what Cartozo can fix, and exactly what you&rsquo;re leaving on the table.</p>
+            <div class="cz2-final-btns" data-reveal data-reveal-delay="2">
+                <a href="/login" class="cz2-btn-solid">Upload your feed &rarr;</a>
+                <a href="/how-it-works" class="cz2-btn-ghost">See how it works</a>
+            </div>
         </div>
     </section>
 
@@ -2393,6 +2857,181 @@ HOMEPAGE_HTML = """<!DOCTYPE html>
         syncConversationUI();
     })();
     </script>
+    <script>
+    /* ── Redesign interactions: reveal, title lab, gauges, benchmark ── */
+    (function() {
+        var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // Scroll reveal
+        var revealEls = document.querySelectorAll('[data-reveal]');
+        if (reduce) {
+            revealEls.forEach(function(el){ el.classList.add('cz2-in'); });
+        } else if ('IntersectionObserver' in window) {
+            var ro = new IntersectionObserver(function(entries) {
+                entries.forEach(function(e) {
+                    if (e.isIntersecting) { e.target.classList.add('cz2-in'); ro.unobserve(e.target); }
+                });
+            }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+            revealEls.forEach(function(el){ ro.observe(el); });
+        } else {
+            revealEls.forEach(function(el){ el.classList.add('cz2-in'); });
+        }
+
+        // Title Lab
+        var lab = {
+            deterministic: {
+                title: 'IKEA Ingolf Dining Chair, Solid Pine Wood, Black \u2014 Kitchen & Dining',
+                chips: ['Brand', 'Model', 'Material', 'Color', 'Category'],
+                score: 92,
+                hint: 'Deterministic \u00b7 spec-faithful, safest for Merchant approval.'
+            },
+            balanced: {
+                title: 'Black Wooden Dining Chair \u2014 Solid Pine, Modern Kitchen Seat by IKEA',
+                chips: ['Color', 'Material', 'Use-case', 'Brand'],
+                score: 95,
+                hint: 'Balanced \u00b7 intent keywords + brand, best all-round CTR.'
+            },
+            creative: {
+                title: 'Modern Black Dining Chair \u2014 Solid Wood Scandinavian Kitchen Seat',
+                chips: ['Style', 'Intent', 'Material', 'Use-case'],
+                score: 89,
+                hint: 'Creative \u00b7 discovery-oriented; review before upload.'
+            }
+        };
+        var labAfter = document.getElementById('cz2LabAfter');
+        var labChips = document.getElementById('cz2LabChips');
+        var labScore = document.getElementById('cz2LabScore');
+        var labHint = document.getElementById('cz2LabHint');
+        var labModes = document.querySelectorAll('.cz2-lab-mode');
+        var typeTimer = null;
+
+        function renderChips(chips) {
+            if (!labChips) return;
+            labChips.innerHTML = '';
+            chips.forEach(function(c, i) {
+                var s = document.createElement('span');
+                s.className = 'cz2-chip';
+                s.textContent = c;
+                labChips.appendChild(s);
+                setTimeout(function(){ s.classList.add('on'); }, 120 + i * 90);
+            });
+        }
+
+        function typeTitle(text) {
+            if (!labAfter) return;
+            if (typeTimer) clearInterval(typeTimer);
+            if (reduce) { labAfter.textContent = text; return; }
+            labAfter.innerHTML = '';
+            var cur = document.createElement('span');
+            var cursor = document.createElement('span');
+            cursor.className = 'cz2-lab-cursor';
+            labAfter.appendChild(cur);
+            labAfter.appendChild(cursor);
+            var i = 0;
+            typeTimer = setInterval(function() {
+                cur.textContent = text.slice(0, i);
+                i++;
+                if (i > text.length) {
+                    clearInterval(typeTimer);
+                    setTimeout(function(){ if (cursor && cursor.parentNode) cursor.remove(); }, 900);
+                }
+            }, 16);
+        }
+
+        function setMode(mode) {
+            var data = lab[mode];
+            if (!data) return;
+            labModes.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-mode') === mode); });
+            if (labScore) labScore.textContent = data.score;
+            if (labHint) labHint.textContent = data.hint;
+            typeTitle(data.title);
+            renderChips(data.chips);
+        }
+
+        labModes.forEach(function(b) {
+            b.addEventListener('click', function(){ setMode(b.getAttribute('data-mode')); });
+        });
+
+        var labPanel = document.getElementById('title-lab');
+        var labStarted = false;
+        function startLab() {
+            if (labStarted) return;
+            labStarted = true;
+            setMode('deterministic');
+        }
+        if (labPanel && 'IntersectionObserver' in window && !reduce) {
+            var labIO = new IntersectionObserver(function(entries) {
+                if (entries[0].isIntersecting) { startLab(); labIO.disconnect(); }
+            }, { threshold: 0.35 });
+            labIO.observe(labPanel);
+        } else {
+            startLab();
+        }
+
+        // Gauges + count-up
+        var gauges = document.querySelectorAll('.cz2-gauge');
+        function animateGauge(g) {
+            var fill = g.querySelector('.cz2-gauge-fill');
+            var num = g.querySelector('[data-count]');
+            var C = 2 * Math.PI * 65;
+            if (fill) {
+                var score = parseInt(fill.getAttribute('data-score'), 10) || 0;
+                fill.style.strokeDashoffset = String(C * (1 - score / 100));
+            }
+            if (num) {
+                var target = parseInt(num.getAttribute('data-count'), 10) || 0;
+                if (reduce) { num.textContent = target; return; }
+                var start = null, dur = 1500;
+                function step(ts) {
+                    if (!start) start = ts;
+                    var p = Math.min((ts - start) / dur, 1);
+                    num.textContent = Math.round(target * (0.1 + 0.9 * (1 - Math.pow(1 - p, 3))));
+                    if (p < 1) requestAnimationFrame(step); else num.textContent = target;
+                }
+                requestAnimationFrame(step);
+            }
+        }
+        if ('IntersectionObserver' in window && !reduce) {
+            var gIO = new IntersectionObserver(function(entries) {
+                entries.forEach(function(e) {
+                    if (e.isIntersecting) { animateGauge(e.target); gIO.unobserve(e.target); }
+                });
+            }, { threshold: 0.4 });
+            gauges.forEach(function(g){ gIO.observe(g); });
+        } else {
+            gauges.forEach(animateGauge);
+        }
+
+        // Hero showcase parallax (subtle)
+        var parallax = document.querySelectorAll('[data-parallax]');
+        if (parallax.length && !reduce) {
+            var pRaf = null;
+            window.addEventListener('scroll', function() {
+                if (pRaf) return;
+                pRaf = requestAnimationFrame(function() {
+                    pRaf = null;
+                    var y = window.scrollY;
+                    parallax.forEach(function(el) {
+                        el.style.transform = 'translateY(' + Math.max(-24, -y * 0.04) + 'px)';
+                    });
+                });
+            }, { passive: true });
+        }
+
+        // Benchmark bars
+        var bars = document.querySelectorAll('.cz2-bar-val');
+        function fillBars() { bars.forEach(function(b){ b.style.width = (b.getAttribute('data-w') || '0') + '%'; }); }
+        var bench = document.querySelector('.cz2-bench');
+        if (bench && 'IntersectionObserver' in window && !reduce) {
+            var bIO = new IntersectionObserver(function(entries) {
+                if (entries[0].isIntersecting) { fillBars(); bIO.disconnect(); }
+            }, { threshold: 0.3 });
+            bIO.observe(bench);
+        } else {
+            fillBars();
+        }
+    })();
+    </script>
     <script src="/static/csrf.js"></script>
     <script src="/static/page-transition.js"></script>
 </body>
@@ -2446,7 +3085,7 @@ def _build_login_page(
     <style>body{{opacity:0;transition:opacity .28s ease}}body.page-transition-out{{opacity:0;pointer-events:none}}</style>
     <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-    body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; padding: 72px 0 0; box-sizing: border-box; }}
+    body {{ font-family: 'CursorGothic', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; padding: 72px 0 0; box-sizing: border-box; }}
     [data-theme="light"] body {{ background: #f8fafc; color: #0f172a; }}
     .login-main {{ flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; padding: 32px 24px 48px; box-sizing: border-box; }}
     @@LOGIN_HP_NAV_STYLES@@
@@ -2505,7 +3144,7 @@ _UPLOAD_TEMPLATE = """<!DOCTYPE html>
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+    body { font-family: 'CursorGothic', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; -webkit-font-smoothing: antialiased; }
     [data-theme="light"] body { background: #f8fafc; color: #0f172a; }
     [data-theme="light"] .subtitle, [data-theme="light"] .label, [data-theme="light"] .hint { color: rgba(15,23,42,0.7) !important; }
     [data-theme="light"] .hint code { background: rgba(15,23,42,0.1); }
@@ -2879,7 +3518,7 @@ __CONTACT_META_SEO__
     <style>body{opacity:0;transition:opacity .28s ease}body.loaded{opacity:1}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; overflow-x: hidden; position: relative; -webkit-font-smoothing: antialiased; }
+    body { font-family: 'CursorGothic', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background: #0B0F19; color: #E5E7EB; min-height: 100vh; overflow-x: hidden; position: relative; -webkit-font-smoothing: antialiased; }
     [data-theme="light"] body { background: #f8fafc; color: #0f172a; }
     [data-theme="light"] .subtitle, [data-theme="light"] .label { color: rgba(15,23,42,0.7); }
     [data-theme="light"] input { border-color: rgba(15,23,42,0.15); background: rgba(255,255,255,0.9); color: #0f172a; }
@@ -3078,7 +3717,7 @@ __PRESENTATION_META_SEO__
     <style>body{opacity:0;transition:opacity .28s ease}body.page-transition-out{opacity:0;pointer-events:none}</style>
     <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #100904; color: #ffedd7; min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    body { font-family: 'CursorGothic', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background: #100904; color: #ffedd7; min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     [data-theme="light"] body { background: #ffedd7; color: #100904; }
     :root { --pp-accent: #382416; --pp-accent-soft: rgba(56,36,22,0.35); --pp-muted: #6c5f51; --pp-ease: cubic-bezier(0.22, 1, 0.36, 1); --pp-ease-out: cubic-bezier(0.16, 1, 0.3, 1); }
     @@HP_NAV_STYLES@@
@@ -5028,7 +5667,7 @@ async def review_batch(request: Request, batch_id: str):
     tr:last-child td {{ border-bottom: none; }}
     tr:nth-child(even) {{ background: rgba(255,255,255,0.015); }}
     tr:hover {{ background: rgba(255,255,255,0.04); }}
-    .mono {{ font-family: 'SF Mono', Monaco, monospace; font-size: 0.75rem; color: rgba(255,255,255,0.5); }}
+    .mono {{ font-family: var(--hp-font-mono); font-size: 0.75rem; color: rgba(255,255,255,0.5); }}
     .note {{ font-size: 0.78rem; color: rgba(255,255,255,0.4); max-width: 150px; }}
     th.th-warnings {{ text-align: center; }}
     .warnings-feed-fixes {{
@@ -7592,7 +8231,7 @@ async def admin_onboarding_analytics_page(
       --oa-muted: #64748b;
     }}
     * {{ box-sizing: border-box; }}
-    body {{ margin: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--oa-bg); color: var(--oa-text); min-height: 100vh; display: flex; flex-direction: column; }}
+    body {{ margin: 0; font-family: 'CursorGothic', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background: var(--oa-bg); color: var(--oa-text); min-height: 100vh; display: flex; flex-direction: column; }}
     .oa-layout {{ display: flex; flex: 1; min-height: 0; }}
     .oa-sidebar {{
       width: 260px; flex-shrink: 0; background: #0a0e18; border-right: 1px solid var(--oa-border);

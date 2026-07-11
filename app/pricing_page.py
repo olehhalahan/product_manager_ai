@@ -310,13 +310,10 @@ def build_pricing_html(
 <title>{mt}</title>
 <meta name="description" content="{md}"/>
 {seo_block}{json_ld}<script src="/static/csrf.js"></script><script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
 body{{
-  font-family:var(--hp-font,'Inter',-apple-system,BlinkMacSystemFont,sans-serif);
+  font-family:var(--hp-font);
   background:#000;color:#fff;
   -webkit-font-smoothing:antialiased;line-height:1.5;font-weight:500;
 }}

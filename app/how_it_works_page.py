@@ -57,15 +57,12 @@ def build_how_it_works_html(
 <title>{mt}</title>
 <meta name="description" content="{md}"/>
 {seo_block}{json_ld}<script>document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')</script>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800;900&display=swap" rel="stylesheet"/>
 <link rel="stylesheet" href="/static/styles.css"/>
 <style>
 /* ── reset ───────────────────────────────────────── */
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
 body{{
-  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  font-family:var(--hp-font);
   background:#100904;color:#ffedd7;
   overflow-x:hidden;-webkit-font-smoothing:antialiased;
   opacity:0;transition:opacity .48s ease;
@@ -400,7 +397,7 @@ a{{text-decoration:none;color:inherit}}
 ═══════════════════════════════════════ */
 .af{{
   background:var(--app-bg);color:var(--app-fg);
-  font-family:'Inter',-apple-system,sans-serif;
+  font-family:var(--hp-font);
   font-size:13px;line-height:1.45;
   -webkit-font-smoothing:antialiased;
   border-radius:inherit;

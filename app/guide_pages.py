@@ -240,10 +240,9 @@ def register_guide_routes(app) -> None:
 <meta name="robots" content="index,follow"/>
 {seo}{json_ld}
 <script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:Inter,system-ui,sans-serif;background:#060711;color:#e5e7eb;line-height:1.65}}
+body{{font-family:var(--hp-font);background:#060711;color:#e5e7eb;line-height:1.65}}
 [data-theme=light] body{{background:#fafbfc;color:#0f172a}}
 a{{color:#818cf8;text-decoration:none}}
 .gi-wrap{{max-width:760px;margin:0 auto;padding:96px 24px 48px}}

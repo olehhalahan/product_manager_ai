@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from typing import Optional
 
+from .air_design import site_fonts_link_tags
+
 _GTM_ID = os.getenv("GTM_CONTAINER_ID", "GTM-W25B668S")
 
 _GOOGLE_SITE_VERIFICATION = os.getenv(
@@ -52,9 +54,7 @@ def should_include_gtm(path: Optional[str]) -> bool:
 def _base_head_snippet() -> str:
     return f"""    <link rel="icon" href="/assets/favicon.png" type="image/png" />
     <link rel="shortcut icon" href="/assets/favicon.png" type="image/png" />
-{_GSC_META_LINE}    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+{_GSC_META_LINE}{site_fonts_link_tags()}
 """
 
 

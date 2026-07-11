@@ -76,7 +76,7 @@ def _page_shell(
 <script>try{{document.documentElement.setAttribute('data-theme',localStorage.getItem('hp-theme')||'dark')}}catch(e){{}}</script>
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:var(--hp-font,'Inter',-apple-system,BlinkMacSystemFont,sans-serif);background:var(--hp-bg,#100904);color:var(--hp-text,#ffedd7);line-height:1.5;-webkit-font-smoothing:antialiased}}
+body{{font-family:var(--hp-font);background:var(--hp-bg,#100904);color:var(--hp-text,#ffedd7);line-height:1.5;-webkit-font-smoothing:antialiased}}
 {_SHARED_CSS}
 {HP_NAV_CSS}
 {HP_FOOTER_CSS}
